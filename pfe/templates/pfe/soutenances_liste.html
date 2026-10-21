@@ -35,6 +35,9 @@
           <td class="text-nowrap">{{ s.mention|default:"—" }}{% if s.par_session %} <span class="pill pill-accent">Session</span>{% endif %}</td>
           <td class="text-end"><span class="resultat-moy {% if s.resultat and s.resultat.moyenne_generale is not None %}{% if s.resultat.moyenne_generale >= seuil %}ok{% else %}ko{% endif %}{% endif %}">{% if s.resultat and s.resultat.moyenne_generale is not None %}{{ s.resultat.moyenne_generale|floatformat:"-2" }}{% else %}—{% endif %}</span></td>
           <td class="text-end text-nowrap">
+            {% if profil.est_scolarite and s.validee and s.etudiant.matricule %}
+              <a class="btn btn-icone" href="{% url 'attestations_type' 'soutenance' %}?matricule={{ s.etudiant.matricule|urlencode }}&cycle={{ s.cycle|urlencode }}" title="Attestation de soutenance"><i class="bi bi-award"></i></a>
+            {% endif %}
             <a class="btn btn-icone" href="{% url 'soutenance_modifier' s.pk %}?suivant={{ request.get_full_path|urlencode }}" title="Compléter / modifier"><i class="bi bi-pencil"></i></a>
             {% if profil.est_scolarite or not s.verrouillee %}
               <form method="post" action="{% url 'soutenance_supprimer' s.pk %}" class="d-inline" onsubmit="return confirm('Supprimer la soutenance de {{ s.etudiant.prenom|escapejs }} {{ s.etudiant.nom|escapejs }} ?');">

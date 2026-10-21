@@ -89,6 +89,7 @@
       <!-- 2. Attestations -->
       {% if profil.est_scolarite %}
         <a class="nav-link {% if actif == 'attestations' %}active{% endif %}" href="{% url 'attestations' %}"><i class="bi bi-file-earmark-text"></i> Attestations</a>
+        <a class="nav-link {% if actif == 'releves' %}active{% endif %}" href="{% url 'releves' %}"><i class="bi bi-file-earmark-spreadsheet"></i> Relevés de notes</a>
       {% endif %}
       <!-- 3. Matières -->
       <a class="nav-link {% if actif == 'matieres' %}active{% endif %}" href="{% url 'matieres_liste' %}"><i class="bi bi-journal-bookmark"></i> Matières</a>

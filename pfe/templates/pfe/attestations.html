@@ -9,7 +9,7 @@
 <div class="onglets-attestation mb-3">
   {% for cle, code, nom, dispo in types %}
     <a href="{% url 'attestations_type' cle %}" class="onglet {% if cle == type_url %}actif{% endif %} {% if not dispo %}bientot{% endif %}">
-      <i class="bi {% if cle == 'orientation' %}bi-compass{% elif cle == 'inscription' %}bi-journal-check{% elif cle == 'niveau' %}bi-bar-chart-steps{% else %}bi-mortarboard{% endif %}"></i>
+      <i class="bi {% if cle == 'orientation' %}bi-compass{% elif cle == 'inscription' %}bi-journal-check{% elif cle == 'niveau' %}bi-bar-chart-steps{% elif cle == 'soutenance' %}bi-award{% else %}bi-mortarboard{% endif %}"></i>
       {{ nom }}{% if not dispo %} <span class="pill">bientôt</span>{% endif %}
     </a>
   {% endfor %}
@@ -65,6 +65,14 @@
                   {% endif %}
                 </div>
               </div>
+            {% elif type_url == 'soutenance' %}
+              {% include 'pfe/_champ.html' with champ=form.cycle %}
+              <div class="col-12">
+                <div class="note-verrou mt-0"><i class="bi bi-info-circle"></i>
+                  <span>La soutenance doit être <strong>notée et validée</strong> (≥ 5/10). Le <strong>thème</strong>, la <strong>date</strong> et les <strong>signataires</strong> (président du jury, encadreur, chef de département) viennent du <strong>projet de soutenance</strong> ; le Chef du Service de la Scolarité signe aussi. Une attestation par étudiant et par cycle.</span>
+                </div>
+                <div class="note-verrou mt-2"><i class="bi bi-pen"></i><span>Noms imprimés, signatures et cachet à apposer à la main.</span></div>
+              </div>
             {% else %}
               {% include 'pfe/_champ.html' with champ=form.licence %}
               <div class="col-12">
@@ -106,12 +114,16 @@
                 <span class="point"><i class="bi bi-person"></i></span>
                 <div class="flex-grow-1" style="min-width:0">
                   <div class="titre">{{ c.etudiant.prenom }} {{ c.etudiant.nom }} <span class="matricule text-secondary fw-normal">{{ c.etudiant.matricule|default:"" }}</span></div>
-                  <div class="detail">{{ c.licence }} · {{ c.session }}{% if c.filiere %} · {{ c.filiere }}{% endif %}</div>
+                  {% if type_url == 'soutenance' %}
+                    <div class="detail">Soutenance {{ c.cycle }} · {{ c.session }}{% if c.filiere %} · {{ c.filiere }}{% endif %} · note {% if c.note_finale is not None %}{{ c.note_finale|floatformat:"-2" }}{% else %}—{% endif %}</div>
+                  {% else %}
+                    <div class="detail">{{ c.licence }} · {{ c.session }}{% if c.filiere %} · {{ c.filiere }}{% endif %}</div>
+                  {% endif %}
                 </div>
                 {% if c.attestation %}
                   <a class="btn btn-sm btn-light" target="_blank" href="{% url 'attestation_pdf' c.attestation.pk %}" title="Déjà enregistrée"><i class="bi bi-printer"></i> {{ c.attestation.num_ref }}</a>
                 {% elif c.etudiant.matricule %}
-                  <a class="btn btn-sm btn-or" href="?matricule={{ c.etudiant.matricule|urlencode }}&licence={{ c.licence_id }}&cycle={{ c.cycle|default:'' }}"><i class="bi bi-arrow-up-circle"></i> Choisir</a>
+                  <a class="btn btn-sm btn-or" href="?matricule={{ c.etudiant.matricule|urlencode }}&licence={{ c.licence_id|default:'' }}&cycle={{ c.cycle|default:'' }}"><i class="bi bi-arrow-up-circle"></i> Choisir</a>
                 {% endif %}
               </div>
             {% empty %}
@@ -128,7 +140,7 @@
     {% if imprimer %}
       <div class="alert alert-success d-flex flex-wrap align-items-center gap-2">
         <i class="bi bi-check-circle-fill"></i>
-        <span class="me-auto">Attestation n° <strong>{{ imprimer.num_ref }}</strong> prête : {{ imprimer.etudiant.prenom }} {{ imprimer.etudiant.nom }}, {{ imprimer.licence }} ({{ imprimer.session }}).</span>
+        <span class="me-auto">Attestation n° <strong>{{ imprimer.num_ref }}</strong> prête : {{ imprimer.etudiant.prenom }} {{ imprimer.etudiant.nom }}, {% if type_url == 'soutenance' %}soutenance {{ imprimer.cycle }}{% else %}{{ imprimer.licence }}{% endif %} ({{ imprimer.session }}).</span>
         <a class="btn btn-sm btn-primary" target="_blank" href="{% url 'attestation_pdf' imprimer.pk %}"><i class="bi bi-printer"></i> Imprimer{% if type_url == 'fin-etudes' %} (sans cachet ni signature){% endif %}</a>
         {% if type_url == 'fin-etudes' and user.is_superuser %}
           <a class="btn btn-sm btn-or-plein" target="_blank" href="{% url 'attestation_pdf' imprimer.pk %}?signature=1"><i class="bi bi-pen"></i> Avec cachet et signature</a>
@@ -149,14 +161,14 @@
       </div>
       <div class="table-responsive">
         <table class="table table-etudiants mb-0">
-          <thead><tr><th>N° Réf.</th><th>Délivrée le</th><th>Étudiant</th><th>Licence</th><th>Programme</th><th>Session</th><th class="text-end"></th></tr></thead>
+          <thead><tr><th>N° Réf.</th><th>Délivrée le</th><th>Étudiant</th><th>{% if type_url == 'soutenance' %}Cycle{% else %}Licence{% endif %}</th><th>Programme</th><th>Session</th><th class="text-end"></th></tr></thead>
           <tbody>
           {% for a in page %}
             <tr style="cursor:default" {% if imprimer and imprimer.pk == a.pk %}class="table-active"{% endif %}>
               <td class="fw-semibold">{{ a.num_ref }}</td>
               <td>{{ a.date_delivrance|date:"d/m/Y" }}</td>
               <td><b style="color:var(--encre);font-weight:600">{{ a.etudiant.nom }}</b> {{ a.etudiant.prenom }}<div class="matricule text-secondary">{{ a.etudiant.matricule|default:"" }}</div></td>
-              <td>{{ a.licence|default:"—" }}</td>
+              <td>{% if type_url == 'soutenance' %}{{ a.cycle|default:"—" }}{% else %}{{ a.licence|default:"—" }}{% endif %}</td>
               <td class="text-truncate" style="max-width:180px" title="{{ a.filiere|default:'' }}">{{ a.filiere|default:"—" }}</td>
               <td>{{ a.session|default:"—" }}</td>
               <td class="text-end text-nowrap">

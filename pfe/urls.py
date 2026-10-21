@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import views, views_notes, views_soutenances
+from . import views, views_notes, views_releves, views_soutenances
 
 urlpatterns = [
     path('', views.tableau_de_bord, name='tableau_de_bord'),
@@ -53,4 +53,8 @@ urlpatterns = [
     path('scolarite/attestations/<int:pk>/supprimer/', views.attestation_supprimer, name='attestation_supprimer'),
     path('scolarite/attestations/<int:pk>/pdf/', views.attestation_pdf, name='attestation_pdf'),
     path('scolarite/attestations/<slug:type_url>/', views.attestations, name='attestations_type'),
+    path('scolarite/releves/', views_releves.releves, name='releves'),
+    path('scolarite/releves/delivrer/', views_releves.releve_creer, name='releve_creer'),
+    path('scolarite/releves/<int:pk>/pdf/', views_releves.releve_pdf, name='releve_pdf'),
+    path('scolarite/releves/<int:pk>/supprimer/', views_releves.releve_supprimer, name='releve_supprimer'),
 ]

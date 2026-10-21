@@ -1014,8 +1014,8 @@ class GpedTests(TestCase):
         self.assertEqual(moyenne_des_notes(None, None, 6), 6)      # une seule note : elle-même
         self.assertEqual(moyenne_des_notes(None, 6, 7), 6.53)      # poids ramenés aux notes données
         self.assertIsNone(moyenne_des_notes(None, None, None))
-        for moyenne, attendu in ((4.99, ''), (5, 'Passable'), (6, 'Assez bien'), (7, 'Très bien'),
-                                 (7.99, 'Très bien'), (8, 'Excellent'), (10, 'Excellent'), (None, '')):
+        for moyenne, attendu in ((4.99, ''), (5, 'Passable'), (6, 'Assez bien'), (7, 'Bien'),
+                                 (7.99, 'Bien'), (8, 'Très bien'), (10, 'Très bien'), (None, '')):
             self.assertEqual(mention(moyenne), attendu, moyenne)
 
     def test_note_moyenne_deposee_rattrapage_absent(self):
@@ -1077,7 +1077,8 @@ class GpedTests(TestCase):
         recalculer([e0.pk])
         self.assertEqual(res(e0, Resultat.ANNEE).moyenne, 6.25)
         c = res(e0, Resultat.CYCLE)
-        self.assertEqual((c.moyenne, c.soutenance, c.moyenne_generale, c.mention, c.session), (6.25, 9, 6.61, 'Assez bien', self.session))
+        # 6,25 × 0,87 + 9 × 0,13 = 6,6075 → tronqué à 6,60 (jamais arrondi au-dessus)
+        self.assertEqual((c.moyenne, c.soutenance, c.moyenne_generale, c.mention, c.session), (6.25, 9, 6.6, 'Assez bien', self.session))
 
         # Licence redoublée : le cycle prend la dernière année de chaque licence
         Inscription.objects.create(etudiant=e0, session=self.s2425, licence=self.licence, filiere=self.info, cycle='Licence')
@@ -1239,6 +1240,78 @@ class GpedTests(TestCase):
         self.client.post(reverse('notes_deliberer'), {**params, 'action': 'annuler'})
         self.assertFalse(Deliberation.objects.exists())
 
+    # ---------------------------------------------------------------- relevés de notes
+
+    def test_releves_de_notes(self):
+        from django.utils import timezone
+        from .models import Deliberation, Matiere, Note, ReleveNote
+        from .notes import lettre
+        from .releves import _definitif, contenu
+        s1, algo, anglais = self._preparer_notes()
+        e0 = Etudiant.objects.get(matricule='M0')
+        insc = Inscription.objects.get(etudiant=e0, session=self.session)
+        Note.objects.create(etudiant=e0, matiere=algo, moyenne=7.33, moyenne_deposee=True)
+        Note.objects.create(etudiant=e0, matiere=anglais, moyenne=5, moyenne_deposee=True)
+        self.assertEqual([lettre(v) for v in (8, 7.99, 6, 5, 4.99)], ['A', 'B', 'C', 'D', 'E'])
+
+        self.connecter('info')                                                    # réservé à la scolarité
+        self.assertEqual(self.client.get(reverse('releves')).status_code, 403)
+        self.connecter('scol')
+        r = self.client.get(reverse('releves'), {'q': 'M0'})
+        self.assertContains(r, 'Délivrer le relevé de SEMESTRE 1')
+        creer = lambda **d: self.client.post(reverse('releve_creer'), d)          # noqa: E731
+        r = creer(type='S', inscription=insc.pk, semestre=s1.pk)
+        rel = ReleveNote.objects.get()
+        self.assertRedirects(r, reverse('releve_pdf', args=[rel.pk]), fetch_redirect_response=False)
+        annee = str(timezone.localdate().year)[-2:]
+        self.assertEqual(rel.num_ref, f'0001/ISTM/SC/{annee}')
+        creer(type='S', inscription=insc.pk, semestre=s1.pk)                      # même relevé : réimprimé
+        self.assertEqual(ReleveNote.objects.count(), 1)
+        creer(type='A', inscription=insc.pk)
+        self.assertEqual(ReleveNote.objects.get(type='A').num_ref, f'0002/ISTM/SC/{annee}')
+
+        # Moyenne pondérée par les crédits et TRONQUÉE : (7,33 × 6 + 5 × 4) / 10 = 6,398 → 6,39
+        c = contenu(rel)
+        self.assertEqual((c['moyenne'], c['mention'], c['definitif']), (6.39, 'Assez bien', False))
+        self.assertEqual([(l['lettre'], l['observation']) for l in c['blocs'][0]['lignes']],
+                         [('B', 'Validée'), ('D', 'Validée')])
+        r = self.client.get(reverse('releve_pdf', args=[rel.pk]))
+        self.assertEqual((r.status_code, r.content[:4]), (200, b'%PDF'))
+        # Délibéré : plus « provisoire » ; une session antérieure est considérée comme délibérée
+        Deliberation.objects.create(filiere=self.info, session=self.session, semestre=s1)
+        self.assertTrue(contenu(rel)['definitif'])
+        self.assertTrue(_definitif(self.info.pk, self.s2425, []))
+
+        # Extrait : par programme (le Tronc commun a le sien) ; sans soutenance, générale = moyenne du cycle
+        tc = Service.objects.create(nom='Tronc commun', code='TC', programme=True, cycle='Ingénieur')
+        Inscription.objects.create(etudiant=e0, session=self.s2425, licence=self.licence, filiere=tc)
+        m_tc = Matiere.objects.create(nom='Physique', filiere=tc, semestre=s1, licence=self.licence,
+                                      session=self.s2425, credit=6)
+        Note.objects.create(etudiant=e0, matiere=m_tc, moyenne=9, moyenne_deposee=True)
+        creer(type='E', etudiant=e0.pk, programme=self.info.pk)
+        extrait = ReleveNote.objects.get(type='E')
+        c = contenu(extrait)
+        self.assertEqual([l['matiere'] for b in c['blocs'] for l in b['lignes']], ['Algorithmique', 'Anglais'])
+        self.assertEqual((c['moyenne_cycle'], c['moyenne'], c['soutenance']), (6.39, 6.39, None))
+        c_tc = contenu(ReleveNote(type='E', etudiant=e0, filiere=tc))
+        self.assertEqual([l['matiere'] for b in c_tc['blocs'] for l in b['lignes']], ['Physique'])
+        self.assertTrue(c_tc['definitif'])                                         # 2024-2025 : session antérieure
+
+        # QR code : page publique de vérification
+        r = self.client.get(reverse('verifier_document', args=[extrait.code_verification]))
+        self.assertContains(r, 'Extrait du livret universitaire')
+        self.assertContains(r, '6,39/10')
+        # Cachet et signature : super utilisateur seulement
+        normal = self.client.get(reverse('releve_pdf', args=[rel.pk]), {'signature': 1}).content
+        User.objects.create_superuser('chef', password='x')
+        self.client.login(username='chef', password='x')
+        signe = self.client.get(reverse('releve_pdf', args=[rel.pk]), {'signature': 1})
+        self.assertIn('_signe', signe['Content-Disposition'])
+        self.assertGreater(len(signe.content), len(normal))
+        # Suppression : le numéro n'est pas réutilisé
+        self.client.post(reverse('releve_supprimer', args=[extrait.pk]))
+        self.assertEqual(ReleveNote.prochaine_reference(), f'0004/ISTM/SC/{annee}')
+
     # ---------------------------------------------------------------- statistiques
 
     def test_statistiques_des_inscriptions(self):
@@ -1326,10 +1399,56 @@ class GpedTests(TestCase):
         self.assertEqual((h.motif, h.note_verrouillee, h.avant['note'], h.apres['note']), ('PV du jury', True, 4, 8))
         self.client.post(reverse('soutenance_supprimer', args=[s.pk]))
         self.assertFalse(Soutenance.objects.exists())
-        self.assertIsNone(Resultat.objects.get(etudiant=e0, niveau=Resultat.CYCLE).moyenne_generale)
+        # Sans soutenance : la moyenne générale est la moyenne du cycle
+        self.assertEqual(Resultat.objects.get(etudiant=e0, niveau=Resultat.CYCLE).moyenne_generale, 7)
         # Aide à la saisie : dernière inscription de l'étudiant
         d = self.client.get(reverse('soutenance_etudiant'), {'matricule': 'M1'}).json()
         self.assertEqual((d['trouve'], d['programme'], d['session']), (True, self.info.pk, self.session.pk))
+
+    def test_attestation_de_soutenance(self):
+        import datetime
+        from .models import Attestation, ProjetSoutenance, Soutenance
+        Service.objects.filter(pk=self.info.pk).update(cycle='Ingénieur')
+        p = ProjetSoutenance.objects.create(intitule='Projet 1', theme='Réseau du campus', filiere=self.info,
+                                            session=self.session, promotion=self.p18, cycle='Ingénieur',
+                                            encadreur='Dr Barry', chef_departement='M. Sow', president_jury='Pr Diallo',
+                                            date=datetime.date(2026, 7, 15))
+        s = Soutenance.objects.create(etudiant=Etudiant.objects.get(matricule='M0'), cycle='Ingénieur',
+                                      filiere=self.info, session=self.session, promotion=self.p18, projet=p, note=4)
+        url = reverse('attestations_type', args=['soutenance'])
+        self.connecter('info')                                                    # réservé à la scolarité
+        self.assertEqual(self.client.get(url).status_code, 403)
+        self.connecter('scol')
+        self.assertContains(self.client.post(url, {'matricule': 'M1'}), "aucune soutenance")
+        self.assertContains(self.client.post(url, {'matricule': 'M0'}), "pas validée")           # 4/10
+        Soutenance.objects.filter(pk=s.pk).update(note=8.5, note_finale=8.5)
+        r = self.client.post(url, {'matricule': 'M0'})
+        a = Attestation.objects.get(type=Attestation.SOUTENANCE)
+        self.assertRedirects(r, f"{url}?imprimer={a.pk}")
+        self.assertEqual((a.cycle, a.filiere, a.session), ('Ingénieur', self.info, self.session))
+        self.assertContains(self.client.post(url, {'matricule': 'M0'}), "déjà une attestation de soutenance")
+        # PDF : thème, signataires du projet et du service de la scolarité
+        r = self.client.get(reverse('attestation_pdf', args=[a.pk]))
+        self.assertEqual((r.status_code, r.content[:4]), (200, b'%PDF'))
+        import base64
+        import zlib
+        from .attestation_soutenance import pdf_soutenance
+
+        def decoder(flux):                      # pages ReportLab : ASCII85 puis Flate
+            try:
+                return zlib.decompress(base64.a85decode(flux.strip().removesuffix(b'~>')))
+            except Exception:
+                return b''
+        brut = pdf_soutenance(a, 'http://x/v/abc')
+        texte = b''.join(decoder(m) for m in re.findall(rb'stream\r?\n(.*?)endstream', brut, re.S))
+        for attendu in (b'Diallo', b'Barry', b'Sow', b'campus'):
+            self.assertIn(attendu, texte)
+        # Page publique de vérification
+        r = self.client.get(reverse('verifier_document', args=[a.code_verification]))
+        self.assertContains(r, 'Réseau du campus')
+        self.assertContains(r, 'Très bien')
+        # Bouton « Attestation » dans la liste des soutenances
+        self.assertContains(self.client.get(reverse('soutenances')), 'Attestation de soutenance')
 
     def test_projets_notes_et_verrouillage(self):
         import datetime

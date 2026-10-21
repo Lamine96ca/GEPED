@@ -74,11 +74,11 @@ def _retour(request, defaut):
 
 
 def _avec_resultats(soutenances):
-    """Ajoute à chaque soutenance son résultat de cycle (moyenne du cycle et moyenne générale)."""
-    cycles = {(r.etudiant_id, r.cycle): r for r in Resultat.objects.filter(
+    """Ajoute à chaque soutenance son résultat de cycle (moyenne du cycle et générale) : même programme."""
+    cycles = {(r.etudiant_id, r.filiere_id): r for r in Resultat.objects.filter(
         niveau=Resultat.CYCLE, etudiant_id__in=[s.etudiant_id for s in soutenances])}
     for s in soutenances:
-        s.resultat = cycles.get((s.etudiant_id, s.cycle))
+        s.resultat = cycles.get((s.etudiant_id, s.filiere_id))
     return soutenances
 
 

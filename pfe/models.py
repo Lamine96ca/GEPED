@@ -176,12 +176,13 @@ class Attestation(models.Model):
     filiere = models.ForeignKey(Service, on_delete=models.CASCADE, verbose_name="Programme" , blank=True, null=True)
     session = models.ForeignKey(Session, on_delete=models.CASCADE, verbose_name="Session", related_name='Session_session', blank=True, null=True)
     session_actuelle = models.ForeignKey(Session, on_delete=models.CASCADE, related_name='session_attestation', verbose_name='Session actuelle', blank=True, null=True)
-    ORIENTATION, INSCRIPTION, NIVEAU, FIN_ETUDES = '1', '2', '3', '4'
+    ORIENTATION, INSCRIPTION, NIVEAU, FIN_ETUDES, SOUTENANCE = '1', '2', '3', '4', '5'
     type_attestation = [
         (ORIENTATION, 'Orientation'),
         (INSCRIPTION, 'Inscription'),
         (NIVEAU, 'Niveau'),
         (FIN_ETUDES, "Fin d'études"),
+        (SOUTENANCE, 'Soutenance'),            # cycle = celui de la soutenance (une par étudiant et par cycle)
     ]
     type = models.CharField(max_length=1, choices=type_attestation, verbose_name="Type d'attestation", blank=True, null=True)
     date_delivrance = models.DateField(auto_now_add=True)
@@ -510,36 +511,64 @@ class SoutenanceHistorique(models.Model):
     class Meta:
         ordering = ['-date']
 
-#Releve de note
+#RELEVÉS DE NOTES
 from django.utils import timezone
-class ReleveNote(models.Model):
-    ref = models.CharField(max_length=50, verbose_name="N° Référence", unique=True, blank=True)
-    date = models.DateField(auto_now_add=True, verbose_name="Date")
-    etudiant = models.ForeignKey("Etudiant", on_delete=models.CASCADE, verbose_name="Étudiant (Matricule)")
-    session = models.ForeignKey("Session", on_delete=models.CASCADE, verbose_name="Session")
-    session_actuelle = models.ForeignKey("Session", on_delete=models.CASCADE, related_name="session_releve_note", verbose_name="Session actuelle", blank=True, null=True)
-    semestre = models.ForeignKey("Semestre", on_delete=models.CASCADE, verbose_name="Semestre", blank=True, null=True)
-    licence = models.ForeignKey(Licence, on_delete=models.CASCADE,verbose_name="Licence", blank=True, null=True)
-    filiere = models.ForeignKey("Service", on_delete=models.CASCADE, verbose_name="Programme", null=True)
-    promotion = models.ForeignKey("Promotion", on_delete=models.CASCADE, verbose_name="Promotion", null=True, blank=True)
-    type_releve = [
-        (1, 'Semestre'),
-        (2, 'Annuel'),
-        (3, 'Extrait'),
-    ]
-    status = models.IntegerField(default=0, choices=type_releve, verbose_name='Status')
 
-    def save(self, *args, **kwargs):
-        if not self.ref:
-            current_year = timezone.now().year
-            year_suffix = str(current_year)[-2:]  # ex : 2025 → "25"
-            # Compte combien de relevés existent déjà cette année
-            count = ReleveNote.objects.filter(date__year=current_year).count() + 1
-            self.ref = f"{count:04d}/ISTM/SC/{year_suffix}"  # format : 0001/ISTM/SC/25
-        super().save(*args, **kwargs)
+
+class CompteurReleve(models.Model):
+    """Dernier n° de relevé attribué pour une année : compteur PROPRE aux relevés (pas celui des attestations)."""
+    annee = models.PositiveIntegerField(unique=True, verbose_name="Année")
+    dernier = models.PositiveIntegerField(default=0, verbose_name="Dernier numéro attribué")
 
     def __str__(self):
-        return f"{self.etudiant} - {self.ref}"
+        return f"{self.annee} : {self.dernier}"
+
+
+class ReleveNote(models.Model):
+    """
+    Relevé délivré (le contenu est recalculé à chaque impression, d'après les notes) :
+      - semestre : matières d'un semestre, dans le programme, la session et la licence d'une inscription ;
+      - annuel   : toutes les matières de la licence de l'inscription ;
+      - extrait  : tout le parcours de l'étudiant dans UN programme (le Tronc commun a son propre extrait).
+    N° 0001/ISTM/SC/26, continu sur l'année pour tous les relevés, repris à 0001 chaque année.
+    """
+    SEMESTRE, ANNUEL, EXTRAIT = 'S', 'A', 'E'
+    TYPES = [(SEMESTRE, 'Relevé semestriel'), (ANNUEL, 'Relevé annuel'), (EXTRAIT, 'Extrait du livret')]
+
+    num_ref = models.CharField('N° de référence', max_length=50, unique=True, editable=False)
+    type = models.CharField('Type', max_length=1, choices=TYPES)
+    etudiant = models.ForeignKey(Etudiant, on_delete=models.CASCADE, related_name='releves', verbose_name='Étudiant')
+    filiere = models.ForeignKey(Service, on_delete=models.CASCADE, verbose_name='Programme')
+    session = models.ForeignKey(Session, on_delete=models.CASCADE, null=True, blank=True, verbose_name='Session')
+    licence = models.ForeignKey(Licence, on_delete=models.CASCADE, null=True, blank=True, verbose_name='Licence')
+    semestre = models.ForeignKey(Semestre, on_delete=models.CASCADE, null=True, blank=True, verbose_name='Semestre')
+    date_delivrance = models.DateField('Délivré le', auto_now_add=True)
+    code_verification = models.CharField(max_length=32, unique=True, editable=False,
+                                         default=nouveau_code_verification, verbose_name='Code de vérification')
+
+    class Meta:
+        ordering = ['-date_delivrance', '-id']
+
+    def __str__(self):
+        return self.num_ref
+
+    @classmethod
+    def prochaine_reference(cls, annee=None):
+        annee = annee or timezone.localdate().year
+        dernier = CompteurReleve.objects.filter(annee=annee).values_list('dernier', flat=True).first() or 0
+        return f"{dernier + 1:04d}/ISTM/SC/{str(annee)[-2:]}"
+
+    def save(self, *args, **kwargs):
+        if self.num_ref:
+            return super().save(*args, **kwargs)
+        from django.db import transaction
+        annee = timezone.localdate().year
+        with transaction.atomic():
+            compteur, _ = CompteurReleve.objects.select_for_update().get_or_create(annee=annee)
+            compteur.dernier += 1
+            compteur.save(update_fields=['dernier'])
+            self.num_ref = f"{compteur.dernier:04d}/ISTM/SC/{str(annee)[-2:]}"
+            super().save(*args, **kwargs)
 
 #ORIENTATION
 class CritereAdmission(models.Model):

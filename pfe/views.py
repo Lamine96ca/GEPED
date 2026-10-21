@@ -21,7 +21,8 @@ from django.conf import settings
 
 from .attestations import CONTENUS as CONTENUS_ATTESTATION, infos_publiques, pdf_attestation, titre_document
 from .forms import (AttestationFinEtudesForm, AttestationInscriptionForm, AttestationNiveauForm,
-                    AttestationOrientationForm, CoordonneesForm, EtudiantForm, ImportForm, ImportMatieresForm,
+                    AttestationOrientationForm, AttestationSoutenanceForm, CoordonneesForm, EtudiantForm, ImportForm,
+                    ImportMatieresForm,
                     InscriptionForm, MatiereForm, MotDePasseForm)
 from .import_matieres import OBLIGATOIRES as OBLIGATOIRES_MATIERES, importer_matieres, modele_matieres_xlsx
 from .importer import OBLIGATOIRES, importer_etudiants, modele_import_xlsx
@@ -761,15 +762,17 @@ TYPES_ATTESTATION = [
     ('inscription', Attestation.INSCRIPTION, 'Inscription', True),
     ('niveau', Attestation.NIVEAU, 'Niveau', True),
     ('fin-etudes', Attestation.FIN_ETUDES, "Fin d'études", True),
+    ('soutenance', Attestation.SOUTENANCE, 'Soutenance', True),
 ]
 FORMULAIRES_ATTESTATION = {
     Attestation.ORIENTATION: AttestationOrientationForm,
     Attestation.INSCRIPTION: AttestationInscriptionForm,
     Attestation.NIVEAU: AttestationNiveauForm,
     Attestation.FIN_ETUDES: AttestationFinEtudesForm,
+    Attestation.SOUTENANCE: AttestationSoutenanceForm,
 }
 COMPLEMENT_ATTESTATION = {'orientation': "d'orientation", 'inscription': "d'inscription",
-                          'niveau': 'de niveau', 'fin-etudes': "de fin d'études"}
+                          'niveau': 'de niveau', 'fin-etudes': "de fin d'études", 'soutenance': 'de soutenance'}
 
 
 @login_required
@@ -809,7 +812,18 @@ def attestations(request, type_url='inscription'):
     # Aide : recherche d'un étudiant pour remplir le formulaire
     q_etudiant = (request.GET.get('etudiant') or '').strip()
     candidats = []
-    if disponible and q_etudiant:
+    if disponible and q_etudiant and code == Attestation.SOUTENANCE:
+        from .models import Soutenance
+        qs = Soutenance.objects.select_related('etudiant', 'session', 'filiere')
+        for terme in q_etudiant.split()[:4]:
+            qs = qs.filter(Q(etudiant__matricule__icontains=terme) | Q(etudiant__nom__icontains=terme)
+                           | Q(etudiant__prenom__icontains=terme) | Q(etudiant__ine__icontains=terme))
+        candidats = list(qs.order_by('etudiant__nom', 'etudiant__prenom', '-session__annee')[:30])
+        existantes = {(a.etudiant_id, a.cycle): a for a in Attestation.objects.filter(
+            type=code, etudiant__in={c.etudiant_id for c in candidats})}
+        for c in candidats:
+            c.attestation = existantes.get((c.etudiant_id, c.cycle))
+    elif disponible and q_etudiant:
         qs = Inscription.objects.select_related('etudiant', 'licence', 'session', 'filiere')
         for terme in q_etudiant.split()[:4]:
             qs = qs.filter(Q(etudiant__matricule__icontains=terme) | Q(etudiant__nom__icontains=terme)
@@ -916,7 +930,16 @@ def verifier_document(request, code):
         attestation = (Attestation.objects.select_related('etudiant', 'licence', 'session', 'filiere')
                        .filter(code_verification=code).first())
     contexte = {'attestation': attestation, 'contact': settings.GPED_ATTESTATION}
-    if attestation is not None and attestation.etudiant is not None:
+    releve = None
+    if attestation is None and re.fullmatch(r'[A-Za-z0-9_-]{16,32}', code or ''):
+        from .models import ReleveNote
+        releve = (ReleveNote.objects.select_related('etudiant', 'filiere', 'session', 'licence', 'semestre')
+                  .filter(code_verification=code).first())
+    if releve is not None:
+        from .releves import infos_publiques_releve
+        titre, infos = infos_publiques_releve(releve)
+        contexte.update({'attestation': releve, 'titre_document': titre, 'infos': infos})
+    elif attestation is not None and attestation.etudiant is not None:
         contexte.update({'titre_document': titre_document(attestation), 'infos': infos_publiques(attestation)})
     else:
         contexte['attestation'] = None

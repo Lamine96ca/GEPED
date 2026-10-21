@@ -48,6 +48,7 @@
         <a class="btn btn-verre" href="{% url 'inscription_fiche_pdf' inscription.pk %}" target="_blank" rel="noopener"
            title="Fiche à imprimer pour {{ inscription.licence }} · {{ inscription.session }}"><i class="bi bi-printer"></i> Fiche d'inscription</a>
       {% endif %}
+      <a class="btn btn-verre" href="{% url 'releves' %}?etudiant={{ etudiant.pk }}" title="Relevés de notes et extrait du livret"><i class="bi bi-file-earmark-spreadsheet"></i> Relevés</a>
       {% if etudiant.matricule %}
         <a class="btn btn-verre" href="{% url 'attestations_type' 'inscription' %}?matricule={{ etudiant.matricule|urlencode }}&licence={{ inscription.licence_id }}"
            title="Attestation d'inscription pour {{ inscription.licence }} · {{ inscription.session }}"><i class="bi bi-file-earmark-pdf"></i> Attestation</a>

@@ -431,6 +431,87 @@ class AttestationFinEtudesForm(BootstrapMixin, forms.ModelForm):
         return attestation
 
 
+class AttestationSoutenanceForm(BootstrapMixin, forms.ModelForm):
+    """
+    Attestation de soutenance : matricule (+ cycle si l'étudiant a soutenu dans plusieurs cycles).
+    La soutenance doit être notée et validée (≥ 5/10). Programme, session et cycle viennent de la
+    soutenance ; thème, jury et signataires de son projet. Une attestation par étudiant et par cycle.
+    """
+    matricule = forms.CharField(label="Matricule de l'étudiant", max_length=25)
+
+    class Meta:
+        model = Attestation
+        fields = ['cycle']
+        labels = {'cycle': 'Cycle de la soutenance'}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['cycle'].required = False
+        self.fields['cycle'].choices = [('', '— Dernière soutenance —')] + Inscription.CYCLE_CHOICES
+        self.fields['matricule'].widget.attrs.update({'placeholder': 'Ex. 2306004423', 'autocomplete': 'off'})
+        if self.instance.pk and self.instance.etudiant:
+            self.initial['matricule'] = self.instance.etudiant.matricule
+        self.soutenance = None
+
+    def clean(self):
+        from .notes import regles
+        donnees = super().clean()
+        matricule = (donnees.get('matricule') or '').strip()
+        if not matricule:
+            return donnees
+        etudiant = Etudiant.objects.filter(matricule__iexact=matricule).first()
+        if etudiant is None:
+            self.add_error('matricule', "Aucun étudiant trouvé avec ce matricule.")
+            return donnees
+        soutenances = Soutenance.objects.filter(etudiant=etudiant).select_related('session', 'filiere', 'projet')
+        cycle = donnees.get('cycle')
+        if cycle:
+            soutenances = soutenances.filter(cycle=cycle)
+        s = soutenances.order_by('-session__annee', '-id').first()
+        if s is None:
+            self.add_error('cycle' if cycle else 'matricule',
+                           f"{etudiant.prenom} {etudiant.nom} n'a aucune soutenance enregistrée"
+                           f"{' en ' + cycle if cycle else ''} (menu Soutenances).")
+            return donnees
+        seuil = regles()['seuil_validation']
+        if s.note_finale is None:
+            self.add_error('matricule', f"La soutenance de {etudiant.prenom} {etudiant.nom} n'est pas encore notée.")
+            return donnees
+        if s.note_finale < seuil:
+            self.add_error('matricule', f"La soutenance de {etudiant.prenom} {etudiant.nom} n'est pas validée "
+                                        f"(note {s.note_finale:g}/10, il faut au moins {seuil}).")
+            return donnees
+        doublon = Attestation.objects.filter(type=Attestation.SOUTENANCE, etudiant=etudiant, cycle=s.cycle)
+        if self.instance.pk:
+            doublon = doublon.exclude(pk=self.instance.pk)
+        if doublon.exists():
+            self.add_error(None, f"{etudiant.prenom} {etudiant.nom} a déjà une attestation de soutenance pour ce "
+                                 f"cycle : n° {doublon.first().num_ref}.")
+        p = s.projet
+        self.manquants = [nom for nom, v in (
+            ('thème', p and p.theme), ('date de soutenance', p and p.date), ('président du jury', p and p.president_jury),
+            ('encadreur', p and p.encadreur), ('chef de département', p and p.chef_departement)) if not v]
+        self.etudiant, self.soutenance = etudiant, s
+        return donnees
+
+    def save(self, session_actuelle=None, commit=True):
+        attestation = super().save(commit=False)
+        s = self.soutenance
+        attestation.type = Attestation.SOUTENANCE
+        attestation.etudiant = self.etudiant
+        attestation.cycle = s.cycle
+        attestation.session = s.session
+        attestation.filiere = s.filiere
+        inscription = (Inscription.objects.filter(etudiant=self.etudiant, session=s.session)
+                       .select_related('licence').first())
+        attestation.licence = inscription.licence if inscription else None
+        if not attestation.pk:
+            attestation.session_actuelle = session_actuelle
+        if commit:
+            attestation.save()
+        return attestation
+
+
 # ------------------------------------------------------------------ matières
 
 CREDIT_PAR_DEFAUT = 6

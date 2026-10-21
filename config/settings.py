@@ -245,7 +245,10 @@ GPED_NOTES = {
     'poids_cycle': 0.87,
     'poids_soutenance': 0.13,
     # Mentions : du seuil le plus haut au plus bas (en dessous de 5 : pas de mention)
-    'mentions': [(8, 'Excellent'), (7, 'Très bien'), (6, 'Assez bien'), (5, 'Passable')],
+    'mentions': [(8, 'Très bien'), (7, 'Bien'), (6, 'Assez bien'), (5, 'Passable')],
+    # Notes littérales des relevés (en dessous de 5 : E)
+    'lettres': [(8, 'A'), (7, 'B'), (6, 'C'), (5, 'D'), (0, 'E')],
+    # Les moyennes sont TRONQUÉES à 2 décimales (6,525 → 6,52), jamais arrondies : pas de revendication
 }
 
 # Taille maximale d'un fichier d'import (octets)

@@ -1,0 +1,168 @@
+{% extends 'pfe/base.html' %}
+{% load humanize %}
+{% block titre %}Relevés de notes{% endblock %}
+{% block titre_page %}Relevés de notes{% endblock %}
+{% block sous_titre %}<div class="sous-titre">Relevé semestriel, relevé annuel et extrait du livret · numérotation propre aux relevés, reprise chaque année · prochain n° <strong>{{ prochaine_ref }}</strong></div>{% endblock %}
+{% block contenu %}
+<div class="row g-3">
+  <div class="col-xl-6 d-flex flex-column gap-3">
+    <div class="card carte-gped">
+      <div class="card-body">
+        <div class="entete-carte">
+          <span class="icone-carte"><i class="bi bi-search"></i></span>
+          <div><h3>Étudiant</h3><p>Matricule, nom, prénom ou INE</p></div>
+        </div>
+        <form method="get">
+          <div class="champ-icone"><i class="bi bi-search"></i>
+            <input type="search" name="q" value="{{ q }}" class="form-control" placeholder="Ex. 2306005624 ou SANGARE" autofocus>
+          </div>
+        </form>
+        {% if candidats and not etudiant %}
+          <div class="parcours mt-3">
+            {% for e in candidats %}
+              <a class="etape" href="?etudiant={{ e.pk }}">
+                <span class="point"><i class="bi bi-person"></i></span>
+                <div><div class="titre">{{ e.prenom }} {{ e.nom }} <span class="matricule text-secondary fw-normal">{{ e.matricule|default:"" }}</span></div></div>
+              </a>
+            {% endfor %}
+          </div>
+        {% elif q and not etudiant %}
+          <p class="text-secondary mt-3 mb-0">Aucun étudiant ne correspond à « {{ q }} ».</p>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if etudiant %}
+      <div class="card carte-gped">
+        <div class="card-body">
+          <div class="entete-carte flex-wrap">
+            <span class="icone-carte"><i class="bi bi-person-vcard"></i></span>
+            <div class="me-auto"><h3>{{ etudiant.prenom }} {{ etudiant.nom }}</h3><p>{{ etudiant.matricule|default:"Sans matricule" }}{% if etudiant.ine %} · INE {{ etudiant.ine }}{% endif %}</p></div>
+            {% if user.is_superuser %}
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" id="avec-cachet">
+                <label class="form-check-label small" for="avec-cachet">Avec cachet et signature</label>
+              </div>
+            {% endif %}
+          </div>
+
+          {% if not inscriptions %}
+            <div class="etat-vide py-3"><i class="bi bi-inbox"></i>Aucune inscription dans un programme.</div>
+          {% else %}
+            <h4 class="titre-stat mb-2">Relevés par année</h4>
+            <div class="table-responsive mb-3">
+              <table class="table table-etudiants mb-0">
+                <thead><tr><th>Session · niveau</th><th>Relevés</th></tr></thead>
+                <tbody>
+                {% for i in inscriptions %}
+                  <tr style="cursor:default">
+                    <td style="white-space:normal;min-width:170px"><b style="color:var(--encre);font-weight:600">{{ i.session.annee }} · {{ i.licence.nom }}</b><div class="small text-secondary">{{ i.filiere }}</div></td>
+                    <td>
+                      <div class="d-flex flex-wrap gap-1">
+                        {% for s, r in i.releves_semestre %}
+                          <form method="post" action="{% url 'releve_creer' %}" target="_blank" class="d-inline form-releve">
+                            {% csrf_token %}<input type="hidden" name="type" value="S"><input type="hidden" name="inscription" value="{{ i.pk }}"><input type="hidden" name="semestre" value="{{ s.pk }}"><input type="hidden" name="signature" value="">
+                            <button class="btn btn-sm {% if r %}btn-light{% else %}btn-or{% endif %}" title="{% if r %}Déjà délivré : n° {{ r.num_ref }} (réimpression){% else %}Délivrer le relevé de {{ s.nom }}{% endif %}"><i class="bi {% if r %}bi-printer{% else %}bi-file-earmark-plus{% endif %}"></i> {{ s.abrege|default:s.nom }}</button>
+                          </form>
+                        {% empty %}
+                          <span class="small text-secondary">Aucune matière enregistrée</span>
+                        {% endfor %}
+                        {% if i.releves_semestre %}
+                          <form method="post" action="{% url 'releve_creer' %}" target="_blank" class="d-inline form-releve">
+                            {% csrf_token %}<input type="hidden" name="type" value="A"><input type="hidden" name="inscription" value="{{ i.pk }}"><input type="hidden" name="signature" value="">
+                            <button class="btn btn-sm {% if i.releve_annuel %}btn-light{% else %}btn-primary{% endif %}" title="{% if i.releve_annuel %}Déjà délivré : n° {{ i.releve_annuel.num_ref }} (réimpression){% else %}Délivrer le relevé annuel de {{ i.licence.nom }}{% endif %}"><i class="bi bi-calendar3"></i> Année</button>
+                          </form>
+                        {% endif %}
+                      </div>
+                    </td>
+                  </tr>
+                {% endfor %}
+                </tbody>
+              </table>
+            </div>
+
+            <h4 class="titre-stat mb-2">Extrait du livret universitaire</h4>
+            <div class="d-flex flex-column gap-2">
+              {% for p in programmes %}
+                <form method="post" action="{% url 'releve_creer' %}" target="_blank" class="form-releve d-flex align-items-center gap-2">
+                  {% csrf_token %}<input type="hidden" name="type" value="E"><input type="hidden" name="etudiant" value="{{ etudiant.pk }}"><input type="hidden" name="programme" value="{{ p.pk }}"><input type="hidden" name="signature" value="">
+                  <button class="btn btn-sm {% if p.extrait %}btn-light{% else %}btn-primary{% endif %}"><i class="bi bi-journal-text"></i> Extrait · {{ p.nom }}</button>
+                  {% if p.extrait %}<span class="small text-secondary">n° {{ p.extrait.num_ref }}</span>{% endif %}
+                </form>
+              {% endfor %}
+            </div>
+            <div class="note-verrou mt-3"><i class="bi bi-info-circle"></i>
+              <span>Un extrait par <strong>programme</strong> : le Tronc commun et le programme d'orientation ont chacun le leur. Licence redoublée : la dernière année seulement. « <strong>PROVISOIRE</strong> » tant que les notes ne sont pas délibérées (les sessions antérieures sont considérées comme délibérées).</span>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="col-xl-6">
+    <div class="card carte-gped liste">
+      <div class="card-header d-flex flex-wrap align-items-center gap-3">
+        <div class="entete-carte mb-0 me-auto">
+          <span class="icone-carte"><i class="bi bi-archive"></i></span>
+          <div><h3>Relevés délivrés</h3><p>{{ page.paginator.count|intcomma }} relevé{{ page.paginator.count|pluralize }}</p></div>
+        </div>
+        <form method="get" style="min-width:220px">
+          {% if etudiant %}<input type="hidden" name="etudiant" value="{{ etudiant.pk }}">{% endif %}
+          <div class="champ-icone"><i class="bi bi-search"></i>
+            <input type="search" name="r" value="{{ r }}" class="form-control form-control-sm" style="height:38px" placeholder="N° réf., matricule, nom">
+          </div>
+        </form>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-etudiants mb-0">
+          <thead><tr><th>N° Réf.</th><th>Délivré le</th><th>Étudiant</th><th>Relevé</th><th class="text-end"></th></tr></thead>
+          <tbody>
+          {% for rel in page %}
+            <tr style="cursor:default">
+              <td class="fw-semibold">{{ rel.num_ref }}</td>
+              <td>{{ rel.date_delivrance|date:"d/m/Y" }}</td>
+              <td><a href="?etudiant={{ rel.etudiant_id }}" style="color:var(--encre);font-weight:600">{{ rel.etudiant.nom }}</a> {{ rel.etudiant.prenom }}<div class="matricule text-secondary">{{ rel.etudiant.matricule|default:"" }}</div></td>
+              <td style="white-space:normal">{{ rel.get_type_display }}<div class="small text-secondary">{% if rel.type == 'E' %}{{ rel.filiere }}{% else %}{{ rel.session }} · {% if rel.semestre %}{{ rel.semestre.nom }}{% else %}{{ rel.licence }}{% endif %}{% endif %}</div></td>
+              <td class="text-end text-nowrap">
+                <a class="btn btn-sm btn-primary" target="_blank" href="{% url 'releve_pdf' rel.pk %}" title="Imprimer"><i class="bi bi-printer"></i></a>
+                {% if user.is_superuser %}<a class="btn btn-sm btn-or-plein" target="_blank" href="{% url 'releve_pdf' rel.pk %}?signature=1" title="Imprimer avec cachet et signature"><i class="bi bi-pen"></i></a>{% endif %}
+                <form method="post" action="{% url 'releve_supprimer' rel.pk %}" class="d-inline" onsubmit="return confirm('Supprimer le relevé n° {{ rel.num_ref|escapejs }} ? Ce numéro ne sera pas réutilisé.');">
+                  {% csrf_token %}<button class="btn btn-icone text-danger" title="Supprimer"><i class="bi bi-trash"></i></button>
+                </form>
+              </td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="5"><div class="etat-vide"><i class="bi bi-inbox"></i>Aucun relevé délivré{% if r %} pour « {{ r }} »{% endif %}.</div></td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if page.has_other_pages %}
+        <div class="pied-tableau d-flex justify-content-end">
+          <ul class="pagination pagination-sm mb-0">
+            {% if page.has_previous %}<li class="page-item"><a class="page-link" href="?r={{ r|urlencode }}&page={{ page.previous_page_number }}"><i class="bi bi-chevron-left"></i></a></li>{% endif %}
+            <li class="page-item active"><span class="page-link">{{ page.number }} / {{ page.paginator.num_pages }}</span></li>
+            {% if page.has_next %}<li class="page-item"><a class="page-link" href="?r={{ r|urlencode }}&page={{ page.next_page_number }}"><i class="bi bi-chevron-right"></i></a></li>{% endif %}
+          </ul>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  // Super utilisateur : « Avec cachet et signature » s'applique aux relevés délivrés depuis cette page.
+  // Après un envoi, la page est rechargée pour afficher le nouveau numéro dans « Relevés délivrés ».
+  (function () {
+    var cachet = document.getElementById('avec-cachet');
+    document.querySelectorAll('.form-releve').forEach(function (f) {
+      f.addEventListener('submit', function () {
+        f.querySelector('[name=signature]').value = cachet && cachet.checked ? '1' : '';
+        setTimeout(function () { window.location.reload(); }, 1200);
+      });
+    });
+  })();
+</script>
+{% endblock %}

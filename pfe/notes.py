@@ -10,14 +10,18 @@ Matière  : moyenne déposée par le programme, ou calculée avec les notes donn
 Semestre : moyenne des matières du semestre (programme, session, licence de l'inscription),
            pondérée par les crédits ; une matière sans note compte 0 (elle est signalée).
 Année    : même calcul sur toutes les matières de l'année (licence).
-Cycle    : moyenne des années du cycle (pour une licence redoublée : la dernière année) ;
-           moyenne générale = cycle × 0,87 + soutenance × 0,13 (note retenue : la meilleure
-           de la note de soutenance et de la note de session, voir pfe/soutenances.py).
-Mentions : 5 Passable, 6 Assez bien, 7 Très bien, 8 et plus Excellent.
+Cycle    : PAR PROGRAMME (un ingénieur a un résultat pour le Tronc commun et un autre pour son
+           programme d'orientation) : moyenne des années du programme (licence redoublée : la
+           dernière année seulement) ; moyenne générale = cycle × 0,87 + soutenance × 0,13 quand
+           le programme a une note de soutenance (la meilleure de la note et de la note de
+           session, voir pfe/soutenances.py), sinon la moyenne du cycle.
+Moyennes : tronquées à 2 décimales (jamais arrondies au-dessus).
+Mentions : 5 Passable, 6 Assez bien, 7 Bien, 8 et plus Très bien.
 
 Les résultats sont enregistrés dans Resultat par recalculer(), à appeler après une saisie,
 un import ou une soutenance (pour les seuls étudiants concernés).
 """
+import math
 from collections import defaultdict
 
 from django.conf import settings
@@ -131,7 +135,21 @@ def enregistrer_notes(changements, utilisateur, apres_deliberation=False, motif=
 
 
 def arrondi(valeur):
-    return None if valeur is None else round(valeur + 1e-9, 2)
+    """
+    Moyenne TRONQUÉE à 2 décimales (6,525 → 6,52 ; 6,999 → 6,99), jamais arrondie au-dessus.
+    Le petit epsilon corrige seulement les erreurs de calcul en virgule flottante (7,2 = 7,19999…).
+    """
+    return None if valeur is None else math.floor(valeur * 100 + 1e-6) / 100
+
+
+def lettre(note):
+    """Note littérale des relevés : A (≥ 8), B, C, D (≥ 5), E (en dessous)."""
+    if note is None:
+        return ''
+    for seuil, l in regles()['lettres']:
+        if note >= seuil:
+            return l
+    return regles()['lettres'][-1][1]
 
 
 def moyenne_des_notes(controle, tp, examen):
@@ -193,6 +211,22 @@ def _rangs(resultats):
             r.rang = rang
 
 
+def annees_retenues(annees):
+    """[(annee de session, inscription, résultat)] → {licence: (inscription, résultat)} : la dernière année."""
+    derniere = {}
+    for _, insc, resultat in sorted(annees, key=lambda a: a[0]):
+        derniere[insc.licence_id] = (insc, resultat)
+    return derniere
+
+
+def moyenne_generale(moyenne_cycle, note_soutenance):
+    """Cycle × 0,87 + soutenance × 0,13 s'il y a une note de soutenance, sinon la moyenne du cycle."""
+    if moyenne_cycle is None or note_soutenance is None:
+        return moyenne_cycle
+    r = regles()
+    return arrondi(moyenne_cycle * r['poids_cycle'] + note_soutenance * r['poids_soutenance'])
+
+
 def recalculer(etudiant_ids):
     """
     Recalcule les résultats (semestres, années, cycles) des étudiants donnés, puis les rangs de
@@ -202,7 +236,6 @@ def recalculer(etudiant_ids):
     ids = list({i for i in etudiant_ids if i})
     if not ids:
         return
-    r = regles()
     inscriptions = list(Inscription.objects.filter(etudiant_id__in=ids, filiere__isnull=False)
                         .select_related('session'))
     triplets = {(i.filiere_id, i.session_id, i.licence_id) for i in inscriptions}
@@ -216,7 +249,7 @@ def recalculer(etudiant_ids):
     notes = {(etu, mat): moy for etu, mat, moy in
              Note.objects.filter(etudiant_id__in=ids).values_list('etudiant_id', 'matiere_id', 'moyenne_finale')}
 
-    nouveaux, annees_par_cycle = [], defaultdict(list)
+    nouveaux, annees_par_programme = [], defaultdict(list)
     for insc in inscriptions:
         matieres = matieres_par_triplet.get((insc.filiere_id, insc.session_id, insc.licence_id))
         if not matieres:
@@ -231,27 +264,22 @@ def recalculer(etudiant_ids):
                                      **_agreger(ms, notes, insc.etudiant_id)))
         annee = _agreger(matieres, notes, insc.etudiant_id)
         nouveaux.append(Resultat(niveau=Resultat.ANNEE, **commun, **annee))
-        if insc.cycle:
-            annees_par_cycle[(insc.etudiant_id, insc.cycle)].append((insc.session.annee, insc, annee))
+        annees_par_programme[(insc.etudiant_id, insc.filiere_id)].append((insc.session.annee, insc, annee))
 
-    # Cycle : une année par licence (la plus récente en cas de redoublement) + soutenance
-    soutenances = {(etu, cycle): note for etu, cycle, note in Soutenance.objects.filter(etudiant_id__in=ids)
-                   .values_list('etudiant_id', 'cycle', 'note_finale')}
-    for (etudiant_id, cycle), annees in annees_par_cycle.items():
-        derniere = {}
-        for _, insc, annee in sorted(annees, key=lambda a: a[0]):
-            derniere[insc.licence_id] = (insc, annee)
-        retenues = list(derniere.values())
+    # Cycle, par programme : une année par licence (la plus récente en cas de redoublement) + soutenance
+    soutenances = {(etu, prog): note for etu, prog, note in Soutenance.objects.filter(etudiant_id__in=ids)
+                   .values_list('etudiant_id', 'filiere_id', 'note_finale')}
+    for (etudiant_id, filiere_id), annees in annees_par_programme.items():
+        retenues = list(annees_retenues(annees).values())
         moyennes = [a['moyenne'] for _, a in retenues if a['moyenne'] is not None]
         moyenne_cycle = arrondi(sum(moyennes) / len(moyennes)) if moyennes else None
-        note_soutenance = soutenances.get((etudiant_id, cycle))
-        generale = (arrondi(moyenne_cycle * r['poids_cycle'] + note_soutenance * r['poids_soutenance'])
-                    if moyenne_cycle is not None and note_soutenance is not None else None)
+        note_soutenance = soutenances.get((etudiant_id, filiere_id))
+        generale = moyenne_generale(moyenne_cycle, note_soutenance)
         derniere_insc = max((i for i, _ in retenues), key=lambda i: i.session.annee)
         nouveaux.append(Resultat(
-            niveau=Resultat.CYCLE, etudiant_id=etudiant_id, cycle=cycle, filiere_id=derniere_insc.filiere_id,
+            niveau=Resultat.CYCLE, etudiant_id=etudiant_id, cycle=derniere_insc.cycle, filiere_id=filiere_id,
             session_id=derniere_insc.session_id, moyenne=moyenne_cycle, soutenance=note_soutenance,
-            moyenne_generale=generale, mention=mention(generale if generale is not None else moyenne_cycle),
+            moyenne_generale=generale, mention=mention(generale),
             credits_valides=sum(a['credits_valides'] for _, a in retenues),
             credits_total=sum(a['credits_total'] for _, a in retenues),
             notes_manquantes=sum(a['notes_manquantes'] for _, a in retenues)))

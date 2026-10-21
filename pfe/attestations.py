@@ -448,6 +448,14 @@ def pdf_fin_etudes(attestation, url_verification=None, cachet_signature=False):
 CONTENUS[Attestation.FIN_ETUDES] = contenu_fin_etudes
 
 
+def _contenu_soutenance(attestation):
+    from .attestation_soutenance import contenu_soutenance
+    return contenu_soutenance(attestation)
+
+
+CONTENUS[Attestation.SOUTENANCE] = _contenu_soutenance
+
+
 def pdf_attestation(attestation, url_verification=None, cachet_signature=False):
     """
     `cachet_signature` ne concerne que la fin d'études (les autres types sont toujours signés).
@@ -455,6 +463,9 @@ def pdf_attestation(attestation, url_verification=None, cachet_signature=False):
     """
     if attestation.type == Attestation.FIN_ETUDES:
         return pdf_fin_etudes(attestation, url_verification, cachet_signature=cachet_signature)
+    if attestation.type == Attestation.SOUTENANCE:
+        from .attestation_soutenance import pdf_soutenance
+        return pdf_soutenance(attestation, url_verification)
     titre, paragraphes, *style = CONTENUS[attestation.type](attestation)
     return generer_pdf(attestation, titre, paragraphes, *style, url_verification=url_verification)
 
@@ -465,7 +476,7 @@ def titre_document(attestation):
     """Titre tel qu'imprimé sur le document."""
     titre = CONTENUS[attestation.type](attestation)[0] if attestation.type in CONTENUS else attestation.get_type_display()
     titre = titre if isinstance(titre, str) else ' '.join(titre)
-    if attestation.type == Attestation.FIN_ETUDES and libelle_cycle(attestation.cycle):
+    if attestation.type in (Attestation.FIN_ETUDES, Attestation.SOUTENANCE) and libelle_cycle(attestation.cycle):
         titre += f" ({libelle_cycle(attestation.cycle)})"
     return titre
 
@@ -488,6 +499,20 @@ def infos_publiques(attestation):
             infos.append(('Département', _nom_programme(attestation.filiere)))
         if attestation.cycle:
             infos.append(('Cycle validé', libelle_cycle(attestation.cycle, 'texte')))
+    elif attestation.type == Attestation.SOUTENANCE:
+        from .attestation_soutenance import soutenance_de
+        from .notes import mention
+        s = soutenance_de(attestation)
+        if attestation.filiere:
+            infos.append(('Département', _nom_programme(attestation.filiere)))
+        if attestation.cycle:
+            infos.append(('Cycle', libelle_cycle(attestation.cycle, 'texte') or attestation.cycle))
+        if attestation.session:
+            infos.append(('Année universitaire', attestation.session.annee))
+        if s and s.projet and s.projet.theme:
+            infos.append(('Thème', s.projet.theme))
+        if s and s.note_finale is not None:
+            infos.append(('Mention', mention(s.note_finale) or '—'))
     else:
         if attestation.licence:
             semestres = _semestres(attestation.licence)
