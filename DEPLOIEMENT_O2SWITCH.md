@@ -1,7 +1,7 @@
 # Héberger gePed chez o2switch
 
 Guide pas à pas pour mettre gePed en ligne sur un hébergement **o2switch** (cPanel), puis le mettre à jour.
-Exemples avec le domaine `geped.istmamou.org` et l'identifiant cPanel `moncompte` : remplacez-les par les vôtres.
+Exemples avec le domaine `geped.gbelya-tech.com` et l'identifiant cPanel `moncompte` : remplacez-les par les vôtres.
 
 ## Ce que gePed utilise chez o2switch
 
@@ -21,7 +21,7 @@ Tous les réglages se font dans un fichier **`.env`** sur le serveur (modèle : 
 
 ## 1. Préparer le domaine et le HTTPS
 
-1. cPanel → **Domaines** : créez le sous-domaine `geped.istmamou.org`. Notez son **dossier racine**, par exemple `/home/moncompte/geped.istmamou.org`. C'est le dossier public, servi par Apache.
+1. cPanel → **Domaines** : créez le sous-domaine `geped.gbelya-tech.com`. Notez son **dossier racine**, par exemple `/home/moncompte/geped.gbelya-tech.com`. C'est le dossier public, servi par Apache.
 2. cPanel → **SSL/TLS Status** : lancez **AutoSSL** pour ce domaine, et attendez que le cadenas soit vert.
 
 ## 2. Créer la base MySQL
@@ -39,10 +39,10 @@ Tous les réglages se font dans un fichier **`.env`** sur le serveur (modèle : 
 
 ## 3. Créer la boîte e-mail d'envoi
 
-1. cPanel → **Comptes de messagerie** : créez `no-reply@istmamou.org`.
-2. Ouvrez **Connecter des appareils** pour cette boîte : notez le **serveur SMTP** (souvent `mail.istmamou.org`), le **port 465 (SSL)**, l'identifiant (l'adresse complète) et le mot de passe.
+1. cPanel → **Comptes de messagerie** : créez `no-reply@gbelya-tech.com`.
+2. Ouvrez **Connecter des appareils** pour cette boîte : notez le **serveur SMTP** (souvent `mail.gbelya-tech.com`), le **port 465 (SSL)**, l'identifiant (l'adresse complète) et le mot de passe.
 3. cPanel → **Délivrabilité des e-mails** : vérifiez que **SPF** et **DKIM** sont « valides ». Corrigez-les si besoin : c'est ce qui évite que les invitations arrivent dans les indésirables.
-4. Si le domaine `istmamou.org` est géré ailleurs (DNS chez un autre fournisseur), ajoutez-y les enregistrements SPF et DKIM proposés par cPanel.
+4. Si le domaine `gbelya-tech.com` est géré ailleurs (DNS chez un autre fournisseur), ajoutez-y les enregistrements SPF et DKIM proposés par cPanel.
 
 ## 4. Récupérer le code
 
@@ -62,7 +62,7 @@ cPanel → **Setup Python App** → **Create Application** :
 |---|---|
 | Python version | la plus récente proposée (**3.10 au minimum**) |
 | Application root | `geped` |
-| Application URL | `geped.istmamou.org` |
+| Application URL | `geped.gbelya-tech.com` |
 | Application startup file | `passenger_wsgi.py` |
 | Application Entry point | `application` |
 
@@ -92,7 +92,7 @@ Collez la clé affichée dans `GPED_SECRET_KEY`. Renseignez ensuite :
 - la base : `GPED_DB_*` ;
 - les e-mails : `GPED_EMAIL_*` ;
 - le domaine : `GPED_ALLOWED_HOSTS` et `GPED_URL_PUBLIQUE` ;
-- les dossiers publics : `GPED_STATIC_ROOT=/home/moncompte/geped.istmamou.org/static` et `GPED_MEDIA_ROOT=/home/moncompte/geped.istmamou.org/media`.
+- les dossiers publics : `GPED_STATIC_ROOT=/home/moncompte/geped.gbelya-tech.com/static` et `GPED_MEDIA_ROOT=/home/moncompte/geped.gbelya-tech.com/media`.
 
 Puis :
 
@@ -100,8 +100,8 @@ Puis :
 python manage.py migrate
 python manage.py collectstatic --noinput
 python manage.py check --deploy
-mkdir -p /home/moncompte/geped.istmamou.org/media
-cp deploiement/media.htaccess /home/moncompte/geped.istmamou.org/media/.htaccess
+mkdir -p /home/moncompte/geped.gbelya-tech.com/media
+cp deploiement/media.htaccess /home/moncompte/geped.gbelya-tech.com/media/.htaccess
 ```
 
 `check --deploy` ne doit afficher **aucune erreur**. Un avertissement sur HSTS est normal tant que `GPED_HSTS_SECONDES=0`.
@@ -113,21 +113,21 @@ Avec le **Gestionnaire de fichiers** de cPanel (ou FTP), envoyez :
 | Depuis le PC | Vers le serveur |
 |---|---|
 | `ressources/attestation/signature_scolarite.png` (signature et cachet) | `/home/moncompte/geped/ressources/attestation/` |
-| `media/etudiant/photo/…` (photos des étudiants) | `/home/moncompte/geped.istmamou.org/media/etudiant/photo/` |
+| `media/etudiant/photo/…` (photos des étudiants) | `/home/moncompte/geped.gbelya-tech.com/media/etudiant/photo/` |
 | `prive/…` (justificatifs, s'il y en a) | `/home/moncompte/geped/prive/` |
 
 Les images du cadre des attestations et l'en-tête des relevés sont déjà dans Git.
 
 ## 8. Démarrer et vérifier
 
-1. **Setup Python App** → **Restart**, puis ouvrez `https://geped.istmamou.org`.
+1. **Setup Python App** → **Restart**, puis ouvrez `https://geped.gbelya-tech.com`.
 2. Connectez-vous avec un compte super utilisateur existant (repris de la base importée), ou créez-en un : `python manage.py createsuperuser`.
 3. Testez l'envoi d'e-mails :
    ```bash
    python manage.py sendtestemail votre.adresse@exemple.com
    ```
 4. Menu **Personnel** : créez un compte de test. Vérifiez que l'invitation arrive, que le lien s'ouvre en `https://…` et que l'activation connecte bien l'utilisateur.
-5. Imprimez une attestation et un relevé : le **QR code** doit ouvrir la page de vérification sur `https://geped.istmamou.org/…`.
+5. Imprimez une attestation et un relevé : le **QR code** doit ouvrir la page de vérification sur `https://geped.gbelya-tech.com/…`.
 6. Une fois que tout fonctionne en HTTPS, passez `GPED_HSTS_SECONDES=31536000` dans `.env`, puis redémarrez.
 
 ## 9. Tâches automatiques (cPanel → Tâches Cron)
