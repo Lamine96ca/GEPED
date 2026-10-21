@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import views, views_notes, views_releves, views_soutenances
+from . import views, views_notes, views_personnel, views_releves, views_soutenances
 
 urlpatterns = [
     path('', views.tableau_de_bord, name='tableau_de_bord'),
@@ -53,6 +53,11 @@ urlpatterns = [
     path('scolarite/attestations/<int:pk>/supprimer/', views.attestation_supprimer, name='attestation_supprimer'),
     path('scolarite/attestations/<int:pk>/pdf/', views.attestation_pdf, name='attestation_pdf'),
     path('scolarite/attestations/<slug:type_url>/', views.attestations, name='attestations_type'),
+    path('scolarite/personnel/', views_personnel.personnel_liste, name='personnel_liste'),
+    path('scolarite/personnel/ajouter/', views_personnel.personnel_creer, name='personnel_creer'),
+    path('scolarite/personnel/<int:pk>/', views_personnel.personnel_modifier, name='personnel_modifier'),
+    path('scolarite/personnel/<int:pk>/compte/', views_personnel.personnel_action, name='personnel_action'),
+    path('compte/activer/<uidb64>/<token>/', views_personnel.ActivationCompte.as_view(), name='compte_activer'),
     path('scolarite/releves/', views_releves.releves, name='releves'),
     path('scolarite/releves/delivrer/', views_releves.releve_creer, name='releve_creer'),
     path('scolarite/releves/<int:pk>/pdf/', views_releves.releve_pdf, name='releve_pdf'),

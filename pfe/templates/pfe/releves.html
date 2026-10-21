@@ -6,11 +6,43 @@
 {% block contenu %}
 <div class="row g-3">
   <div class="col-xl-6 d-flex flex-column gap-3">
+    <!-- Nouveau relevé -->
+    <div class="card carte-gped">
+      <div class="card-body">
+        <div class="entete-carte">
+          <span class="icone-carte"><i class="bi bi-file-earmark-plus"></i></span>
+          <div><h3>Nouveau relevé</h3><p>N° attribué à l'enregistrement : <strong>{{ prochaine_ref }}</strong></p></div>
+        </div>
+        <form method="post" novalidate id="form-nouveau-releve">
+          {% csrf_token %}
+          {% if form.non_field_errors %}<div class="alert alert-danger py-2">{{ form.non_field_errors|join:" " }}</div>{% endif %}
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label" for="{{ form.matricule.id_for_label }}">{{ form.matricule.label }} <span class="text-danger">*</span></label>
+              <div class="champ-icone"><i class="bi bi-upc"></i>{{ form.matricule }}</div>
+              {% for err in form.matricule.errors %}<div class="invalid-feedback d-block">{{ err }}</div>{% endfor %}
+            </div>
+            {% include 'pfe/_champ.html' with champ=form.type col='col-md-6' %}
+            <div class="col-md-6 champ-releve" data-types="S A">{% include 'pfe/_champ.html' with champ=form.licence col='' %}</div>
+            <div class="col-md-6 champ-releve" data-types="S">{% include 'pfe/_champ.html' with champ=form.semestre col='' %}</div>
+            <div class="col-md-6 champ-releve" data-types="S A">{% include 'pfe/_champ.html' with champ=form.session col='' %}<div class="small text-secondary mt-1">{{ form.session.help_text }}</div></div>
+            <div class="col-md-6 champ-releve" data-types="E">{% include 'pfe/_champ.html' with champ=form.programme col='' %}<div class="small text-secondary mt-1">{{ form.programme.help_text }}</div></div>
+            <div class="col-12">
+              <div class="note-verrou mt-0"><i class="bi bi-info-circle"></i>
+                <span id="aide-type"></span>
+              </div>
+            </div>
+            <div class="col-12"><button class="btn btn-primary"><i class="bi bi-check-lg"></i> Enregistrer</button></div>
+          </div>
+        </form>
+      </div>
+    </div>
+
     <div class="card carte-gped">
       <div class="card-body">
         <div class="entete-carte">
           <span class="icone-carte"><i class="bi bi-search"></i></span>
-          <div><h3>Étudiant</h3><p>Matricule, nom, prénom ou INE</p></div>
+          <div><h3>Retrouver un étudiant</h3><p>Matricule, nom, prénom ou INE : son parcours et ses relevés</p></div>
         </div>
         <form method="get">
           <div class="champ-icone"><i class="bi bi-search"></i>
@@ -59,10 +91,10 @@
                     <td style="white-space:normal;min-width:170px"><b style="color:var(--encre);font-weight:600">{{ i.session.annee }} · {{ i.licence.nom }}</b><div class="small text-secondary">{{ i.filiere }}</div></td>
                     <td>
                       <div class="d-flex flex-wrap gap-1">
-                        {% for s, r in i.releves_semestre %}
+                        {% for s, r, n in i.releves_semestre %}
                           <form method="post" action="{% url 'releve_creer' %}" target="_blank" class="d-inline form-releve">
                             {% csrf_token %}<input type="hidden" name="type" value="S"><input type="hidden" name="inscription" value="{{ i.pk }}"><input type="hidden" name="semestre" value="{{ s.pk }}"><input type="hidden" name="signature" value="">
-                            <button class="btn btn-sm {% if r %}btn-light{% else %}btn-or{% endif %}" title="{% if r %}Déjà délivré : n° {{ r.num_ref }} (réimpression){% else %}Délivrer le relevé de {{ s.nom }}{% endif %}"><i class="bi {% if r %}bi-printer{% else %}bi-file-earmark-plus{% endif %}"></i> {{ s.abrege|default:s.nom }}</button>
+                            <button class="btn btn-sm {% if r %}btn-light{% else %}btn-or{% endif %}" {% if not n and not r %}disabled{% endif %} title="{% if r %}Déjà délivré : n° {{ r.num_ref }} (réimpression){% elif not n %}Aucune note en {{ s.nom }}{% else %}Délivrer le relevé de {{ s.nom }}{% endif %}"><i class="bi {% if r %}bi-printer{% else %}bi-file-earmark-plus{% endif %}"></i> {{ s.abrege|default:s.nom }}</button>
                           </form>
                         {% empty %}
                           <span class="small text-secondary">Aucune matière enregistrée</span>
@@ -70,7 +102,7 @@
                         {% if i.releves_semestre %}
                           <form method="post" action="{% url 'releve_creer' %}" target="_blank" class="d-inline form-releve">
                             {% csrf_token %}<input type="hidden" name="type" value="A"><input type="hidden" name="inscription" value="{{ i.pk }}"><input type="hidden" name="signature" value="">
-                            <button class="btn btn-sm {% if i.releve_annuel %}btn-light{% else %}btn-primary{% endif %}" title="{% if i.releve_annuel %}Déjà délivré : n° {{ i.releve_annuel.num_ref }} (réimpression){% else %}Délivrer le relevé annuel de {{ i.licence.nom }}{% endif %}"><i class="bi bi-calendar3"></i> Année</button>
+                            <button class="btn btn-sm {% if i.releve_annuel %}btn-light{% else %}btn-primary{% endif %}" {% if not i.a_des_notes and not i.releve_annuel %}disabled{% endif %} title="{% if i.releve_annuel %}Déjà délivré : n° {{ i.releve_annuel.num_ref }} (réimpression){% else %}Délivrer le relevé annuel de {{ i.licence.nom }}{% endif %}"><i class="bi bi-calendar3"></i> Année</button>
                           </form>
                         {% endif %}
                       </div>
@@ -86,8 +118,8 @@
               {% for p in programmes %}
                 <form method="post" action="{% url 'releve_creer' %}" target="_blank" class="form-releve d-flex align-items-center gap-2">
                   {% csrf_token %}<input type="hidden" name="type" value="E"><input type="hidden" name="etudiant" value="{{ etudiant.pk }}"><input type="hidden" name="programme" value="{{ p.pk }}"><input type="hidden" name="signature" value="">
-                  <button class="btn btn-sm {% if p.extrait %}btn-light{% else %}btn-primary{% endif %}"><i class="bi bi-journal-text"></i> Extrait · {{ p.nom }}</button>
-                  {% if p.extrait %}<span class="small text-secondary">n° {{ p.extrait.num_ref }}</span>{% endif %}
+                  <button class="btn btn-sm {% if p.extrait %}btn-light{% else %}btn-primary{% endif %}" {% if not p.a_des_notes and not p.extrait %}disabled title="Aucune note dans ce programme"{% endif %}><i class="bi bi-journal-text"></i> Extrait · {{ p.nom }}</button>
+                  {% if p.extrait %}<span class="small text-secondary">n° {{ p.extrait.num_ref }}</span>{% elif not p.a_des_notes %}<span class="small text-secondary">aucune note</span>{% endif %}
                 </form>
               {% endfor %}
             </div>
@@ -101,6 +133,14 @@
   </div>
 
   <div class="col-xl-6">
+    {% if imprimer %}
+      <div class="alert alert-success d-flex flex-wrap align-items-center gap-2">
+        <i class="bi bi-check-circle-fill"></i>
+        <span class="me-auto">Relevé n° <strong>{{ imprimer.num_ref }}</strong> : {{ imprimer.etudiant.prenom }} {{ imprimer.etudiant.nom }}, {{ imprimer.get_type_display|lower }} {% if imprimer.type == 'E' %}({{ imprimer.filiere }}){% elif imprimer.semestre %}({{ imprimer.semestre.nom }}, {{ imprimer.session }}){% else %}({{ imprimer.licence }}, {{ imprimer.session }}){% endif %}.</span>
+        <a class="btn btn-sm btn-primary" target="_blank" href="{% url 'releve_pdf' imprimer.pk %}"><i class="bi bi-printer"></i> Imprimer</a>
+        {% if user.is_superuser %}<a class="btn btn-sm btn-or-plein" target="_blank" href="{% url 'releve_pdf' imprimer.pk %}?signature=1"><i class="bi bi-pen"></i> Avec cachet et signature</a>{% endif %}
+      </div>
+    {% endif %}
     <div class="card carte-gped liste">
       <div class="card-header d-flex flex-wrap align-items-center gap-3">
         <div class="entete-carte mb-0 me-auto">
@@ -152,6 +192,39 @@
 </div>
 {% endblock %}
 {% block scripts %}
+{{ semestres_par_licence|json_script:"semestres-par-licence" }}
+<script>
+  // Nouveau relevé : champs selon le type, semestres de la licence choisie
+  (function () {
+    var form = document.getElementById('form-nouveau-releve');
+    var type = form.querySelector('[name=type]'), licence = form.querySelector('[name=licence]');
+    var semestre = form.querySelector('[name=semestre]');
+    var carte = JSON.parse(document.getElementById('semestres-par-licence').textContent);
+    var aides = {
+      S: "Les matières <strong>du semestre choisi</strong>, dans le programme et la session de l'inscription de l'étudiant à cette licence.",
+      A: "Toutes les matières de la <strong>licence</strong> (S1 et S2…) : moyenne annuelle.",
+      E: "Tout le parcours dans <strong>un programme</strong> (le Tronc commun a son propre extrait) : moyenne du cycle, soutenance et moyenne générale."
+    };
+    function maj() {
+      form.querySelectorAll('.champ-releve').forEach(function (b) {
+        b.classList.toggle('d-none', b.dataset.types.split(' ').indexOf(type.value) < 0);
+      });
+      document.getElementById('aide-type').innerHTML = aides[type.value] + " Un relevé déjà délivré est repris avec son numéro.";
+    }
+    function filtrer() {
+      Array.prototype.forEach.call(semestre.options, function (o) {
+        o.hidden = !!(o.value && licence.value && carte[o.value] !== licence.value);
+      });
+      if (semestre.selectedOptions[0] && semestre.selectedOptions[0].hidden) semestre.value = '';
+    }
+    type.addEventListener('change', maj);
+    licence.addEventListener('change', filtrer);
+    semestre.addEventListener('change', function () {
+      if (semestre.value && !licence.value) { licence.value = carte[semestre.value]; filtrer(); }
+    });
+    maj(); filtrer();
+  })();
+</script>
 <script>
   // Super utilisateur : « Avec cachet et signature » s'applique aux relevés délivrés depuis cette page.
   // Après un envoi, la page est rechargée pour afficher le nouveau numéro dans « Relevés délivrés ».

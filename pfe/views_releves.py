@@ -14,9 +14,10 @@ from django.urls import reverse
 from django.utils.text import slugify
 from django.views.decorators.http import require_POST
 
+from .forms import ReleveForm
 from .models import Etudiant, Inscription, ReleveNote, Semestre, Service
 from .pdf_releves import pdf_releve
-from .releves import contenu, parcours, recherche, releve_existant
+from .releves import a_des_notes, contenu, parcours, perimetres_notes, recherche, releve_existant
 from .roles import scolarite_requise
 
 
@@ -27,6 +28,25 @@ def _entier(v):
 @login_required
 @scolarite_requise
 def releves(request):
+    # Formulaire « Nouveau relevé » : enregistre (ou reprend) le relevé, puis propose de l'imprimer
+    if request.method == 'POST':
+        form = ReleveForm(request.POST)
+        if form.is_valid():
+            releve, cree = form.save()
+            e = releve.etudiant
+            if cree:
+                messages.success(request, f"Relevé n° {releve.num_ref} enregistré pour {e.prenom} {e.nom}.")
+            else:
+                messages.info(request, f"Ce relevé a déjà été délivré à {e.prenom} {e.nom} : n° {releve.num_ref} "
+                                       f"(même numéro, notes à jour à l'impression).")
+            return redirect(f"{reverse('releves')}?etudiant={e.pk}&imprimer={releve.pk}")
+    else:
+        initial = {}
+        if _entier(request.GET.get('etudiant')):
+            e = Etudiant.objects.filter(pk=request.GET['etudiant']).first()
+            initial['matricule'] = e.matricule if e else ''
+        form = ReleveForm(initial=initial)
+
     q = (request.GET.get('q') or '').strip()
     etudiant, candidats, inscriptions, programmes = None, [], [], []
     if _entier(request.GET.get('etudiant')):
@@ -39,12 +59,16 @@ def releves(request):
         inscriptions, programmes = parcours(etudiant)
         deja = {(r.type, r.filiere_id, r.session_id, r.licence_id, r.semestre_id): r
                 for r in ReleveNote.objects.filter(etudiant=etudiant)}
+        notes = perimetres_notes(etudiant)                     # boutons grisés là où il n'y a aucune note
         for i in inscriptions:
             i.releve_annuel = deja.get((ReleveNote.ANNUEL, i.filiere_id, i.session_id, i.licence_id, None))
-            i.releves_semestre = [(s, deja.get((ReleveNote.SEMESTRE, i.filiere_id, i.session_id, i.licence_id, s.pk)))
+            i.releves_semestre = [(s, deja.get((ReleveNote.SEMESTRE, i.filiere_id, i.session_id, i.licence_id, s.pk)),
+                                   (i.filiere_id, i.session_id, i.licence_id, s.pk) in notes)
                                   for s in i.semestres_releve]
+            i.a_des_notes = any(n for _, _, n in i.releves_semestre)
         for p in programmes:
             p.extrait = deja.get((ReleveNote.EXTRAIT, p.pk, None, None, None))
+            p.a_des_notes = any(n[0] == p.pk for n in notes)
 
     r = (request.GET.get('r') or '').strip()
     delivres = ReleveNote.objects.select_related('etudiant', 'filiere', 'session', 'licence', 'semestre')
@@ -52,10 +76,15 @@ def releves(request):
         delivres = delivres.filter(Q(num_ref__icontains=r) | Q(etudiant__matricule__icontains=r)
                                    | Q(etudiant__nom__icontains=r) | Q(etudiant__prenom__icontains=r))
     page = Paginator(delivres, 25).get_page(request.GET.get('page'))
+    imprimer = None
+    if _entier(request.GET.get('imprimer')):
+        imprimer = ReleveNote.objects.select_related('etudiant', 'filiere', 'session', 'semestre', 'licence').filter(
+            pk=request.GET['imprimer']).first()
     return render(request, 'pfe/releves.html', {
-        'q': q, 'r': r, 'etudiant': etudiant, 'candidats': candidats, 'inscriptions': inscriptions,
+        'form': form, 'q': q, 'r': r, 'etudiant': etudiant, 'candidats': candidats, 'inscriptions': inscriptions,
         'programmes': programmes, 'page': page, 'prochaine_ref': ReleveNote.prochaine_reference(),
-        'actif': 'releves',
+        'imprimer': imprimer, 'actif': 'releves',
+        'semestres_par_licence': {str(s.pk): str(s.licence_id) for s in Semestre.objects.all()},
     })
 
 
@@ -82,6 +111,10 @@ def releve_creer(request):
         raise Http404()
     releve = releve_existant(type_, **cible)
     if releve is None:
+        if not a_des_notes(**cible):
+            e = cible['etudiant']
+            messages.error(request, f"{e.prenom} {e.nom} n'a aucune note pour ce relevé : il n'est pas enregistré.")
+            return redirect(f"{reverse('releves')}?etudiant={e.pk}")
         releve = ReleveNote.objects.create(type=type_, **cible)
         messages.success(request, f"Relevé n° {releve.num_ref} délivré à {releve.etudiant.prenom} {releve.etudiant.nom}.")
     url = reverse('releve_pdf', args=[releve.pk])

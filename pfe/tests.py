@@ -640,6 +640,18 @@ class GpedTests(TestCase):
         self.assertFalse(insc.etudiant.photo)
         self.assertFalse(os.path.exists(chemin))
 
+        # Étudiant existant : la page de modification enregistre (ou retire) la photo IMMÉDIATEMENT…
+        modifier = reverse('inscription_modifier', args=[insc.pk])
+        self.assertContains(self.client.get(modifier), f'data-photo-url="{reverse("etudiant_photo", args=[insc.etudiant_id])}"')
+        self.client.post(reverse('etudiant_photo', args=[insc.etudiant_id]), {'photo': self._image()})
+        insc.etudiant.refresh_from_db()
+        self.assertTrue(insc.etudiant.photo)
+        # … et enregistrer ensuite le formulaire (ouvert avant) ne remet jamais une ancienne photo
+        self.client.post(reverse('etudiant_photo', args=[insc.etudiant_id]), {'retirer': '1'})
+        self.client.post(modifier, base)
+        insc.etudiant.refresh_from_db()
+        self.assertFalse(insc.etudiant.photo)
+
     def test_photo_directe_et_droits(self):
         import os as _os
         self._media_temporaire()
@@ -1240,6 +1252,89 @@ class GpedTests(TestCase):
         self.client.post(reverse('notes_deliberer'), {**params, 'action': 'annuler'})
         self.assertFalse(Deliberation.objects.exists())
 
+    # ---------------------------------------------------------------- personnel et comptes
+
+    def test_gestion_du_personnel_et_invitation(self):
+        from django.core import mail
+        liste, creer = reverse('personnel_liste'), reverse('personnel_creer')
+        fiche = {'prenom': ' mariam ', 'nom': 'Camara', 'fonc': 'Cheffe de programme', 'email': 'Mariam@ist.gn',
+                 'telephone': '+224 620  11 22 33', 'service': [self.info.pk], 'envoyer_invitation': 'on'}
+        # Réservé aux super utilisateurs : ni les autres services, ni la scolarité (menu masqué)
+        self.connecter('dep')
+        self.assertEqual(self.client.get(liste).status_code, 403)
+        self.connecter('scol')
+        r = self.client.get(liste)
+        self.assertContains(r, 'réservée aux super utilisateurs', status_code=403)           # page « Accès refusé »
+        self.assertContains(r, 'Se connecter avec un autre compte', status_code=403)
+        self.assertNotContains(self.client.get(reverse('tableau_de_bord')), 'href="/scolarite/personnel/"')
+        User.objects.create_superuser('chef', password='x')
+        self.client.login(username='chef', password='x')
+        self.assertContains(self.client.get(reverse('tableau_de_bord')), 'href="/scolarite/personnel/"')
+        self.assertContains(self.client.get(liste), 'Personnel')
+        self.assertContains(self.client.post(creer, {**fiche, 'service': []}), 'Cochez au moins un service')
+        self.assertContains(self.client.post(creer, {**fiche, 'email': 'scol@t.local'}), 'déjà utilisée')
+        r = self.client.post(creer, fiche)
+        self.assertRedirects(r, liste)
+        p = Personnel.objects.get(email='mariam@ist.gn')
+        u = p.utilisateur
+        self.assertEqual((p.prenom, p.nom, p.telephone, u.username, u.is_active, u.has_usable_password()),
+                         ('Mariam', 'CAMARA', '+224 620 11 22 33', 'mariam.camara', True, False))
+        # E-mail d'invitation : identifiant, rôle, lien d'activation
+        self.assertEqual(len(mail.outbox), 1)
+        m = mail.outbox[0]
+        self.assertEqual((m.to, m.subject), (['mariam@ist.gn'], 'Votre compte gePed a été créé'))
+        self.assertIn('mariam.camara', m.body)
+        self.assertIn('Programme', m.body)
+        lien = re.search(r'https?://\S+/compte/activer/\S+/', m.body).group(0)
+        # Activation : choix du mot de passe, connexion directe, droits du service
+        self.client.logout()
+        r = self.client.get(lien, follow=True)
+        self.assertContains(r, 'Activer mon compte')
+        r = self.client.post(r.redirect_chain[-1][0], {'new_password1': 'Mamou@2026!', 'new_password2': 'Mamou@2026!'},
+                             follow=True)
+        self.assertRedirects(r, reverse('tableau_de_bord'))
+        self.assertContains(r, 'votre compte est activé')
+        u.refresh_from_db()
+        self.assertTrue(u.has_usable_password())
+        self.assertEqual(self.client.get(reverse('matieres_liste')).status_code, 200)           # chef de programme
+        self.assertEqual(self.client.get(liste).status_code, 403)
+        self.assertContains(self.client.get(lien, follow=True), 'invalide')                     # lien utilisé
+        # Connexion avec l'adresse e-mail
+        self.client.logout()
+        self.assertTrue(self.client.login(username='MARIAM@ist.gn', password='Mamou@2026!'))
+
+        # Gestion du compte par le super utilisateur : lien de mot de passe, désactivation, réactivation
+        self.client.login(username='chef', password='x')
+        action = reverse('personnel_action', args=[p.pk])
+        self.client.post(action, {'action': 'reinitialiser'})
+        self.assertIn('/reinitialiser/', mail.outbox[-1].body)
+        self.client.post(action, {'action': 'desactiver'})
+        u.refresh_from_db()
+        self.assertFalse(u.is_active)
+        self.assertFalse(self.client.login(username='mariam.camara', password='Mamou@2026!'))
+        self.client.login(username='chef', password='x')
+        self.client.post(action, {'action': 'reactiver'})
+        u.refresh_from_db()
+        self.assertTrue(u.is_active)
+        # La scolarité ne peut pas non plus agir sur un compte
+        self.connecter('scol')
+        self.assertEqual(self.client.post(action, {'action': 'desactiver'}).status_code, 403)
+        # Le super utilisateur peut rattacher quelqu'un au Service Scolarité ; sans invitation : aucun e-mail
+        self.client.login(username='chef', password='x')
+        p_scol = Personnel.objects.get(utilisateur__username='scol')
+        self.assertEqual(self.client.get(reverse('personnel_modifier', args=[p_scol.pk])).status_code, 200)
+        r = self.client.post(creer, {**fiche, 'prenom': 'Awa', 'email': 'awa@ist.gn', 'telephone': '+224 621',
+                                     'service': [self.scol.pk], 'envoyer_invitation': ''})
+        awa = Personnel.objects.get(email='awa@ist.gn')
+        self.assertEqual((awa.utilisateur.username, len(mail.outbox)), ('awa.camara', 2))   # sans e-mail
+        # Personne ne désactive son propre compte (même un super utilisateur)
+        chef = User.objects.get(username='chef')
+        p_chef = Personnel.objects.create(utilisateur=chef, prenom='Chef', nom='T', telephone='77', email='chef@t.local',
+                                          fonc='Admin')
+        self.client.post(reverse('personnel_action', args=[p_chef.pk]), {'action': 'desactiver'})
+        chef.refresh_from_db()
+        self.assertTrue(chef.is_active)
+
     # ---------------------------------------------------------------- relevés de notes
 
     def test_releves_de_notes(self):
@@ -1296,11 +1391,18 @@ class GpedTests(TestCase):
         c_tc = contenu(ReleveNote(type='E', etudiant=e0, filiere=tc))
         self.assertEqual([l['matiere'] for b in c_tc['blocs'] for l in b['lignes']], ['Physique'])
         self.assertTrue(c_tc['definitif'])                                         # 2024-2025 : session antérieure
+        # Avec une soutenance DANS CE PROGRAMME : 6,39 × 0,87 + 9 × 0,13 = 6,7293 → 6,72 ; pas dans l'extrait du TC
+        from .models import Soutenance
+        Soutenance.objects.create(etudiant=e0, cycle='Licence', filiere=self.info, session=self.session,
+                                  promotion=self.p18, note=9)
+        c = contenu(extrait)
+        self.assertEqual((c['moyenne_cycle'], c['soutenance'], c['moyenne'], c['mention']), (6.39, 9, 6.72, 'Assez bien'))
+        self.assertIsNone(contenu(ReleveNote(type='E', etudiant=e0, filiere=tc))['soutenance'])
 
         # QR code : page publique de vérification
         r = self.client.get(reverse('verifier_document', args=[extrait.code_verification]))
         self.assertContains(r, 'Extrait du livret universitaire')
-        self.assertContains(r, '6,39/10')
+        self.assertContains(r, '6,72/10')                                         # moyenne générale, soutenance comprise
         # Cachet et signature : super utilisateur seulement
         normal = self.client.get(reverse('releve_pdf', args=[rel.pk]), {'signature': 1}).content
         User.objects.create_superuser('chef', password='x')
@@ -1311,6 +1413,30 @@ class GpedTests(TestCase):
         # Suppression : le numéro n'est pas réutilisé
         self.client.post(reverse('releve_supprimer', args=[extrait.pk]))
         self.assertEqual(ReleveNote.prochaine_reference(), f'0004/ISTM/SC/{annee}')
+
+        # Formulaire « Nouveau relevé » : enregistrement, reprise d'un relevé existant, erreurs
+        page = reverse('releves')
+        self.assertContains(self.client.post(page, {'matricule': 'M0', 'type': 'S', 'licence': self.licence.pk}),
+                            'Choisissez le semestre')
+        self.assertContains(self.client.post(page, {'matricule': 'M0', 'type': 'A', 'licence': self.l2.pk}),
+                            "aucune inscription en Licence 2")
+        self.assertContains(self.client.post(page, {'matricule': 'M0', 'type': 'E', 'programme': self.gc.pk}),
+                            "aucune inscription en Génie civil")
+        r = self.client.post(page, {'matricule': 'M0', 'type': 'E', 'programme': self.info.pk})
+        nouveau = ReleveNote.objects.get(type='E', filiere=self.info)
+        self.assertRedirects(r, f"{page}?etudiant={e0.pk}&imprimer={nouveau.pk}")
+        self.assertEqual(nouveau.num_ref, f'0004/ISTM/SC/{annee}')
+        r = self.client.post(page, {'matricule': 'm0', 'type': 'S', 'semestre': s1.pk}, follow=True)   # existant
+        self.assertContains(r, 'déjà été délivré')
+        self.assertContains(r, f'0001/ISTM/SC/{annee}')
+        self.assertEqual(ReleveNote.objects.count(), 3)
+        # Aucune note : pas de relevé (formulaire et bouton rapide)
+        insc_m1 = Inscription.objects.get(etudiant__matricule='M1')
+        self.assertContains(self.client.post(page, {'matricule': 'M1', 'type': 'A', 'licence': self.licence.pk}),
+                            "aucune note")
+        r = creer(type='A', inscription=insc_m1.pk)
+        self.assertRedirects(r, f"{page}?etudiant={insc_m1.etudiant_id}", fetch_redirect_response=False)
+        self.assertEqual(ReleveNote.objects.count(), 3)
 
     # ---------------------------------------------------------------- statistiques
 

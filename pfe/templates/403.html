@@ -1,0 +1,22 @@
+{% extends 'pfe/page_publique.html' %}
+{% block titre %}Accès refusé{% endblock %}
+{% block panneau %}
+  <h2 class="h4 fw-bold mb-2">Accès réservé</h2>
+  <p class="mb-0">Chaque compte n'accède qu'aux pages de ses droits : scolarité, chef de programme, autre service ou super utilisateur.</p>
+{% endblock %}
+{% block carte %}
+  <div class="surtitre">Erreur 403</div>
+  <h1>Accès refusé</h1>
+  <p class="intro">{% if exception %}{{ exception }}{% else %}Votre compte n'a pas les droits pour ouvrir cette page.{% endif %}</p>
+  {% if user.is_authenticated %}
+    <p class="small text-secondary">Vous êtes connecté avec le compte <strong>{{ user.get_username }}</strong>{% if profil %} ({{ profil.libelle }}{% if user.is_superuser %}, super utilisateur{% endif %}){% endif %}.</p>
+    <div class="d-grid gap-2">
+      <a href="{% url 'tableau_de_bord' %}" class="btn btn-primary"><i class="bi bi-grid-1x2"></i> Retour au tableau de bord</a>
+      <form method="post" action="{% url 'logout' %}" class="d-grid">{% csrf_token %}
+        <button class="btn btn-light"><i class="bi bi-box-arrow-right"></i> Se connecter avec un autre compte</button>
+      </form>
+    </div>
+  {% else %}
+    <a href="{% url 'login' %}" class="btn btn-primary w-100">Se connecter</a>
+  {% endif %}
+{% endblock %}

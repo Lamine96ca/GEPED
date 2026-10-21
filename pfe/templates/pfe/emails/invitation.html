@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="fr">
+<body style="margin:0;padding:24px;background:#f4f7fa;font-family:'Century Gothic',Arial,sans-serif;color:#3c4b5a;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:540px;margin:0 auto;background:#ffffff;border-radius:10px;overflow:hidden;">
+    <tr>
+      <td style="background:#41627c;padding:16px 24px;color:#ffffff;font-size:20px;font-weight:bold;">
+        <img src="{{ logo }}" width="44" height="44" alt="IST de Mamou"
+             style="vertical-align:middle;background:#ffffff;border-radius:50%;padding:3px;margin-right:10px;">gePed
+        <span style="font-size:13px;font-weight:normal;color:#dbe4ec;"> · IST de Mamou</span>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:24px;font-size:15px;line-height:1.55;">
+        <p style="margin:0 0 12px;">Bonjour {{ user.get_full_name|default:user.username }},</p>
+        {% if invitation %}
+          <p style="margin:0 0 12px;">Un compte <strong>gePed</strong> (gestion pédagogique de l'Institut Supérieur de Technologie de Mamou) vient d'être créé pour vous.</p>
+        {% else %}
+          <p style="margin:0 0 12px;">Le Service de la Scolarité vous envoie un lien pour choisir un nouveau mot de passe gePed.</p>
+        {% endif %}
+        <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;margin:16px 0;background:#f4f7fa;border-radius:8px;">
+          <tr><td style="padding:10px 14px;color:#6c7a87;font-size:13px;width:38%;">Identifiant</td><td style="padding:10px 14px;font-weight:bold;">{{ user.get_username }}</td></tr>
+          <tr><td style="padding:0 14px 10px;color:#6c7a87;font-size:13px;">Rôle</td><td style="padding:0 14px 10px;">{{ role }}</td></tr>
+          {% if services %}<tr><td style="padding:0 14px 10px;color:#6c7a87;font-size:13px;">Service(s)</td><td style="padding:0 14px 10px;">{{ services }}</td></tr>{% endif %}
+        </table>
+        <p style="margin:0 0 12px;">{% if invitation %}Pour activer votre compte, choisissez votre mot de passe :{% else %}Cliquez sur le bouton ci-dessous :{% endif %}</p>
+        <p style="margin:24px 0;text-align:center;">
+          <a href="{{ lien }}" style="background:#41627c;color:#ffffff;text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:bold;display:inline-block;">{% if invitation %}Activer mon compte{% else %}Choisir un nouveau mot de passe{% endif %}</a>
+        </p>
+        <p style="margin:0 0 12px;">Vous pourrez ensuite vous connecter sur <a href="{{ site }}" style="color:#41627c;">{{ site }}</a> avec votre identifiant ou votre adresse e-mail.</p>
+        <p style="margin:0 0 12px;color:#6c7a87;font-size:13px;">Ce lien est personnel, valable {{ validite }} et utilisable une seule fois. Ne le transférez à personne. Si vous n'attendiez pas ce message, ignorez-le ou prévenez le Service de la Scolarité.</p>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:14px 24px;background:#f4f7fa;color:#9aa6b1;font-size:12px;">gePed · Institut Supérieur de Technologie de Mamou</td>
+    </tr>
+  </table>
+</body>
+</html>

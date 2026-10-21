@@ -165,7 +165,8 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 MEDIA_URL = 'media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
-# Authentification
+# Authentification : identifiant, ou adresse e-mail (pfe/auth.py)
+AUTHENTICATION_BACKENDS = ['django.contrib.auth.backends.ModelBackend', 'pfe.auth.EmailBackend']
 LOGIN_URL = 'login'
 LOGIN_REDIRECT_URL = 'tableau_de_bord'
 LOGOUT_REDIRECT_URL = 'login'

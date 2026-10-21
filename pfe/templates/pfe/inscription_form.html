@@ -25,7 +25,7 @@
               <div class="bloc-photo {% if form_etu.photo.errors %}erreur{% endif %}">
                 <button type="button" class="apercu-photo avatar-cliquable {% if form_etu.photo_actuelle %}a-photo{% endif %}" data-apercu="formulaire"
                         {% if form_etu.photo_actuelle %}style="background-image:url('{{ form_etu.photo_actuelle.url }}')"{% endif %}
-                        data-photo-ouvrir data-photo-input="{{ form_etu.photo.id_for_label }}" data-photo-retirer="{{ form_etu.retirer_photo.id_for_label }}"
+                        data-photo-ouvrir {% if form_etu.instance.pk %}data-photo-url="{% url 'etudiant_photo' form_etu.instance.pk %}"{% endif %} data-photo-input="{{ form_etu.photo.id_for_label }}" data-photo-retirer="{{ form_etu.retirer_photo.id_for_label }}"
                         data-photo-cible='[data-apercu="formulaire"]' data-photo-actuelle="{% if form_etu.photo_actuelle %}1{% else %}0{% endif %}"
                         data-photo-titre="Photo de l'étudiant" aria-label="Prendre ou charger la photo">
                   <i class="bi bi-person-bounding-box"></i>
@@ -33,10 +33,10 @@
                 </button>
                 <div style="min-width:0">
                   <div class="fw-semibold" style="color:var(--encre)">Photo de l'étudiant</div>
-                  <div class="small text-secondary">Prise de vue ou chargement · recadrée au format identité et compressée (350 Ko maximum)</div>
+                  <div class="small text-secondary">Prise de vue ou chargement · recadrée au format identité et compressée (350 Ko maximum){% if form_etu.instance.pk %} · <strong>enregistrée (ou retirée) immédiatement</strong>{% endif %}</div>
                   <div class="d-flex flex-wrap align-items-center gap-2 mt-2">
                     <button type="button" class="btn btn-sm btn-or"
-                            data-photo-ouvrir data-photo-input="{{ form_etu.photo.id_for_label }}" data-photo-retirer="{{ form_etu.retirer_photo.id_for_label }}"
+                            data-photo-ouvrir {% if form_etu.instance.pk %}data-photo-url="{% url 'etudiant_photo' form_etu.instance.pk %}"{% endif %} data-photo-input="{{ form_etu.photo.id_for_label }}" data-photo-retirer="{{ form_etu.retirer_photo.id_for_label }}"
                             data-photo-cible='[data-apercu="formulaire"]' data-photo-actuelle="{% if form_etu.photo_actuelle %}1{% else %}0{% endif %}"
                             data-photo-titre="Photo de l'étudiant">
                       <i class="bi bi-camera"></i> {% if form_etu.photo_actuelle %}Changer la photo{% else %}Prendre ou charger une photo{% endif %}

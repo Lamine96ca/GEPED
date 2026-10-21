@@ -622,6 +622,11 @@ code { color: var(--encre); background: var(--survol); padding: .05rem .3rem; bo
 .zone-depot:hover, .zone-depot.survol { border-color: var(--or); background: var(--or-doux); }
 .zone-depot.rempli { border-style: solid; border-color: var(--succes); background: var(--succes-doux); }
 .zone-depot.rempli .bi { color: var(--succes); }
+/* Services d'un membre du personnel (cases à cocher) */
+.option-service { display: flex; gap: .6rem; align-items: center; padding: .55rem .8rem; border-radius: 10px; background: var(--fond); border: 1px solid transparent; cursor: pointer; width: 100%; font-size: .9rem; color: var(--encre); }
+.option-service:has(input:checked) { background: var(--accent-doux); border-color: var(--accent-bord); }
+.option-service:has(input:disabled) { opacity: .55; cursor: not-allowed; }
+.option-service .form-check-input { margin: 0; flex-shrink: 0; }
 .option-import { display: flex; gap: .8rem; align-items: flex-start; padding: .9rem 1rem; border-radius: 12px; background: var(--fond); border: 1px solid transparent; cursor: pointer; }
 .option-import:has(input:checked) { background: var(--or-doux); border-color: #f5d77a; }
 .option-import .form-check-input { margin-top: .2rem; flex-shrink: 0; }

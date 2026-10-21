@@ -1,0 +1,86 @@
+{% extends 'pfe/base.html' %}
+{% load humanize %}
+{% block titre %}Personnel{% endblock %}
+{% block titre_page %}Personnel{% endblock %}
+{% block sous_titre %}<div class="sous-titre">{{ nb_total }} membre{{ nb_total|pluralize }} · les droits découlent des services : Scolarité, chef de programme ou autre service</div>{% endblock %}
+{% block actions %}
+  <a href="{% url 'personnel_creer' %}" class="btn btn-primary"><i class="bi bi-person-plus"></i> <span class="d-none d-sm-inline">Nouveau membre</span></a>
+{% endblock %}
+{% block contenu %}
+<div class="card carte-gped liste">
+  <form method="get" class="barre-filtres border-bottom" id="filtres-personnel">
+    <div class="row g-2 align-items-end">
+      <div class="col-12 col-lg-5">
+        <label class="form-label small text-secondary mb-1" for="f-q">Recherche</label>
+        <div class="champ-icone"><i class="bi bi-search"></i>
+          <input type="search" id="f-q" name="q" value="{{ q }}" class="form-control" placeholder="Nom, e-mail, téléphone, fonction, identifiant">
+        </div>
+      </div>
+      <div class="col-6 col-lg-4">
+        <label class="form-label small text-secondary mb-1" for="f-service">Service</label>
+        <select id="f-service" name="service" class="form-select">
+          <option value="">Tous</option>
+          {% for s in services %}<option value="{{ s.pk }}" {% if filtres.service == s.pk %}selected{% endif %}>{{ s.nom }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-lg-3">
+        <label class="form-label small text-secondary mb-1" for="f-statut">Compte</label>
+        <select id="f-statut" name="statut" class="form-select">
+          <option value="">Tous</option>
+          {% for code, lib in statuts %}<option value="{{ code }}" {% if filtres.statut == code %}selected{% endif %}>{{ lib }}</option>{% endfor %}
+        </select>
+      </div>
+    </div>
+  </form>
+  <div class="table-responsive">
+    <table class="table table-etudiants mb-0">
+      <thead><tr><th>Nom</th><th>Fonction</th><th>Services</th><th>Rôle</th><th>Compte</th><th>Dernière connexion</th><th class="text-end"></th></tr></thead>
+      <tbody>
+      {% for p in page %}
+        <tr style="cursor:default">
+          <td style="min-width:190px">{% if p.gerable %}<a href="{% url 'personnel_modifier' p.pk %}" style="color:var(--encre);font-weight:600">{{ p.nom }} {{ p.prenom }}</a>{% else %}<b style="color:var(--encre);font-weight:600">{{ p.nom }} {{ p.prenom }}</b>{% endif %}
+            <div class="small text-secondary">{{ p.utilisateur.username }} · {{ p.email }}</div></td>
+          <td>{{ p.fonc }}</td>
+          <td style="white-space:normal;max-width:260px"><div class="membres-projet">{% for s in p.service.all %}<span class="pill">{{ s.nom|truncatechars:28 }}</span>{% endfor %}</div></td>
+          <td><span class="pill {% if p.role == 'Scolarité' %}pill-accent{% elif p.role == 'Aucun accès' %}pill-attention{% endif %}">{{ p.role }}</span>{% if p.utilisateur.is_superuser %} <span class="pill pill-attention" title="Super utilisateur">Admin</span>{% endif %}</td>
+          <td><span class="pill {% if p.statut == 'actif' %}pill-succes{% elif p.statut == 'invite' %}pill-attention{% endif %}">{{ p.statut_libelle }}</span></td>
+          <td class="small">{{ p.utilisateur.last_login|date:"d/m/Y H:i"|default:"Jamais" }}</td>
+          <td class="text-end text-nowrap">
+            {% if p.gerable %}
+              {% if p.statut == 'invite' %}
+                <form method="post" action="{% url 'personnel_action' p.pk %}" class="d-inline">{% csrf_token %}<input type="hidden" name="action" value="invitation"><input type="hidden" name="suivant" value="{{ request.get_full_path }}">
+                  <button class="btn btn-icone" title="Renvoyer l'e-mail d'invitation"><i class="bi bi-envelope-arrow-up"></i></button></form>
+              {% endif %}
+              <a class="btn btn-icone" href="{% url 'personnel_modifier' p.pk %}" title="Modifier"><i class="bi bi-pencil"></i></a>
+            {% else %}
+              <i class="bi bi-shield-lock text-secondary" title="Modifiable par un super utilisateur seulement"></i>
+            {% endif %}
+          </td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="7"><div class="etat-vide"><i class="bi bi-person-badge"></i>Aucun membre du personnel avec ces filtres.
+          <div class="mt-2"><a href="{% url 'personnel_creer' %}">Ajouter un membre</a>.</div></div></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if page.has_other_pages %}
+    <div class="pied-tableau d-flex justify-content-between align-items-center">
+      <span class="small text-secondary">{{ page.start_index }}–{{ page.end_index }} sur {{ page.paginator.count }}</span>
+      <ul class="pagination pagination-sm mb-0">
+        {% if page.has_previous %}<li class="page-item"><a class="page-link" href="?{{ params }}&page={{ page.previous_page_number }}"><i class="bi bi-chevron-left"></i></a></li>{% endif %}
+        <li class="page-item active"><span class="page-link">{{ page.number }} / {{ page.paginator.num_pages }}</span></li>
+        {% if page.has_next %}<li class="page-item"><a class="page-link" href="?{{ params }}&page={{ page.next_page_number }}"><i class="bi bi-chevron-right"></i></a></li>{% endif %}
+      </ul>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  (function () {
+    var form = document.getElementById('filtres-personnel');
+    form.querySelectorAll('select').forEach(function (s) { s.addEventListener('change', function () { form.submit(); }); });
+  })();
+</script>
+{% endblock %}

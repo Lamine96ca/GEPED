@@ -63,8 +63,9 @@ def _entete(c, releve, contenu, url_verification):
     c.drawImage(_ressource('filigrane.jpg'), 0, 0, LARGEUR, HAUTEUR)
     largeur_bandeau = D - G
     hauteur_bandeau = largeur_bandeau * 905 / 4020
-    c.drawImage(_ressource('entete.jpg'), G, HAUTEUR - 18 - hauteur_bandeau, largeur_bandeau, hauteur_bandeau)
-    y = HAUTEUR - 18 - hauteur_bandeau - 14
+    c.drawImage(_ressource('entete.jpg'), G, HAUTEUR - 14 - hauteur_bandeau, largeur_bandeau, hauteur_bandeau)
+    y = HAUTEUR - 14 - hauteur_bandeau + 4              # l'image du bandeau a déjà une marge blanche en bas
+    compact = releve.type == 'E'                         # extrait : plus de place pour les tableaux
     c.setFillColorRGB(0, 0, 0)
     _texte(c, LARGEUR / 2, y, 'SERVICE SCOLARITÉ', 'Helvetica-Bold', 12, align='c')
     y -= 16
@@ -94,29 +95,29 @@ def _entete(c, releve, contenu, url_verification):
     if e.ine:
         lignes.append(('INE :', e.ine))
     lignes += [('Département :', programme), ('Programme :', programme)]
-    if contenu.get('promotion'):
-        lignes.append(('Promotion :', str(contenu['promotion'])))
     if contenu.get('session'):
         lignes.append(('Année universitaire :', contenu['session']))
-    y -= 30
+    y -= 26 if compact else 30
     haut_identite = y + 11
+    pas = 13.5 if compact else 15.5
     for libelle, valeur in lignes:
         c.setFillColorRGB(*GRIS_TEXTE)
-        _texte(c, G + 18, y, libelle, 'Helvetica', 10)
+        _texte(c, G + 18, y, libelle, 'Helvetica', 9.5 if compact else 10)
         c.setFillColorRGB(0, 0, 0)
-        _texte(c, G + 130, y, valeur, 'Times-Bold', 11, largeur=D - G - 130 - 100)
-        y -= 15.5
+        _texte(c, G + 130, y, valeur, 'Times-Bold', 10.5 if compact else 11, largeur=D - G - 130 - 100)
+        y -= pas
     if contenu.get('niveau'):
         texte, taille = _ajuste(contenu['niveau'], 'Times-Bold', 10.5, 150)
         c.setFont('Times-Bold', taille)
-        c.drawRightString(D, y + 15.5, texte)
+        c.drawRightString(D, y + pas, texte)
         c.setFont('Helvetica', 9.5)
         c.setFillColorRGB(*GRIS_TEXTE)
-        c.drawRightString(D - stringWidth(texte, 'Times-Bold', taille) - 4, y + 15.5, 'Niveau :')
+        c.drawRightString(D - stringWidth(texte, 'Times-Bold', taille) - 4, y + pas, 'Niveau :')
         c.setFillColorRGB(0, 0, 0)
     if url_verification:
         _qr(c, url_verification, D - 62, haut_identite - 58, 58)
-    return y - 6
+    # Le bloc d'identité ne descend pas plus bas que le QR code (et sa mention)
+    return min(y + pas - 12, haut_identite - 58 - 14) if compact else y - 6
 
 
 def _qr(c, url, x, y, taille):
@@ -148,22 +149,29 @@ def _provisoire(c):
     c.restoreState()
 
 
-def _pied(c, releve, cachet_signature, bas_contenu, extrait=False):
+BAS_CADRE = 40                       # ligne bleue du bas de page : rien ne descend en dessous
+
+
+def _pied(c, releve, cachet_signature, y_mention, extrait=False):
+    """
+    Signature à DROITE du bloc des moyennes : son titre commence au niveau de la ligne « Mention ».
+    Elle reste toujours dans le cadre, au-dessus de la ligne du bas de page.
+    """
     conf = settings.GPED_ATTESTATION
-    y = min(bas_contenu - 18, 175)
-    x = D - 130
+    y = max(y_mention, BAS_CADRE + 80)
+    x = D - 115
     if cachet_signature:
-        largeur = 250
+        largeur = 225
         hauteur = largeur * 95.4 / 343.92
-        c.drawImage(_image('signature_scolarite'), x - largeur / 2, y - hauteur + 8, largeur, hauteur, mask='auto')
+        c.drawImage(_image('signature_scolarite'), x - largeur / 2, y - hauteur + 10, largeur, hauteur, mask='auto')
     else:
         _texte(c, x, y, conf['fonction'], 'Helvetica-Bold', 10, align='c')
-        _texte(c, x, y - 70, conf['signataire'], 'Helvetica', 10, align='c')
+        _texte(c, x, y - 62, conf['signataire'], 'Helvetica', 10, align='c')
     c.setStrokeColorRGB(*BLEU)
     c.setLineWidth(1.6)
-    c.line(G + 70, 40, D - 70, 40)
+    c.line(G + 70, BAS_CADRE, D - 70, BAS_CADRE)
     c.setFillColorRGB(0, 0, 0)
-    _texte(c, LARGEUR / 2, 28, f"{'Cet extrait' if extrait else 'Ce relevé'} ne doit comporter ni surcharge ni rature",
+    _texte(c, LARGEUR / 2, BAS_CADRE - 12,f"{'Cet extrait' if extrait else 'Ce relevé'} ne doit comporter ni surcharge ni rature",
            'Helvetica-Oblique', 8, align='c')
 
 
@@ -177,7 +185,7 @@ def _tableau_releve(c, b, y, annuel):
     fixe = sum(w for _, w, _ in colonnes if w)
     colonnes = [(t, w or (D - G - fixe), a) for t, w, a in colonnes]
     lignes = b['lignes']
-    disponible = y - 230                                   # place pour moyenne, mention et signature
+    disponible = y - 205                                   # place pour moyennes + signature (côte à côte)
     hauteur = max(11, min(16, (disponible - 22) / max(1, len(lignes) + 1)))
     taille = min(9.5, hauteur * 0.62)
     # En-tête
@@ -226,16 +234,16 @@ def _tableau_releve(c, b, y, annuel):
     return y
 
 
-def _resume(c, y, lignes):
-    """Bloc « Moyenne… / Crédits validés / Mention » sous le tableau."""
+def _resume(c, y, lignes, pas=16, police=('Helvetica', 'Times-Bold'), couleur=GRIS_TEXTE):
+    """Bloc « Moyenne… / Crédits validés / Mention » sous le tableau, à gauche."""
     y -= 20
     for libelle, valeur in lignes:
-        c.setFillColorRGB(*GRIS_TEXTE)
-        _texte(c, G + 8, y, libelle, 'Helvetica', 10)
+        c.setFillColorRGB(*couleur)
+        _texte(c, G + 8, y, libelle, police[0], 10)
         c.setFillColorRGB(0, 0, 0)
-        _texte(c, G + 150, y, valeur, 'Times-Bold', 12)
-        y -= 16
-    return y
+        _texte(c, G + 135, y, valeur, police[1], 11.5, largeur=D - G - 135 - 240)
+        y -= pas
+    return y + pas                                       # hauteur de la dernière ligne (« Mention »)
 
 
 def _pdf_releve(c, releve, contenu, url, cachet_signature):
@@ -243,85 +251,91 @@ def _pdf_releve(c, releve, contenu, url, cachet_signature):
     y = _entete(c, releve, contenu, url)
     b = contenu['blocs'][0]
     y = _tableau_releve(c, b, y - 8, annuel=releve.type == ReleveNote.ANNUEL)
-    y = _resume(c, y, [(contenu['libelle_moyenne'], f"{fmt(contenu['moyenne'])}/10"),
-                       ('Crédits validés', f"{b['credits_valides']} / {b['credits_total']}"),
-                       ('Mention', contenu['mention'] or '—')]
-                + ([('Notes manquantes', str(b['notes_manquantes']))] if b['notes_manquantes'] else []))
-    _pied(c, releve, cachet_signature, y)
+    y_mention = _resume(c, y, ([('Notes manquantes', str(b['notes_manquantes']))] if b['notes_manquantes'] else [])
+                        + [(contenu['libelle_moyenne'], f"{fmt(contenu['moyenne'])}/10"),
+                           ('Crédits validés', f"{b['credits_valides']} / {b['credits_total']}"),
+                           ('Mention', contenu['mention'] or '—')])
+    _pied(c, releve, cachet_signature, y_mention)
 
 
 # ---------------------------------------------------------------- extrait du livret
 
+# Couleurs de l'ancien extrait de la scolarité
+GRIS_BLOC = (0.86, 0.86, 0.86)        # bandeau « SESSION … | LICENCE … »
+BORDEAUX = (0.5, 0.06, 0.06)          # « Moyenne Annuelle »
+TRAIT = (0.25, 0.25, 0.25)            # quadrillage
+
+
 def _pdf_extrait(c, releve, contenu, url, cachet_signature):
-    y = _entete(c, releve, contenu, url) - 4
+    y = _entete(c, releve, contenu, url)
     blocs = contenu['blocs']
-    largeur_col = (D - G - 8) / 2
+    largeur_col = (D - G) / 2
     rangees = [blocs[i:i + 2] for i in range(0, len(blocs), 2)]
-    disponible = y - 215
-    tete, pied, ecart = 15, 13, 7
+    disponible = y - 205                                   # moyennes + signature (côte à côte) en dessous
+    tete, pied = 15, 13
     total_lignes = sum(max(len(b['lignes']) for b in r) + 1 for r in rangees) or 1
-    hauteur = max(7, min(12.5, (disponible - len(rangees) * (tete + pied + ecart)) / total_lignes))
-    taille = min(8.5, hauteur * 0.72)
-    colonnes = [('Matières', largeur_col - 22 - 30 - 26 - 24, 'g'), ('Cr.', 22, 'c'), ('Notes', 30, 'c'),
-                ('Not.', 26, 'c'), ('Sem.', 24, 'c')]
+    hauteur = max(7, min(13.5, (disponible - len(rangees) * (tete + pied)) / total_lignes))
+    taille = min(8.5, hauteur * 0.7)
+    colonnes = [('Matières', largeur_col - 30 - 22 - 34 - 34, 'g'), ('Notes', 30, 'c'), ('Cr.', 22, 'c'),
+                ('Notations', 34, 'c'), ('Semestres', 34, 'c')]
+    c.setStrokeColorRGB(*TRAIT)
     for rangee in rangees:
         nb = max(len(b['lignes']) for b in rangee)
+        bas_bloc = y - tete - hauteur * (nb + 1) - pied
         for k, b in enumerate(rangee):
-            x0 = G + k * (largeur_col + 8)
+            x0 = G + k * largeur_col
             insc = b['inscription']
-            c.setFillColorRGB(*GRIS_TETE)
+            c.setFillColorRGB(*GRIS_BLOC)
             c.rect(x0, y - tete, largeur_col, tete, stroke=0, fill=1)
             c.setFillColorRGB(0, 0, 0)
-            _texte(c, x0 + largeur_col / 2, y - tete + 4.5,
-                   f"SESSION : {insc.session.annee}  |  {insc.licence.nom.upper()}", 'Helvetica-Bold', 8.5,
+            _texte(c, x0 + largeur_col / 2, y - tete + 4.2,
+                   f"SESSION : {insc.session.annee} |  {insc.licence.nom.upper()}", 'Times-Bold', 9.5,
                    largeur=largeur_col - 8, align='c')
             yy = y - tete
             x = x0
-            c.setFillColorRGB(0.97, 0.97, 0.98)
-            c.rect(x0, yy - hauteur, largeur_col, hauteur, stroke=0, fill=1)
-            c.setFillColorRGB(0, 0, 0)
             for titre, w, align in colonnes:
-                _texte(c, x + (4 if align == 'g' else w / 2), yy - hauteur * 0.72, titre, 'Helvetica-Bold',
-                       taille - 0.5, largeur=w - 4, align=align)
+                _texte(c, x + w / 2, yy - hauteur * 0.72, titre, 'Helvetica-Bold' if titre in ('Matières', 'Notes')
+                       else 'Helvetica', taille - 1, largeur=w - 3, align='c')
                 x += w
             yy -= hauteur
-            c.setStrokeColorRGB(0.6, 0.6, 0.63)
             c.setLineWidth(0.4)
+            c.line(x0, yy, x0 + largeur_col, yy)
             for l in b['lignes']:
                 x = x0
-                for (titre, w, align), v in zip(colonnes, [l['matiere'], str(l['credit']), fmt(l['note']),
+                for (titre, w, align), v in zip(colonnes, [l['matiere'], fmt(l['note']), str(l['credit']),
                                                            l['lettre'] or '—', l['semestre']]):
-                    if titre == 'Notes' and not l['validee']:
-                        c.setFillColorRGB(0.75, 0.1, 0.1)
                     _texte(c, x + (3 if align == 'g' else w / 2), yy - hauteur * 0.74, v,
                            'Helvetica-Bold' if titre in ('Matières', 'Notes') else 'Helvetica', taille,
                            largeur=w - 5, align=align)
-                    c.setFillColorRGB(0, 0, 0)
                     x += w
                 yy -= hauteur
                 c.line(x0, yy, x0 + largeur_col, yy)
-            bas_bloc = y - tete - hauteur * (nb + 1) - pied
-            c.setFillColorRGB(*BLEU)
-            _texte(c, x0 + 6, bas_bloc + 4, 'Moyenne annuelle', 'Helvetica-Bold', 8)
-            _texte(c, x0 + largeur_col - 6, bas_bloc + 4,
+            # Colonnes et cadre du bloc
+            x = x0
+            for _, w, _ in colonnes[:-1]:
+                x += w
+                c.line(x, y - tete, x, y - tete - hauteur * (len(b['lignes']) + 1))
+            c.setFillColorRGB(*BORDEAUX)
+            _texte(c, x0 + colonnes[0][1] / 2, bas_bloc + 4, 'Moyenne Annuelle', 'Helvetica-Bold', 8, align='c')
+            _texte(c, x0 + colonnes[0][1] + (largeur_col - colonnes[0][1]) / 2, bas_bloc + 4,
                    f"{fmt(b['moyenne'])}/10 · {b['credits_valides']}/{b['credits_total']} cr.", 'Helvetica-Bold', 8,
-                   align='d')
+                   align='c')
             c.setFillColorRGB(0, 0, 0)
-            c.setStrokeColorRGB(0.45, 0.45, 0.5)
             c.setLineWidth(0.6)
+            c.line(x0 + colonnes[0][1], bas_bloc, x0 + colonnes[0][1], bas_bloc + pied)
             c.rect(x0, bas_bloc, largeur_col, y - bas_bloc, stroke=1, fill=0)
-        y = y - tete - hauteur * (nb + 1) - pied - ecart
+        y = bas_bloc
     lignes = [('Moyenne du cycle', f"{fmt(contenu['moyenne_cycle'])}/10")]
     if contenu['soutenance'] is not None:
-        lignes.append(('Note de soutenance', f"{fmt(contenu['soutenance'])}/10"
+        lignes.append(('Moyenne de soutenance', f"{fmt(contenu['soutenance'])}/10"
                        + (' (Session)' if contenu['soutenance_session'] else '')))
     lignes += [('Moyenne générale', f"{fmt(contenu['moyenne'])}/10"),
                ('Crédits validés', f"{contenu['credits_valides']} / {contenu['credits_total']}"),
                ('Mention', contenu['mention'] or '—')]
-    y = _resume(c, y + 6, lignes)
+    y_mention = _resume(c, y + 4, lignes, pas=14.5, police=('Times-Roman', 'Times-Bold'), couleur=(0, 0, 0))
     if not blocs:
         _texte(c, LARGEUR / 2, y + 40, "Aucune note enregistrée pour ce programme.", 'Helvetica-Oblique', 10, align='c')
-    _pied(c, releve, cachet_signature, y, extrait=True)
+    _pied(c, releve, cachet_signature, y_mention, extrait=True)
 
 
 def pdf_releve(releve, contenu, url_verification=None, cachet_signature=False):

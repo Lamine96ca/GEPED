@@ -141,6 +141,22 @@ def parcours(etudiant, profil=None):
     return inscriptions, programmes
 
 
+def a_des_notes(etudiant, filiere, session=None, licence=None, semestre=None):
+    """Au moins une note (moyenne finale) dans le périmètre du relevé : sinon, pas de relevé."""
+    qs = Note.objects.filter(etudiant=etudiant, moyenne_finale__isnull=False, matiere__filiere=filiere)
+    if session is not None:
+        qs = qs.filter(matiere__session=session, matiere__licence=licence)
+    if semestre is not None:
+        qs = qs.filter(matiere__semestre=semestre)
+    return qs.exists()
+
+
+def perimetres_notes(etudiant):
+    """{(programme, session, licence, semestre)} où l'étudiant a au moins une note (boutons du parcours)."""
+    return set(Note.objects.filter(etudiant=etudiant, moyenne_finale__isnull=False)
+               .values_list('matiere__filiere_id', 'matiere__session_id', 'matiere__licence_id', 'matiere__semestre_id'))
+
+
 def releve_existant(type_, etudiant, filiere, session=None, licence=None, semestre=None):
     """Un relevé déjà délivré pour le même objet : on le réimprime (même numéro)."""
     return ReleveNote.objects.filter(type=type_, etudiant=etudiant, filiere=filiere, session=session,

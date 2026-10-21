@@ -1,3 +1,5 @@
+import re
+
 from django import forms
 from django.contrib.auth.forms import PasswordChangeForm, PasswordResetForm, SetPasswordForm
 from django.contrib.auth.models import User
@@ -58,8 +60,11 @@ class EtudiantForm(BootstrapMixin, forms.ModelForm):
 
     def save(self, commit=True):
         etudiant = super().save(commit=False)
-        # Le fichier brut n'est jamais enregistré : la photo compressée l'est après l'étudiant
-        etudiant.photo = self._photo_initiale
+        # Le fichier brut n'est jamais enregistré : la photo compressée l'est après l'étudiant.
+        # On reprend la photo ACTUELLE en base (elle a pu être changée ou retirée depuis la fiche
+        # pendant que le formulaire était ouvert) : le formulaire ne remet jamais une ancienne photo.
+        etudiant.photo = (Etudiant.objects.filter(pk=etudiant.pk).values_list('photo', flat=True).first()
+                          if etudiant.pk else None)
         if commit:
             etudiant.save()
             self.save_m2m()
@@ -190,6 +195,114 @@ class MotDePasseForm(BootstrapMixin, PasswordChangeForm):
     pass
 
 
+# ------------------------------------------------------------------ gestion du personnel
+
+class PersonnelForm(BootstrapMixin, forms.ModelForm):
+    """
+    Fiche du personnel et son compte. Le rôle découle des services cochés (voir pfe/roles.py) :
+    Service Scolarité → scolarité ; un programme → chef de programme ; autre service → département.
+    Seul un super utilisateur peut rattacher quelqu'un au Service Scolarité (droits complets).
+    À la création, le compte est créé sans mot de passe : l'invitation par e-mail permet de le choisir.
+    """
+    identifiant = forms.CharField(label='Identifiant de connexion', max_length=150, required=False,
+                                  help_text="Vide : proposé d'après le prénom et le nom (ex. mariam.camara).")
+    envoyer_invitation = forms.BooleanField(label="Envoyer l'e-mail d'invitation", required=False, initial=True)
+
+    class Meta:
+        model = Personnel
+        fields = ['prenom', 'nom', 'fonc', 'email', 'telephone', 'service']
+        labels = {'fonc': 'Fonction', 'service': 'Services'}
+        widgets = {'service': forms.CheckboxSelectMultiple, 'email': forms.EmailInput()}
+
+    def __init__(self, *args, editeur, **kwargs):
+        super().__init__(*args, **kwargs)
+        from .roles import est_service_scolarite
+        self.editeur = editeur
+        f = self.fields
+        services = list(Service.objects.order_by('-programme', 'nom'))
+        f['service'].queryset = Service.objects.order_by('-programme', 'nom')
+        f['service'].required = False                 # message explicite dans clean_service
+        f['service'].widget.attrs = {}
+        self.services_scolarite = {s.pk for s in services if est_service_scolarite(s)}
+        self.groupes_services = [('Programmes (chef de programme)', [s for s in services if s.programme]),
+                                 ('Services', [s for s in services if not s.programme])]
+        f['prenom'].widget.attrs['placeholder'] = 'Ex. Mariam'
+        f['nom'].widget.attrs['placeholder'] = 'Ex. CAMARA'
+        f['fonc'].widget.attrs['placeholder'] = 'Ex. Chef de programme'
+        f['email'].widget.attrs['placeholder'] = 'nom@exemple.com'
+        f['telephone'].widget.attrs['placeholder'] = 'Ex. +224 620 00 00 00'
+        if self.instance.pk:
+            del f['identifiant'], f['envoyer_invitation']
+        else:
+            f['identifiant'].widget.attrs['placeholder'] = 'Ex. mariam.camara'
+
+    def services_coches(self):
+        """Pour le gabarit : identifiants des services cochés (formulaire envoyé ou fiche existante)."""
+        if self.is_bound:
+            return {int(v) for v in self.data.getlist(self.add_prefix('service')) if str(v).isdigit()}
+        return {s.pk for s in self.instance.service.all()} if self.instance.pk else set()
+
+    def clean_prenom(self):
+        return ' '.join(self.cleaned_data['prenom'].split()).title()
+
+    def clean_nom(self):
+        return ' '.join(self.cleaned_data['nom'].split()).upper()
+
+    def clean_email(self):
+        email = self.cleaned_data['email'].strip().lower()
+        autres = Personnel.objects.filter(email__iexact=email).exclude(pk=self.instance.pk)
+        comptes = User.objects.filter(email__iexact=email)
+        if self.instance.pk:
+            comptes = comptes.exclude(pk=self.instance.utilisateur_id)
+        if autres.exists() or comptes.exists():
+            raise forms.ValidationError("Cette adresse e-mail est déjà utilisée par un autre compte.")
+        return email
+
+    def clean_telephone(self):
+        tel = ' '.join(self.cleaned_data['telephone'].split())
+        if Personnel.objects.filter(telephone=tel).exclude(pk=self.instance.pk).exists():
+            raise forms.ValidationError("Ce numéro est déjà utilisé par un autre membre du personnel.")
+        return tel
+
+    def clean_identifiant(self):
+        identifiant = (self.cleaned_data.get('identifiant') or '').strip().lower()
+        if identifiant:
+            if not re.fullmatch(r'[a-z0-9._-]{3,150}', identifiant):
+                raise forms.ValidationError("Lettres sans accents, chiffres, points, tirets : 3 caractères au moins.")
+            if User.objects.filter(username__iexact=identifiant).exists():
+                raise forms.ValidationError(f"L'identifiant « {identifiant} » est déjà pris.")
+        return identifiant
+
+    def clean_service(self):
+        services = self.cleaned_data['service']
+        if not services:
+            raise forms.ValidationError("Cochez au moins un service : c'est lui qui donne les droits.")
+        avant = {s.pk for s in self.instance.service.all()} if self.instance.pk else set()
+        ajoutes = {s.pk for s in services} - avant
+        if ajoutes & self.services_scolarite and not self.editeur.is_superuser:
+            raise forms.ValidationError("Seul un super utilisateur peut rattacher quelqu'un au Service Scolarité "
+                                        "(droits complets sur gePed).")
+        return services
+
+    def save(self, commit=True):
+        from .comptes import identifiant_propose
+        personnel = super().save(commit=False)
+        d = self.cleaned_data
+        if personnel.utilisateur_id:
+            u = personnel.utilisateur
+            u.first_name, u.last_name, u.email = d['prenom'], d['nom'], d['email']
+            u.save(update_fields=['first_name', 'last_name', 'email'])
+        else:
+            u = User(username=d.get('identifiant') or identifiant_propose(d['prenom'], d['nom']),
+                     first_name=d['prenom'], last_name=d['nom'], email=d['email'], is_active=True)
+            u.set_unusable_password()               # le mot de passe sera choisi depuis l'e-mail d'invitation
+            u.save()
+            personnel.utilisateur = u
+        personnel.save()
+        self.save_m2m()
+        return personnel
+
+
 # ------------------------------------------------------------------ mot de passe oublié
 
 
@@ -203,10 +316,11 @@ class MotDePasseOublieForm(BootstrapMixin, PasswordResetForm):
                              widget=forms.EmailInput(attrs={'autocomplete': 'email', 'autofocus': True}))
 
     def get_users(self, email):
-        comptes = User.objects.filter(
+        # Comptes actifs, y compris ceux qui n'ont pas encore choisi leur mot de passe (invitation
+        # expirée) : ils peuvent le définir avec ce lien. Un compte désactivé ne reçoit rien.
+        return User.objects.filter(
             Q(email__iexact=email) | Q(profil_personnel__email__iexact=email), is_active=True
         ).distinct()
-        return (u for u in comptes if u.has_usable_password())
 
     def send_mail(self, subject_template_name, email_template_name, context, from_email, to_email,
                   html_email_template_name=None):
@@ -510,6 +624,111 @@ class AttestationSoutenanceForm(BootstrapMixin, forms.ModelForm):
         if commit:
             attestation.save()
         return attestation
+
+
+# ------------------------------------------------------------------ relevés de notes
+
+class ReleveForm(BootstrapMixin, forms.Form):
+    """
+    Nouveau relevé : matricule + type.
+      - Semestre : licence + semestre (session facultative : sinon la dernière inscription à cette licence) ;
+      - Licence (relevé annuel) : licence (+ session facultative) ;
+      - Extrait : programme (facultatif : sinon celui de la dernière inscription).
+    Un relevé déjà délivré pour le même objet n'est pas recréé : il est repris (même numéro).
+    """
+    TYPES = [('S', 'Relevé semestriel'), ('A', 'Relevé de licence (annuel)'), ('E', 'Extrait du livret universitaire')]
+    matricule = forms.CharField(label="Matricule de l'étudiant", max_length=25)
+    type = forms.ChoiceField(label='Type de relevé', choices=TYPES, initial='S')
+    licence = forms.ModelChoiceField(label='Licence (niveau)', queryset=Licence.objects.none(), required=False)
+    semestre = forms.ModelChoiceField(label='Semestre', queryset=Semestre.objects.none(), required=False)
+    session = forms.ModelChoiceField(label='Session', queryset=Session.objects.none(), required=False,
+                                     help_text="Vide : la dernière inscription de l'étudiant à cette licence.")
+    programme = forms.ModelChoiceField(label='Programme', queryset=Service.objects.none(), required=False,
+                                       help_text="Vide : le programme de sa dernière inscription.")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        f = self.fields
+        f['licence'].queryset = Licence.objects.order_by('id')
+        f['semestre'].queryset = Semestre.objects.select_related('licence').order_by('licence_id', 'id')
+        f['semestre'].label_from_instance = lambda s: f"{s.nom} ({s.licence.nom})"
+        f['session'].queryset = Session.objects.order_by('-annee')
+        f['session'].empty_label = '— Dernière inscription —'
+        f['programme'].queryset = Service.objects.filter(programme=True).order_by('nom')
+        f['programme'].empty_label = '— Dernière inscription —'
+        f['matricule'].widget.attrs.update({'placeholder': 'Ex. 2306005624', 'autocomplete': 'off'})
+        self.cible = None
+
+    def clean(self):
+        d = super().clean()
+        matricule = (d.get('matricule') or '').strip()
+        type_ = d.get('type')
+        if not matricule or not type_:
+            return d
+        etudiant = Etudiant.objects.filter(matricule__iexact=matricule).first()
+        if etudiant is None:
+            self.add_error('matricule', "Aucun étudiant trouvé avec ce matricule.")
+            return d
+        inscriptions = (Inscription.objects.filter(etudiant=etudiant, filiere__isnull=False)
+                        .select_related('session', 'licence', 'filiere').order_by('-session__annee', '-id'))
+        if type_ == 'E':
+            programme = d.get('programme') or next((i.filiere for i in inscriptions), None)
+            if programme is None or not inscriptions.filter(filiere=programme).exists():
+                self.add_error('programme' if d.get('programme') else 'matricule',
+                               f"{etudiant.prenom} {etudiant.nom} n'a aucune inscription"
+                               f"{' en ' + str(programme) if programme else ' dans un programme'}.")
+                return d
+            self.cible = {'etudiant': etudiant, 'filiere': programme}
+            self._verifier_notes(etudiant, f"en {programme}")
+            return d
+        licence, semestre, session = d.get('licence'), d.get('semestre'), d.get('session')
+        if type_ == 'S' and semestre and not licence:
+            licence = semestre.licence
+        if licence is None:
+            self.add_error('licence', "Choisissez la licence.")
+            return d
+        insc = inscriptions.filter(licence=licence)
+        if session:
+            insc = insc.filter(session=session)
+        insc = insc.first()
+        if insc is None:
+            self.add_error('licence', f"{etudiant.prenom} {etudiant.nom} n'a aucune inscription en {licence}"
+                                      f"{' pour la session ' + str(session) if session else ''}.")
+            return d
+        self.cible = {'etudiant': etudiant, 'filiere': insc.filiere, 'session': insc.session, 'licence': insc.licence}
+        matieres = Matiere.objects.filter(filiere=insc.filiere, session=insc.session, licence=insc.licence)
+        if type_ == 'S':
+            if semestre is None:
+                self.add_error('semestre', "Choisissez le semestre.")
+                return d
+            if semestre.licence_id != licence.pk:
+                self.add_error('semestre', f"{semestre.nom} n'appartient pas à {licence.nom}.")
+                return d
+            matieres = matieres.filter(semestre=semestre)
+            self.cible['semestre'] = semestre
+        perimetre = f"{insc.filiere} · {insc.session} · {licence}" + (f" · {semestre.nom}" if type_ == 'S' else '')
+        if not matieres.exists():
+            self.add_error(None, f"Aucune matière enregistrée pour {perimetre} : relevé impossible.")
+            return d
+        self._verifier_notes(etudiant, f"pour {perimetre}")
+        return d
+
+    def _verifier_notes(self, etudiant, perimetre):
+        """Un relevé sans aucune note n'est pas enregistré."""
+        from .releves import a_des_notes
+        if not a_des_notes(**self.cible):
+            self.add_error(None, f"{etudiant.prenom} {etudiant.nom} n'a aucune note {perimetre} : "
+                                 f"le relevé n'est pas enregistré.")
+
+    def save(self):
+        """Renvoie (relevé, créé ?)."""
+        from .models import ReleveNote
+        from .releves import releve_existant
+        type_ = self.cleaned_data['type']
+        releve = releve_existant(type_, **self.cible)
+        if releve is not None:
+            return releve, False
+        return ReleveNote.objects.create(type=type_, **self.cible), True
 
 
 # ------------------------------------------------------------------ matières

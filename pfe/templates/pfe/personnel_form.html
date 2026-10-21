@@ -1,0 +1,98 @@
+{% extends 'pfe/base.html' %}
+{% block titre %}{{ titre }}{% endblock %}
+{% block titre_page %}<a href="{% url 'personnel_liste' %}" class="text-decoration-none text-secondary me-1" title="Retour au personnel"><i class="bi bi-arrow-left"></i></a> {{ titre }}{% endblock %}
+{% block sous_titre %}<div class="sous-titre">{% if personnel %}{{ personnel.fonc }} · {{ role }}{% else %}Le compte est créé avec la fiche ; l'e-mail d'invitation permet de choisir le mot de passe{% endif %}</div>{% endblock %}
+{% block contenu %}
+<div class="row g-3">
+  <div class="col-xl-8">
+    <form method="post" novalidate>
+      {% csrf_token %}
+      {% if form.errors %}<div class="alert alert-danger py-2 d-flex gap-2 align-items-center"><i class="bi bi-exclamation-circle"></i> Veuillez corriger les champs signalés.</div>{% endif %}
+      <div class="card carte-gped mb-3">
+        <div class="card-body">
+          <div class="entete-carte"><span class="icone-carte"><i class="bi bi-person-vcard"></i></span><div><h3>Identité et coordonnées</h3><p>L'e-mail reçoit l'invitation et sert aussi à se connecter</p></div></div>
+          <div class="row g-3">
+            {% include 'pfe/_champ.html' with champ=form.prenom col='col-md-6' %}
+            {% include 'pfe/_champ.html' with champ=form.nom col='col-md-6' %}
+            {% include 'pfe/_champ.html' with champ=form.fonc col='col-md-12' %}
+            {% include 'pfe/_champ.html' with champ=form.email col='col-md-6' %}
+            {% include 'pfe/_champ.html' with champ=form.telephone col='col-md-6' %}
+            {% if form.identifiant %}
+              {% include 'pfe/_champ.html' with champ=form.identifiant col='col-md-6' %}
+              <div class="col-md-6 d-flex align-items-end"><div class="small text-secondary">{{ form.identifiant.help_text }}</div></div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      <div class="card carte-gped mb-3">
+        <div class="card-body">
+          <div class="entete-carte"><span class="icone-carte"><i class="bi bi-diagram-3"></i></span><div><h3>Services et droits</h3><p>Les droits découlent des services cochés</p></div></div>
+          {% with coches=form.services_coches %}
+          {% for titre, liste in form.groupes_services %}
+            <div class="small fw-semibold text-secondary mb-2 mt-2">{{ titre }}</div>
+            <div class="row g-2 mb-2">
+              {% for s in liste %}
+                <div class="col-md-6">
+                  <label class="option-service {% if s.pk in form.services_scolarite %}scolarite{% endif %}">
+                    <input type="checkbox" class="form-check-input" name="{{ form.service.html_name }}" value="{{ s.pk }}" {% if s.pk in coches %}checked{% endif %}
+                           {% if s.pk in form.services_scolarite and not user.is_superuser and s.pk not in coches %}disabled{% endif %}>
+                    <span>{{ s.nom }}{% if s.pk in form.services_scolarite %} <span class="pill pill-accent">droits complets</span>{% endif %}</span>
+                  </label>
+                </div>
+              {% endfor %}
+            </div>
+          {% endfor %}
+          {% endwith %}
+          {% for err in form.service.errors %}<div class="invalid-feedback d-block">{{ err }}</div>{% endfor %}
+          <div class="note-verrou mt-2"><i class="bi bi-info-circle"></i>
+            <span><strong>Service Scolarité</strong> : tous les droits (inscriptions, attestations, relevés, personnel…) · <strong>un programme</strong> : chef de programme (ses étudiants, matières, notes et soutenances) · <strong>autre service</strong> : consultation.{% if not user.is_superuser %} Seul un super utilisateur peut rattacher quelqu'un au Service Scolarité.{% endif %}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="d-flex flex-wrap gap-2 align-items-center">
+        {% if form.envoyer_invitation %}
+          <label class="form-check me-3">{{ form.envoyer_invitation }} <span class="form-check-label">{{ form.envoyer_invitation.label }}</span></label>
+        {% endif %}
+        <button class="btn btn-primary"><i class="bi bi-check-lg"></i> {% if personnel %}Enregistrer{% else %}Créer le compte{% endif %}</button>
+        <a href="{% url 'personnel_liste' %}" class="btn btn-light">Annuler</a>
+      </div>
+    </form>
+  </div>
+
+  {% if personnel %}
+    <div class="col-xl-4">
+      <div class="card carte-gped">
+        <div class="card-body">
+          <div class="entete-carte"><span class="icone-carte"><i class="bi bi-key"></i></span><div><h3>Compte</h3><p>Identifiant : <strong>{{ personnel.utilisateur.username }}</strong></p></div></div>
+          <ul class="infos-compte">
+            <li><i class="bi bi-shield-check"></i><div><div class="lib">Statut</div><div class="val"><span class="pill {% if statut == 'actif' %}pill-succes{% elif statut == 'invite' %}pill-attention{% endif %}">{{ statut_libelle }}</span></div></div></li>
+            <li><i class="bi bi-person-gear"></i><div><div class="lib">Rôle</div><div class="val">{{ role }}{% if personnel.utilisateur.is_superuser %} · super utilisateur{% endif %}</div></div></li>
+            <li><i class="bi bi-clock-history"></i><div><div class="lib">Dernière connexion</div><div class="val">{{ personnel.utilisateur.last_login|date:"d/m/Y à H:i"|default:"Jamais" }}</div></div></li>
+          </ul>
+          <div class="d-grid gap-2 mt-3">
+            {% if statut == 'invite' %}
+              <form method="post" action="{% url 'personnel_action' personnel.pk %}">{% csrf_token %}<input type="hidden" name="action" value="invitation"><input type="hidden" name="suivant" value="{{ request.path }}">
+                <button class="btn btn-or w-100"><i class="bi bi-envelope-arrow-up"></i> Envoyer l'invitation (nouveau lien)</button></form>
+            {% elif statut == 'actif' %}
+              <form method="post" action="{% url 'personnel_action' personnel.pk %}">{% csrf_token %}<input type="hidden" name="action" value="reinitialiser"><input type="hidden" name="suivant" value="{{ request.path }}">
+                <button class="btn btn-light w-100"><i class="bi bi-arrow-counterclockwise"></i> Envoyer un lien de nouveau mot de passe</button></form>
+            {% endif %}
+            {% if not soi_meme %}
+              {% if statut == 'desactive' %}
+                <form method="post" action="{% url 'personnel_action' personnel.pk %}">{% csrf_token %}<input type="hidden" name="action" value="reactiver"><input type="hidden" name="suivant" value="{{ request.path }}">
+                  <button class="btn btn-primary w-100"><i class="bi bi-person-check"></i> Réactiver le compte</button></form>
+              {% else %}
+                <form method="post" action="{% url 'personnel_action' personnel.pk %}" onsubmit="return confirm('Désactiver le compte de {{ personnel.prenom|escapejs }} {{ personnel.nom|escapejs }} ? Il ne pourra plus se connecter.');">{% csrf_token %}<input type="hidden" name="action" value="desactiver"><input type="hidden" name="suivant" value="{{ request.path }}">
+                  <button class="btn btn-danger-doux w-100"><i class="bi bi-person-slash"></i> Désactiver le compte</button></form>
+              {% endif %}
+            {% endif %}
+          </div>
+          <div class="small text-secondary mt-3"><i class="bi bi-envelope"></i> Les e-mails partent à {{ personnel.email }}. Le lien d'invitation est valable 7 jours, celui de nouveau mot de passe 2 heures.</div>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

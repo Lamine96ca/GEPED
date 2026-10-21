@@ -1,0 +1,18 @@
+{% autoescape off %}Bonjour {{ user.get_full_name|default:user.username }},
+
+{% if invitation %}Un compte gePed (gestion pédagogique de l'Institut Supérieur de Technologie de Mamou) vient d'être créé pour vous.{% else %}Le Service de la Scolarité vous envoie un lien pour choisir un nouveau mot de passe gePed.{% endif %}
+
+Identifiant : {{ user.get_username }}
+Rôle : {{ role }}{% if services %}
+Service(s) : {{ services }}{% endif %}
+
+{% if invitation %}Pour activer votre compte, choisissez votre mot de passe en ouvrant ce lien :{% else %}Pour choisir un nouveau mot de passe, ouvrez ce lien :{% endif %}
+{{ lien }}
+
+Vous pourrez ensuite vous connecter sur {{ site }} avec votre identifiant ou votre adresse e-mail.
+
+Ce lien est personnel, valable {{ validite }} et utilisable une seule fois. Ne le transférez à personne.
+Si vous n'attendiez pas ce message, ignorez-le ou prévenez le Service de la Scolarité.
+
+gePed · Institut Supérieur de Technologie de Mamou
+{% endautoescape %}

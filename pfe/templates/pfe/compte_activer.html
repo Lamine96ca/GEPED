@@ -1,0 +1,31 @@
+{% extends 'pfe/page_publique.html' %}
+{% block titre %}Activer mon compte{% endblock %}
+{% block panneau %}{% include 'pfe/_panneau_mdp.html' %}{% endblock %}
+
+{% block carte %}
+  {% if validlink %}
+    <div class="surtitre">Bienvenue sur gePed</div>
+    <h1>Activer mon compte</h1>
+    <p class="intro">Identifiant : <strong>{{ form.user.get_username }}</strong>. Choisissez votre mot de passe, puis confirmez-le : vous serez aussitôt connecté.</p>
+    <form method="post" novalidate>{% csrf_token %}
+      {% for champ in form %}
+        <div class="mb-3">
+          <label class="form-label" for="{{ champ.id_for_label }}">{{ champ.label }}</label>
+          <div class="champ-icone">
+            <i class="bi bi-lock"></i>
+            {{ champ }}
+            <button type="button" class="voir-mdp" data-voir-mdp="{{ champ.id_for_label }}" aria-label="Afficher le mot de passe"><i class="bi bi-eye"></i></button>
+          </div>
+          {% for err in champ.errors %}<div class="invalid-feedback d-block">{{ err }}</div>{% endfor %}
+        </div>
+      {% endfor %}
+      <p class="small text-secondary mb-4">Au moins 8 caractères, pas uniquement des chiffres, et différent de votre identifiant.</p>
+      <button class="btn btn-primary w-100">Activer mon compte</button>
+    </form>
+  {% else %}
+    <div class="surtitre">Lien expiré</div>
+    <h1>Lien d'invitation invalide</h1>
+    <p class="intro">Ce lien a expiré (7 jours) ou a déjà été utilisé. Demandez au Service de la Scolarité de vous renvoyer l'invitation, ou utilisez « Mot de passe oublié » avec votre adresse e-mail.</p>
+    <a href="{% url 'password_reset' %}" class="btn btn-primary w-100">Mot de passe oublié</a>
+  {% endif %}
+{% endblock %}
