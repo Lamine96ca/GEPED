@@ -78,7 +78,7 @@ pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-> Si `mysqlclient` refuse de s'installer (erreur de compilation), lancez `pip install PyMySQL` : gePed l'utilise automatiquement à la place, sans autre changement.
+> Le pilote MySQL est **PyMySQL** (100 % Python) : il s'installe sans compilation. `mysqlclient`, lui, ne se compile pas chez o2switch (« Failed to build installable wheels… mysqlclient ») : il n'est plus dans `requirements.txt`.
 
 Créez le fichier `.env` à partir du modèle, puis remplissez-le avec l'éditeur de fichiers de cPanel :
 

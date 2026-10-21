@@ -1,5 +1,5 @@
-# Pilote MySQL : mysqlclient (recommandé). S'il n'a pas pu être compilé sur le serveur, PyMySQL
-# (100 % Python, `pip install PyMySQL`) le remplace sans autre changement.
+# Pilote MySQL : PyMySQL (100 % Python, dans requirements.txt), car mysqlclient ne se compile pas
+# chez o2switch. Si mysqlclient est installé (poste de développement), il reste utilisé en priorité.
 try:
     import MySQLdb  # noqa: F401
 except ImportError:

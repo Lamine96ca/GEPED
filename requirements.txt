@@ -2,4 +2,6 @@ Django==5.2.7
 openpyxl==3.1.5
 pillow==13.0.0
 reportlab==4.5.0
-mysqlclient==2.3.0
+# Pilote MySQL 100 % Python : s'installe partout, sans compilation (o2switch compris).
+# Si mysqlclient est présent (ex. poste de développement), il est utilisé en priorité (config/__init__.py).
+PyMySQL==1.2.3
