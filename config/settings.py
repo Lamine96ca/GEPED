@@ -17,8 +17,31 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
-# Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
+def _charger_env(fichier):
+    """
+    Variables du fichier .env (production, chez o2switch) : une ligne NOM=valeur, # pour un
+    commentaire. Une variable déjà définie dans l'environnement (cPanel) n'est pas remplacée.
+    Le fichier .env n'est JAMAIS envoyé sur Git (voir .gitignore et .env.exemple).
+    """
+    if not fichier.exists():
+        return
+    for ligne in fichier.read_text(encoding='utf-8').splitlines():
+        ligne = ligne.strip()
+        if not ligne or ligne.startswith('#') or '=' not in ligne:
+            continue
+        nom, valeur = ligne.split('=', 1)
+        valeur = valeur.strip()
+        if len(valeur) >= 2 and valeur[0] == valeur[-1] and valeur[0] in '"\'':
+            valeur = valeur[1:-1]
+        os.environ.setdefault(nom.strip(), valeur)
+
+
+_charger_env(BASE_DIR / '.env')
+
+
+def _liste(nom):
+    return [v.strip() for v in os.environ.get(nom, '').split(',') if v.strip()]
+
 
 def _cle_secrete():
     """
@@ -44,8 +67,23 @@ DEBUG = os.environ.get('GPED_DEBUG', '1') == '1'
 
 # Adresses autorisées : localhost par défaut, plus celles de GPED_ALLOWED_HOSTS (séparées par des virgules),
 # ex. l'adresse du PC sur le Wi-Fi pour tester depuis un téléphone, ou le domaine en production.
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', '[::1]'] + [
-    h.strip() for h in os.environ.get('GPED_ALLOWED_HOSTS', '').split(',') if h.strip()]
+ALLOWED_HOSTS = ['localhost', '127.0.0.1', '[::1]'] + _liste('GPED_ALLOWED_HOSTS')
+
+# Production (DEBUG désactivé) : HTTPS obligatoire. Chez o2switch, Apache termine le HTTPS et
+# transmet la requête à Passenger avec l'en-tête X-Forwarded-Proto.
+if not DEBUG:
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    SECURE_SSL_REDIRECT = os.environ.get('GPED_HTTPS_REDIRECTION', '1') == '1'
+    SESSION_COOKIE_SECURE = CSRF_COOKIE_SECURE = True
+    SECURE_HSTS_SECONDS = int(os.environ.get('GPED_HSTS_SECONDES', '0'))   # 31536000 une fois le HTTPS validé
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = False
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    SECURE_REFERRER_POLICY = 'same-origin'
+    X_FRAME_OPTIONS = 'DENY'
+SESSION_COOKIE_HTTPONLY = True
+# Formulaires envoyés depuis l'adresse publique (https://…) : origine de confiance pour le CSRF
+CSRF_TRUSTED_ORIGINS = _liste('GPED_CSRF_ORIGINES') + (
+    [os.environ['GPED_URL_PUBLIQUE'].rstrip('/')] if os.environ.get('GPED_URL_PUBLIQUE', '').startswith('http') else [])
 
 
 # Application definition
@@ -121,6 +159,9 @@ else:
                 'init_command': "SET sql_mode='STRICT_TRANS_TABLES', default_storage_engine=INNODB",
             },
             'TEST': {'CHARSET': 'utf8mb4', 'COLLATION': 'utf8mb4_unicode_ci'},
+            # Connexions réutilisées quelques secondes (moins de reconnexions sous Passenger)
+            'CONN_MAX_AGE': int(os.environ.get('GPED_DB_CONN_MAX_AGE', '0' if DEBUG else '60')),
+            'CONN_HEALTH_CHECKS': True,
         }
     }
 
@@ -159,11 +200,15 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
-STATIC_URL = 'static/'
-STATIC_ROOT = BASE_DIR / 'staticfiles'
+STATIC_URL = '/static/'
+MEDIA_URL = '/media/'
+# Chez o2switch, ces deux dossiers sont placés DANS le dossier public du domaine (ex. ~/geped.istmamou.org/static
+# et …/media) : Apache les sert directement, sans passer par Django (plus rapide). En local : dans le projet.
+STATIC_ROOT = Path(os.environ.get('GPED_STATIC_ROOT') or BASE_DIR / 'staticfiles')
+MEDIA_ROOT = Path(os.environ.get('GPED_MEDIA_ROOT') or BASE_DIR / 'media')
 
-MEDIA_URL = 'media/'
-MEDIA_ROOT = BASE_DIR / 'media'
+# Grandes grilles de saisie (notes : 5 champs × plusieurs centaines d'étudiants)
+DATA_UPLOAD_MAX_NUMBER_FIELDS = 20000
 
 # Authentification : identifiant, ou adresse e-mail (pfe/auth.py)
 AUTHENTICATION_BACKENDS = ['django.contrib.auth.backends.ModelBackend', 'pfe.auth.EmailBackend']
@@ -171,27 +216,58 @@ LOGIN_URL = 'login'
 LOGIN_REDIRECT_URL = 'tableau_de_bord'
 LOGOUT_REDIRECT_URL = 'login'
 
-# E-mails (mot de passe oublié)
+# E-mails (invitations du personnel, mot de passe oublié, erreurs serveur)
 # Développement : les e-mails vont dans MailHog (SMTP localhost:1025, interface http://localhost:8025).
 #   Si MailHog n'est pas lancé, ils sont écrits dans le dossier « emails_dev ».
-# Production : définir GPED_EMAIL_HOST, GPED_EMAIL_PORT, GPED_EMAIL_USER, GPED_EMAIL_PASSWORD
-#   (et éventuellement GPED_EMAIL_FROM) pour un envoi SMTP réel.
-import os
-
+# Production (o2switch) : une boîte e-mail du domaine, créée dans cPanel, ex. no-reply@istmamou.org :
+#   GPED_EMAIL_HOST (serveur SMTP indiqué par cPanel), GPED_EMAIL_PORT=465 et GPED_EMAIL_SSL=1
+#   (ou 587 et GPED_EMAIL_TLS=1), GPED_EMAIL_USER (l'adresse complète), GPED_EMAIL_PASSWORD,
+#   GPED_EMAIL_FROM (ex. « gePed – IST de Mamou <no-reply@istmamou.org> »).
 GPED_MAILHOG_HOST = os.environ.get('GPED_MAILHOG_HOST', 'localhost')
 GPED_MAILHOG_PORT = int(os.environ.get('GPED_MAILHOG_PORT', 1025))
 
 if os.environ.get('GPED_EMAIL_HOST'):
     EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
     EMAIL_HOST = os.environ['GPED_EMAIL_HOST']
-    EMAIL_PORT = int(os.environ.get('GPED_EMAIL_PORT', 587))
+    EMAIL_PORT = int(os.environ.get('GPED_EMAIL_PORT', 465))
     EMAIL_HOST_USER = os.environ.get('GPED_EMAIL_USER', '')
     EMAIL_HOST_PASSWORD = os.environ.get('GPED_EMAIL_PASSWORD', '')
-    EMAIL_USE_TLS = os.environ.get('GPED_EMAIL_TLS', '1') == '1'
+    EMAIL_USE_SSL = os.environ.get('GPED_EMAIL_SSL', '1' if EMAIL_PORT == 465 else '0') == '1'
+    EMAIL_USE_TLS = not EMAIL_USE_SSL and os.environ.get('GPED_EMAIL_TLS', '1') == '1'
+    EMAIL_TIMEOUT = 20
 else:
     EMAIL_BACKEND = 'pfe.email_backend.MailHogBackend'
 EMAIL_FILE_PATH = BASE_DIR / 'emails_dev'
 DEFAULT_FROM_EMAIL = os.environ.get('GPED_EMAIL_FROM', 'gePed <no-reply@gped.local>')
+SERVER_EMAIL = DEFAULT_FROM_EMAIL
+# Administrateurs prévenus par e-mail d'une erreur serveur (500) : GPED_ADMINS=nom@exemple.com,autre@exemple.com
+ADMINS = [(a.split('@')[0], a) for a in _liste('GPED_ADMINS')]
+
+# Journal des erreurs : en production, fichier logs/gped.log (10 Mo × 5 fichiers) + e-mail aux ADMINS
+DOSSIER_JOURNAUX = BASE_DIR / 'logs'
+if not DEBUG:
+    DOSSIER_JOURNAUX.mkdir(exist_ok=True)
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {'simple': {'format': '{asctime} {levelname} {name} : {message}', 'style': '{'}},
+    'handlers': {
+        'console': {'class': 'logging.StreamHandler', 'formatter': 'simple'},
+        **({} if DEBUG else {
+            'fichier': {'class': 'logging.handlers.RotatingFileHandler', 'filename': DOSSIER_JOURNAUX / 'gped.log',
+                        'maxBytes': 10 * 1024 * 1024, 'backupCount': 5, 'encoding': 'utf-8', 'formatter': 'simple',
+                        'level': 'WARNING'},
+            'admins': {'class': 'django.utils.log.AdminEmailHandler', 'level': 'ERROR'},
+        }),
+    },
+    'loggers': {
+        'django': {'handlers': ['console'] + ([] if DEBUG else ['fichier', 'admins']), 'level': 'INFO'},
+        'pfe': {'handlers': ['console'] + ([] if DEBUG else ['fichier']), 'level': 'INFO'},
+        # Robots qui interrogent le serveur avec un faux domaine : journal seulement, pas d'e-mail
+        'django.security.DisallowedHost': {'handlers': [] if DEBUG else ['fichier'], 'level': 'WARNING',
+                                           'propagate': False},
+    },
+}
 
 # Durée de validité d'un lien « mot de passe oublié » (secondes)
 PASSWORD_RESET_TIMEOUT = 2 * 60 * 60

@@ -1,0 +1,4 @@
+# Scripts du serveur (Linux) : toujours des fins de ligne LF, même depuis Windows
+*.sh text eol=lf
+.env.exemple text eol=lf
+*.htaccess text eol=lf

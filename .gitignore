@@ -30,6 +30,9 @@ exemples/
 # Générés
 staticfiles/
 emails_dev/
+logs/
+tmp/
+sauvegardes/
 
 # Outils et fichiers temporaires
 .claude/

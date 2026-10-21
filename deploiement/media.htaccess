@@ -1,0 +1,11 @@
+# gePed — à copier en « .htaccess » dans le dossier media/ du domaine (photos des étudiants).
+# Les fichiers déposés ne sont JAMAIS exécutés comme des programmes, et le dossier n'est pas listable.
+Options -Indexes -ExecCGI
+RemoveHandler .php .phtml .php3 .php4 .php5 .php7 .php8 .pl .py .cgi .sh
+<FilesMatch "\.(php|phtml|php\d|pl|py|cgi|sh|html?|js|svg)$">
+    Require all denied
+</FilesMatch>
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+    Header set Cache-Control "private, max-age=86400"
+</IfModule>
