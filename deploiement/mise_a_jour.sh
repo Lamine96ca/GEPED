@@ -7,9 +7,11 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-# Environnement Python créé par « Setup Python App » (chemin affiché en haut de sa page dans cPanel)
+# Environnement Python créé par « Setup Python App » : ~/virtualenv/<dossier de l'application>/<version>/
+# (ex. ~/virtualenv/repositories/GEPED/3.13/bin/activate), chemin affiché en haut de sa page dans cPanel
 if [ -z "${VIRTUAL_ENV:-}" ]; then
-    ACTIVER=$(ls -d "$HOME"/virtualenv/*/*/bin/activate 2>/dev/null | head -n 1 || true)
+    APPLICATION="${PWD#"$HOME"/}"
+    ACTIVER=$(ls -d "$HOME/virtualenv/$APPLICATION"/*/bin/activate 2>/dev/null | sort -V | tail -n 1 || true)
     if [ -z "$ACTIVER" ]; then
         echo "Environnement Python introuvable : collez d'abord la commande « source … » affichée par Setup Python App."
         exit 1

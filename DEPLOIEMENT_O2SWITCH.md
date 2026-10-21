@@ -52,7 +52,7 @@ Le dépôt GitHub est privé : le serveur a besoin d'une **clé de déploiement*
 2. GitHub → dépôt `GEPED` → **Settings → Deploy keys → Add deploy key** : collez la clé publique, **sans** cocher « Allow write access ».
 3. cPanel → **Git Version Control** → **Créer** :
    - URL de clonage : `git@github.com:Lamine96ca/GEPED.git` ;
-   - chemin : `/home/moncompte/geped`. C'est la racine de l'application, **hors** du dossier public.
+   - chemin : `/home/moncompte/repositories/GEPED` (proposé par cPanel). C'est la racine de l'application, **hors** du dossier public.
 
 ## 5. Créer l'application Python
 
@@ -61,19 +61,19 @@ cPanel → **Setup Python App** → **Create Application** :
 | Champ | Valeur |
 |---|---|
 | Python version | la plus récente proposée (**3.10 au minimum**) |
-| Application root | `geped` |
+| Application root | `repositories/GEPED` (le dossier où Git a cloné le code) |
 | Application URL | `geped.gbelya-tech.com` |
 | Application startup file | `passenger_wsgi.py` |
 | Application Entry point | `application` |
 
-Cliquez sur **Create**. En haut de la page, cPanel affiche une commande `source /home/moncompte/virtualenv/geped/3.x/bin/activate && cd /home/moncompte/geped` : copiez-la.
+Cliquez sur **Create**. En haut de la page, cPanel affiche une commande `source /home/moncompte/virtualenv/repositories/GEPED/3.x/bin/activate && cd /home/moncompte/repositories/GEPED` : copiez-la.
 
 ## 6. Installer et configurer (Terminal)
 
 cPanel → **Terminal** :
 
 ```bash
-source /home/moncompte/virtualenv/geped/3.x/bin/activate && cd /home/moncompte/geped
+source /home/moncompte/virtualenv/repositories/GEPED/3.x/bin/activate && cd /home/moncompte/repositories/GEPED
 pip install --upgrade pip
 pip install -r requirements.txt
 ```
@@ -112,9 +112,9 @@ Avec le **Gestionnaire de fichiers** de cPanel (ou FTP), envoyez :
 
 | Depuis le PC | Vers le serveur |
 |---|---|
-| `ressources/attestation/signature_scolarite.png` (signature et cachet) | `/home/moncompte/geped/ressources/attestation/` |
+| `ressources/attestation/signature_scolarite.png` (signature et cachet) | `/home/moncompte/repositories/GEPED/ressources/attestation/` |
 | `media/etudiant/photo/…` (photos des étudiants) | `/home/moncompte/geped.gbelya-tech.com/media/etudiant/photo/` |
-| `prive/…` (justificatifs, s'il y en a) | `/home/moncompte/geped/prive/` |
+| `prive/…` (justificatifs, s'il y en a) | `/home/moncompte/repositories/GEPED/prive/` |
 
 Les images du cadre des attestations et l'en-tête des relevés sont déjà dans Git.
 
@@ -134,8 +134,8 @@ Les images du cadre des attestations et l'en-tête des relevés sont déjà dans
 
 | Quand | Commande |
 |---|---|
-| Chaque nuit à 2 h | `bash /home/moncompte/geped/deploiement/sauvegarde_base.sh >/dev/null 2>&1` |
-| Chaque dimanche à 3 h | `cd /home/moncompte/geped && /home/moncompte/virtualenv/geped/3.x/bin/python manage.py clearsessions` |
+| Chaque nuit à 2 h | `bash /home/moncompte/repositories/GEPED/deploiement/sauvegarde_base.sh >/dev/null 2>&1` |
+| Chaque dimanche à 3 h | `cd /home/moncompte/repositories/GEPED && /home/moncompte/virtualenv/repositories/GEPED/3.x/bin/python manage.py clearsessions` |
 
 Les sauvegardes (base et photos) vont dans `~/sauvegardes_geped`, hors du dossier public. Les 30 dernières sont gardées. o2switch fait aussi ses propres sauvegardes (cPanel → **JetBackup**).
 
@@ -144,7 +144,7 @@ Les sauvegardes (base et photos) vont dans `~/sauvegardes_geped`, hors du dossie
 Sur le PC : `git push` (ou demandez-le à Claude). Ensuite, dans le Terminal du serveur :
 
 ```bash
-source /home/moncompte/virtualenv/geped/3.x/bin/activate && cd /home/moncompte/geped
+source /home/moncompte/virtualenv/repositories/GEPED/3.x/bin/activate && cd /home/moncompte/repositories/GEPED
 bash deploiement/mise_a_jour.sh
 ```
 

@@ -2,7 +2,7 @@
 # gePed — sauvegarde de la base MySQL (et des fichiers déposés) chez o2switch.
 # Manuellement :   bash deploiement/sauvegarde_base.sh
 # Chaque nuit :    cPanel → Tâches Cron, ex. à 2 h :
-#                  0 2 * * * bash $HOME/geped/deploiement/sauvegarde_base.sh >/dev/null 2>&1
+#                  0 2 * * * bash $HOME/repositories/GEPED/deploiement/sauvegarde_base.sh >/dev/null 2>&1
 # Les sauvegardes vont dans ~/sauvegardes_geped (HORS du dossier public) ; les 30 dernières sont gardées.
 # Le mot de passe est lu dans le fichier .env (jamais écrit sur la ligne de commande).
 set -euo pipefail
