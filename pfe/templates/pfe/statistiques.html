@@ -1,0 +1,213 @@
+{% extends 'pfe/base.html' %}
+{% load humanize %}
+{% block titre %}Statistiques{% endblock %}
+{% block titre_page %}Statistiques des inscriptions{% endblock %}
+{% block sous_titre %}<div class="sous-titre">{{ filtres_texte }} · inscrits uniquement (hors préinscrits){% if profil.role == 'programme' %} · {{ profil.structure }}{% endif %}</div>{% endblock %}
+{% block actions %}
+  <button type="button" class="btn btn-light" onclick="window.print()"><i class="bi bi-printer"></i> <span class="d-none d-sm-inline">Imprimer</span></button>
+  <a href="?{{ params }}{% if params %}&{% endif %}export=xlsx" class="btn btn-or"><i class="bi bi-file-earmark-excel"></i> <span class="d-none d-sm-inline">Exporter (Excel)</span></a>
+{% endblock %}
+{% block contenu %}
+{% with t=niveaux.1 %}
+<div class="card carte-gped liste mb-3 non-imprime">
+  <form method="get" class="barre-filtres" id="filtres-stat">
+    <div class="row g-2 align-items-end">
+      <div class="col-6 col-md-3 col-lg-2">
+        <label class="form-label small text-secondary mb-1" for="f-session">Session</label>
+        <select id="f-session" name="session" class="form-select">
+          <option value="">Toutes</option>
+          {% for s in sessions %}<option value="{{ s.pk }}" {% if filtres.session == s.pk %}selected{% endif %}>{{ s.annee }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-md-3 col-lg-2">
+        <label class="form-label small text-secondary mb-1" for="f-cycle">Cycle</label>
+        <select id="f-cycle" name="cycle" class="form-select">
+          <option value="">Tous</option>
+          {% for code, nom in cycles %}<option value="{{ code }}" {% if filtres.cycle == code %}selected{% endif %}>{{ nom }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-12 col-md-6 col-lg-4">
+        <label class="form-label small text-secondary mb-1" for="f-programme">Programme</label>
+        <select id="f-programme" name="programme" class="form-select">
+          <option value="">{% if liste_programmes|length == 1 %}{{ liste_programmes.0.nom }}{% else %}Tous{% endif %}</option>
+          {% for p in liste_programmes %}{% if liste_programmes|length > 1 %}<option value="{{ p.pk }}" {% if filtres.programme == p.pk %}selected{% endif %}>{{ p.nom }}</option>{% endif %}{% endfor %}
+        </select>
+      </div>
+    </div>
+  </form>
+</div>
+
+<!-- Chiffres clés -->
+<div class="row g-3 mb-3">
+  <div class="col-6 col-lg-3"><div class="kpi"><div class="haut"><span class="tuile tuile-bleu"><i class="bi bi-people"></i></span><div><div class="lib">Inscriptions</div><div class="val">{{ t.total|intcomma }}</div></div></div></div></div>
+  <div class="col-6 col-lg-3"><div class="kpi"><div class="haut"><span class="tuile tuile-bleu"><i class="bi bi-gender-male"></i></span><div><div class="lib">Hommes</div><div class="val">{{ t.h|intcomma }}</div></div></div></div></div>
+  <div class="col-6 col-lg-3"><div class="kpi"><div class="haut"><span class="tuile tuile-rose"><i class="bi bi-gender-female"></i></span><div><div class="lib">Femmes</div><div class="val">{{ t.f|intcomma }} <small class="text-secondary fs-6">({{ t.pct_f }} %)</small></div></div></div></div></div>
+  <div class="col-6 col-lg-3"><div class="kpi"><div class="haut"><span class="tuile tuile-vert"><i class="bi bi-arrow-repeat"></i></span><div><div class="lib">Redoublants</div><div class="val">{{ redoublants.nb|intcomma }}</div></div></div></div></div>
+</div>
+
+<ul class="nav nav-pills onglets-stat mb-3 non-imprime" role="tablist">
+  <li class="nav-item"><button class="nav-link active" data-bs-toggle="pill" data-bs-target="#st-repartition" type="button">Niveau et programme</button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#st-croise" type="button">Programme × niveau</button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#st-evolution" type="button">Évolution</button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#st-promotions" type="button">Promotions</button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#st-feminisation" type="button">Féminisation</button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#st-ages" type="button">Âge</button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#st-origine" type="button">Origine scolaire</button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#st-redoublants" type="button">Redoublants</button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#st-reussite" type="button">Réussite</button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#st-soutenances" type="button">Soutenances</button></li>
+</ul>
+
+<div class="tab-content">
+  <!-- Niveau et programme -->
+  <div class="tab-pane fade show active" id="st-repartition">
+    <div class="row g-3">
+      <div class="col-xl-5"><div class="card carte-gped liste"><div class="card-header"><h3 class="titre-stat">Par niveau</h3></div>
+        {% include 'pfe/_stat_hf.html' with lignes=niveaux.0 total=niveaux.1 titre_colonne='Niveau' %}</div></div>
+      <div class="col-xl-7"><div class="card carte-gped liste"><div class="card-header"><h3 class="titre-stat">Par programme</h3></div>
+        {% include 'pfe/_stat_hf.html' with lignes=programmes.0 total=programmes.1 titre_colonne='Programme' %}</div></div>
+    </div>
+  </div>
+
+  <!-- Programme × niveau -->
+  <div class="tab-pane fade" id="st-croise">
+    <div class="card carte-gped liste"><div class="card-header"><h3 class="titre-stat">Programme × niveau</h3><p class="small text-secondary mb-0">Dans chaque case : total, puis hommes / femmes</p></div>
+      <div class="table-responsive">
+        <table class="table table-etudiants table-stat mb-0">
+          <thead><tr><th>Programme</th>{% for n in croise.niveaux %}<th class="text-end">{{ n }}</th>{% endfor %}<th class="text-end">Total</th></tr></thead>
+          <tbody>
+          {% for l in croise.lignes %}
+            <tr style="cursor:default"><td style="white-space:normal;min-width:200px">{{ l.programme }}</td>
+              {% for c in l.cellules %}<td class="text-end">{% if c %}<span class="fw-semibold">{{ c.total }}</span><div class="small text-secondary">{{ c.h }} H / {{ c.f }} F</div>{% else %}<span class="text-secondary">—</span>{% endif %}</td>{% endfor %}
+              <td class="text-end"><span class="fw-semibold">{{ l.total.total }}</span><div class="small text-secondary">{{ l.total.h }} H / {{ l.total.f }} F</div></td></tr>
+          {% empty %}<tr><td colspan="9"><div class="etat-vide py-3">Aucune donnée pour ces filtres.</div></td></tr>{% endfor %}
+          </tbody>
+          {% if croise.lignes %}<tfoot><tr><th>Total</th>{% for c in croise.totaux %}<th class="text-end">{{ c.total }}<div class="small fw-normal">{{ c.h }} H / {{ c.f }} F</div></th>{% endfor %}<th class="text-end">{{ croise.total.total }}<div class="small fw-normal">{{ croise.total.h }} H / {{ croise.total.f }} F</div></th></tr></tfoot>{% endif %}
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Évolution -->
+  <div class="tab-pane fade" id="st-evolution">
+    <div class="card carte-gped liste"><div class="card-header d-flex flex-wrap align-items-center gap-3"><h3 class="titre-stat me-auto">Évolution des inscriptions par session</h3>
+        <span class="small"><span class="pastille h"></span> Hommes <span class="pastille f ms-2"></span> Femmes</span><span class="small text-secondary">Toutes les sessions (filtres cycle et programme appliqués)</span></div>
+      <div class="graphe-evolution" role="img" aria-label="Inscriptions par session, hommes et femmes">
+        {% for l in evolution %}
+          <div class="colonne" title="{{ l.libelle }} : {{ l.total }} ({{ l.h }} H, {{ l.f }} F)">
+            <div class="valeur">{{ l.total }}</div>
+            <div class="pile"><span class="h" style="height:{{ l.extra.hauteur_h|stringformat:'s' }}%"></span><span class="f" style="height:{{ l.extra.hauteur_f|stringformat:'s' }}%"></span></div>
+            <div class="annee">{{ l.libelle|slice:"2:4" }}-{{ l.libelle|slice:"-2:" }}</div>
+          </div>
+        {% endfor %}
+      </div>
+      <div class="table-responsive">
+        <table class="table table-etudiants table-stat mb-0">
+          <thead><tr><th>Session</th><th class="text-end">Hommes</th><th class="text-end">Femmes</th><th class="text-end">Total</th><th class="text-end">% F</th><th class="text-end">Nouveaux inscrits</th><th class="text-end">Réinscrits</th></tr></thead>
+          <tbody>{% for l in evolution %}<tr style="cursor:default"><td>{{ l.libelle }}</td><td class="text-end">{{ l.h }}</td><td class="text-end">{{ l.f }}</td><td class="text-end fw-semibold">{{ l.total }}</td><td class="text-end">{{ l.pct_f }} %</td><td class="text-end">{{ l.extra.nouveaux }}</td><td class="text-end">{{ l.extra.reinscrits }}</td></tr>{% endfor %}</tbody>
+        </table>
+      </div>
+      <div class="pied-tableau small text-secondary"><i class="bi bi-info-circle"></i> Nouveaux inscrits : LICENCE 1, 1ère Année (et M1) ; réinscrits : les autres niveaux.</div>
+    </div>
+  </div>
+
+  <!-- Promotions -->
+  <div class="tab-pane fade" id="st-promotions">
+    <div class="card carte-gped liste"><div class="card-header"><h3 class="titre-stat">Par promotion</h3></div>
+      {% include 'pfe/_stat_hf.html' with lignes=promotions.0 total=promotions.1 titre_colonne='Promotion' %}</div>
+  </div>
+
+  <!-- Féminisation -->
+  <div class="tab-pane fade" id="st-feminisation">
+    <div class="card carte-gped liste"><div class="card-header"><h3 class="titre-stat">Taux de féminisation par programme</h3><p class="small text-secondary mb-0">Du plus au moins féminisé · moyenne : {{ programmes.1.pct_f }} % de femmes</p></div>
+      {% include 'pfe/_stat_hf.html' with lignes=feminisation total=programmes.1 titre_colonne='Programme' %}</div>
+  </div>
+
+  <!-- Âge -->
+  <div class="tab-pane fade" id="st-ages">
+    <div class="card carte-gped liste"><div class="card-header"><h3 class="titre-stat">Tranches d'âge</h3>
+        <p class="small text-secondary mb-0">Âge au 31 décembre de la 1re année de la session · âge moyen : <strong>{{ ages.moyenne|default:"—" }} ans</strong> (hommes {{ ages.moyenne_h|default:"—" }}, femmes {{ ages.moyenne_f|default:"—" }})</p></div>
+      {% include 'pfe/_completude.html' with taux=ages.taux quoi='date de naissance' %}
+      {% if ages.incoherentes %}<div class="px-4 pb-2 small text-warning-emphasis"><i class="bi bi-exclamation-triangle"></i> {{ ages.incoherentes }} date{{ ages.incoherentes|pluralize }} de naissance incohérente{{ ages.incoherentes|pluralize }} (âge hors de 14 à 70 ans) écartée{{ ages.incoherentes|pluralize }}.</div>{% endif %}
+      {% include 'pfe/_stat_hf.html' with lignes=ages.lignes total=ages.total titre_colonne="Tranche d'âge" %}</div>
+  </div>
+
+  <!-- Origine scolaire -->
+  <div class="tab-pane fade" id="st-origine">
+    <div class="row g-3">
+      <div class="col-xl-6"><div class="card carte-gped liste"><div class="card-header"><h3 class="titre-stat">Option du bac</h3></div>
+        {% include 'pfe/_completude.html' with taux=origine.options.taux quoi='option du bac' %}
+        {% include 'pfe/_stat_hf.html' with lignes=origine.options.lignes total=origine.options.total titre_colonne='Option' %}</div></div>
+      <div class="col-xl-6"><div class="card carte-gped liste"><div class="card-header"><h3 class="titre-stat">Nationalité</h3></div>
+        {% include 'pfe/_completude.html' with taux=origine.nationalites.taux quoi='nationalité' %}
+        {% include 'pfe/_stat_hf.html' with lignes=origine.nationalites.lignes total=origine.nationalites.total titre_colonne='Nationalité' %}</div></div>
+      <div class="col-xl-6"><div class="card carte-gped liste"><div class="card-header"><h3 class="titre-stat">Centres du bac (15 premiers)</h3></div>
+        {% include 'pfe/_completude.html' with taux=origine.centres.taux quoi='centre du bac' %}
+        {% include 'pfe/_stat_hf.html' with lignes=origine.centres.lignes total=origine.centres.total titre_colonne='Centre' %}</div></div>
+      <div class="col-xl-6"><div class="card carte-gped liste"><div class="card-header"><h3 class="titre-stat">Écoles d'origine (15 premières)</h3></div>
+        {% include 'pfe/_completude.html' with taux=origine.ecoles.taux quoi="école d'origine" %}
+        {% include 'pfe/_stat_hf.html' with lignes=origine.ecoles.lignes total=origine.ecoles.total titre_colonne='École' %}</div></div>
+      <div class="col-12"><div class="card carte-gped liste"><div class="card-header"><h3 class="titre-stat">Moyenne au bac par programme</h3></div>
+        {% include 'pfe/_completude.html' with taux=origine.taux_bac quoi='moyenne au bac' %}
+        <div class="table-responsive"><table class="table table-etudiants table-stat mb-0">
+          <thead><tr><th>Programme</th><th class="text-end">Moyenne au bac</th><th class="text-end">Étudiants renseignés</th></tr></thead>
+          <tbody>{% for b in origine.bac %}<tr style="cursor:default"><td>{{ b.programme }}</td><td class="text-end fw-semibold">{{ b.moyenne }}</td><td class="text-end">{{ b.n }}</td></tr>{% empty %}<tr><td colspan="3"><div class="etat-vide py-3">Aucune moyenne au bac renseignée.</div></td></tr>{% endfor %}</tbody>
+        </table></div></div></div>
+    </div>
+  </div>
+
+  <!-- Redoublants -->
+  <div class="tab-pane fade" id="st-redoublants">
+    {% if not redoublants.nb %}<div class="alert alert-info small"><i class="bi bi-info-circle"></i> Aucune inscription n'est marquée « Redoublant » pour ces filtres : cochez la case sur l'inscription (ou importez la colonne) pour alimenter ces tableaux.</div>{% endif %}
+    <div class="row g-3">
+      <div class="col-xl-5"><div class="card carte-gped liste"><div class="card-header"><h3 class="titre-stat">Redoublants par niveau</h3></div>
+        {% include 'pfe/_stat_hf.html' with lignes=redoublants.niveaux.0 total=redoublants.niveaux.1 titre_colonne='Niveau' extra='taux' titre_taux='Taux de redoublement' %}</div></div>
+      <div class="col-xl-7"><div class="card carte-gped liste"><div class="card-header"><h3 class="titre-stat">Redoublants par programme</h3></div>
+        {% include 'pfe/_stat_hf.html' with lignes=redoublants.programmes.0 total=redoublants.programmes.1 titre_colonne='Programme' extra='taux' titre_taux='Taux de redoublement' %}</div></div>
+    </div>
+  </div>
+
+  <!-- Réussite -->
+  <div class="tab-pane fade" id="st-reussite">
+    <div class="alert alert-light border small"><i class="bi bi-info-circle"></i> D'après les résultats annuels calculés à partir des notes : admis = moyenne de l'année ≥ {{ reussite.seuil }}/10. {{ reussite.nb|intcomma }} résultat{{ reussite.nb|pluralize }} pour ces filtres.</div>
+    <div class="row g-3">
+      {% for titre, bloc, col in blocs_reussite %}
+        <div class="{{ col }}"><div class="card carte-gped liste"><div class="card-header"><h3 class="titre-stat">{{ titre }}</h3></div>
+          <div class="table-responsive"><table class="table table-etudiants table-stat mb-0">
+            <thead><tr><th></th><th class="text-end">Effectif</th><th class="text-end">Admis</th><th class="text-end">Taux</th><th class="text-end">Taux H</th><th class="text-end">Taux F</th></tr></thead>
+            <tbody>{% for l in bloc.0 %}<tr style="cursor:default"><td style="white-space:normal">{{ l.libelle }}</td><td class="text-end">{{ l.total }}</td><td class="text-end">{{ l.extra.admis_h|add:l.extra.admis_f }}</td><td class="text-end fw-semibold">{{ l.extra.taux }} %</td><td class="text-end">{{ l.extra.taux_h }} %</td><td class="text-end">{{ l.extra.taux_f }} %</td></tr>{% empty %}<tr><td colspan="6"><div class="etat-vide py-3">Aucun résultat calculé pour ces filtres.</div></td></tr>{% endfor %}</tbody>
+            {% if bloc.0 %}<tfoot><tr><th>Total</th><th class="text-end">{{ bloc.1.total }}</th><th class="text-end">{{ bloc.1.extra.admis_h|add:bloc.1.extra.admis_f }}</th><th class="text-end">{{ bloc.1.extra.taux }} %</th><th class="text-end">{{ bloc.1.extra.taux_h }} %</th><th class="text-end">{{ bloc.1.extra.taux_f }} %</th></tr></tfoot>{% endif %}
+          </table></div></div></div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Soutenances -->
+  <div class="tab-pane fade" id="st-soutenances">
+    <div class="card carte-gped liste"><div class="card-header"><h3 class="titre-stat">Soutenances par programme</h3></div>
+      <div class="table-responsive"><table class="table table-etudiants table-stat mb-0">
+        <thead><tr><th>Programme</th><th class="text-end">Hommes</th><th class="text-end">Femmes</th><th class="text-end">Total</th><th class="text-end">Notées</th><th class="text-end">Validées</th><th class="text-end">Taux</th><th class="text-end">Moyenne</th></tr></thead>
+        <tbody>{% for l in soutenances.lignes %}<tr style="cursor:default"><td style="white-space:normal">{{ l.libelle }}</td><td class="text-end">{{ l.h }}</td><td class="text-end">{{ l.f }}</td><td class="text-end fw-semibold">{{ l.total }}</td><td class="text-end">{{ l.extra.notees }}</td><td class="text-end">{{ l.extra.validees }}</td><td class="text-end">{{ l.extra.taux }} %</td><td class="text-end">{{ l.extra.moyenne|default:"—" }}</td></tr>{% empty %}<tr><td colspan="8"><div class="etat-vide py-3">Aucune soutenance pour ces filtres.</div></td></tr>{% endfor %}</tbody>
+        {% if soutenances.lignes %}{% with t=soutenances.total %}<tfoot><tr><th>Total</th><th class="text-end">{{ t.h }}</th><th class="text-end">{{ t.f }}</th><th class="text-end">{{ t.total }}</th><th class="text-end">{{ t.extra.notees }}</th><th class="text-end">{{ t.extra.validees }}</th><th class="text-end">{{ t.extra.taux }} %</th><th class="text-end">{{ t.extra.moyenne|default:"—" }}</th></tr></tfoot>{% endwith %}{% endif %}
+      </table></div></div>
+  </div>
+</div>
+{% endwith %}
+{% endblock %}
+{% block scripts %}
+<script>
+  (function () {
+    var form = document.getElementById('filtres-stat');
+    form.querySelectorAll('select').forEach(function (s) { s.addEventListener('change', function () { form.submit(); }); });
+    // Onglet retenu d'une page à l'autre (préférence du navigateur)
+    var cle = 'gped-stat-onglet';
+    try {
+      var id = localStorage.getItem(cle), b = id && document.querySelector('[data-bs-target="' + id + '"]');
+      if (b) bootstrap.Tab.getOrCreateInstance(b).show();
+    } catch (e) {}
+    document.querySelectorAll('.onglets-stat [data-bs-toggle="pill"]').forEach(function (b) {
+      b.addEventListener('shown.bs.tab', function () { try { localStorage.setItem(cle, b.dataset.bsTarget); } catch (e) {} });
+    });
+  })();
+</script>
+{% endblock %}

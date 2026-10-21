@@ -1,0 +1,65 @@
+{% extends 'pfe/base.html' %}
+{% load humanize %}
+{% block titre %}Soutenances{% endblock %}
+{% block titre_page %}Liste des soutenances{% endblock %}
+{% block sous_titre %}<div class="sous-titre">Note sur 10 · validée à partir de {{ seuil }} · moyenne générale = moyenne du cycle × {{ poids.poids_cycle }} + soutenance × {{ poids.poids_soutenance }}</div>{% endblock %}
+{% block actions %}
+  <a href="?{{ params }}{% if params %}&{% endif %}export=xlsx" class="btn btn-light"><i class="bi bi-file-earmark-excel"></i> <span class="d-none d-sm-inline">Exporter</span></a>
+  <a href="{% url 'soutenances_importer' %}" class="btn btn-or"><i class="bi bi-upload"></i> <span class="d-none d-sm-inline">Importer</span></a>
+  <a href="{% url 'soutenance_creer' %}" class="btn btn-primary"><i class="bi bi-plus-lg"></i> <span class="d-none d-sm-inline">Nouvelle soutenance</span></a>
+{% endblock %}
+{% block contenu %}
+<div class="card carte-gped liste">
+  {% include 'pfe/_filtres_soutenances.html' with avec_recherche=True %}
+  <div class="px-4 pt-3 small text-secondary"><i class="bi bi-mortarboard text-primary"></i> {{ page.paginator.count|intcomma }} soutenance{{ page.paginator.count|pluralize }}</div>
+  <div class="table-responsive mt-2">
+    <table class="table table-etudiants mb-0">
+      <thead><tr><th>Étudiant</th><th>Promotion</th><th>Programme</th><th>Session</th><th>Projet / thème</th><th>Encadreur</th><th class="text-end">Note</th><th>Mention</th><th class="text-end">Moy. générale</th><th class="text-end"></th></tr></thead>
+      <tbody>
+      {% for s in liste %}
+        <tr style="cursor:default">
+          <td style="min-width:190px"><b style="color:var(--encre);font-weight:600">{{ s.etudiant.nom }}</b> {{ s.etudiant.prenom }}<div class="matricule text-secondary">{{ s.etudiant.matricule|default:"" }} · {{ s.cycle }}</div></td>
+          <td>{{ s.promotion }}</td>
+          <td class="text-truncate" style="max-width:170px" title="{{ s.filiere }}">{{ s.filiere }}</td>
+          <td>{{ s.session.annee }}</td>
+          <td style="white-space:normal;min-width:200px;max-width:300px">
+            {% if s.projet %}<a href="{% url 'projet_modifier' s.projet.pk %}" class="fw-semibold">{{ s.projet.intitule }}</a>
+              {% if s.projet.theme %}<div class="small text-secondary text-truncate" style="max-width:280px" title="{{ s.projet.theme }}">{{ s.projet.theme }}</div>{% endif %}
+            {% else %}<span class="text-secondary">— Sans projet —</span>{% endif %}
+          </td>
+          <td class="text-truncate" style="max-width:150px" title="{{ s.projet.encadreur }}">{{ s.projet.encadreur|default:"—" }}</td>
+          <td class="text-end text-nowrap">
+            {% if s.verrouillee %}<i class="bi bi-lock-fill text-secondary" title="Note verrouillée{% if s.verrouillee_le %} le {{ s.verrouillee_le|date:'d/m/Y' }}{% endif %}"></i>{% endif %}
+            <span class="finale {% if s.note_finale is not None %}{% if s.validee %}ok{% else %}ko{% endif %}{% endif %}">{% if s.note_finale is not None %}{{ s.note_finale|floatformat:"-2" }}{% else %}—{% endif %}</span>
+          </td>
+          <td class="text-nowrap">{{ s.mention|default:"—" }}{% if s.par_session %} <span class="pill pill-accent">Session</span>{% endif %}</td>
+          <td class="text-end"><span class="resultat-moy {% if s.resultat and s.resultat.moyenne_generale is not None %}{% if s.resultat.moyenne_generale >= seuil %}ok{% else %}ko{% endif %}{% endif %}">{% if s.resultat and s.resultat.moyenne_generale is not None %}{{ s.resultat.moyenne_generale|floatformat:"-2" }}{% else %}—{% endif %}</span></td>
+          <td class="text-end text-nowrap">
+            <a class="btn btn-icone" href="{% url 'soutenance_modifier' s.pk %}?suivant={{ request.get_full_path|urlencode }}" title="Compléter / modifier"><i class="bi bi-pencil"></i></a>
+            {% if profil.est_scolarite or not s.verrouillee %}
+              <form method="post" action="{% url 'soutenance_supprimer' s.pk %}" class="d-inline" onsubmit="return confirm('Supprimer la soutenance de {{ s.etudiant.prenom|escapejs }} {{ s.etudiant.nom|escapejs }} ?');">
+                {% csrf_token %}<input type="hidden" name="suivant" value="{{ request.get_full_path }}">
+                <button class="btn btn-icone text-danger" title="Supprimer"><i class="bi bi-trash"></i></button>
+              </form>
+            {% endif %}
+          </td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="10"><div class="etat-vide"><i class="bi bi-mortarboard"></i>Aucune soutenance avec ces filtres.
+          <div class="mt-2"><a href="{% url 'soutenance_creer' %}">Ajouter une soutenance</a> ou <a href="{% url 'soutenances_importer' %}">importer les anciens étudiants</a>.</div></div></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if page.has_other_pages %}
+    <div class="pied-tableau d-flex justify-content-between align-items-center">
+      <span class="small text-secondary">{{ page.start_index }}–{{ page.end_index }} sur {{ page.paginator.count|intcomma }}</span>
+      <ul class="pagination pagination-sm mb-0">
+        {% if page.has_previous %}<li class="page-item"><a class="page-link" href="?{{ params }}&page={{ page.previous_page_number }}"><i class="bi bi-chevron-left"></i></a></li>{% endif %}
+        <li class="page-item active"><span class="page-link">{{ page.number }} / {{ page.paginator.num_pages }}</span></li>
+        {% if page.has_next %}<li class="page-item"><a class="page-link" href="?{{ params }}&page={{ page.next_page_number }}"><i class="bi bi-chevron-right"></i></a></li>{% endif %}
+      </ul>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

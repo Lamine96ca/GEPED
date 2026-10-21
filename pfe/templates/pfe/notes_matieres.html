@@ -1,0 +1,52 @@
+{% extends 'pfe/base.html' %}
+{% load humanize %}
+{% block titre %}Saisie des notes{% endblock %}
+{% block titre_page %}Saisie des notes{% endblock %}
+{% block sous_titre %}<div class="sous-titre">Choisissez une matière · notes sur 10, matière validée à partir de 5</div>{% endblock %}
+{% block actions %}
+  <a href="{% url 'notes_importer' %}" class="btn btn-or"><i class="bi bi-upload"></i> <span class="d-none d-sm-inline">Importer des notes</span></a>
+{% endblock %}
+{% block contenu %}
+<div class="card carte-gped liste">
+  {% include 'pfe/_filtres_notes.html' with avec_licence=True avec_recherche=True %}
+  <div class="table-responsive">
+    <table class="table table-etudiants mb-0">
+      <thead><tr><th>Matière</th><th>Programme</th><th>Licence</th><th>Semestre</th><th>Session</th><th class="text-end">Crédits</th><th>Avancement</th><th class="text-end"></th></tr></thead>
+      <tbody>
+      {% for m in matieres %}
+        <tr style="cursor:default">
+          <td style="white-space:normal;min-width:220px"><b style="color:var(--encre);font-weight:600">{{ m.nom }}</b>{% if m.code %} <span class="matricule text-secondary">{{ m.code }}</span>{% endif %}</td>
+          <td class="text-truncate" style="max-width:200px" title="{{ m.filiere }}">{{ m.filiere }}</td>
+          <td>{{ m.licence.nom }}</td>
+          <td>{{ m.semestre.nom }}</td>
+          <td>{{ m.session.annee }}</td>
+          <td class="text-end">{{ m.credit }}</td>
+          <td style="min-width:170px">
+            <div class="d-flex align-items-center gap-2">
+              <div class="progress flex-grow-1" style="height:6px"><div class="progress-bar {% if m.inscrits and m.nb_notes >= m.inscrits %}bg-success{% endif %}" style="width:{% widthratio m.nb_notes m.inscrits|default:1 100 %}%"></div></div>
+              <span class="small text-secondary text-nowrap">{{ m.nb_notes }} / {{ m.inscrits }}</span>
+            </div>
+          </td>
+          <td class="text-end text-nowrap">
+            {% if m.delibere %}<span class="pill pill-attention me-1" title="Semestre délibéré : notes verrouillées"><i class="bi bi-lock-fill"></i> Délibéré</span>{% endif %}
+            <a class="btn btn-sm btn-primary" href="{% url 'notes_saisie' m.pk %}"><i class="bi bi-pencil-square"></i> {% if m.delibere and not profil.est_scolarite %}Voir{% else %}Saisir{% endif %}</a>
+          </td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="8"><div class="etat-vide"><i class="bi bi-journal-bookmark"></i>Aucune matière avec ces filtres.</div></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if page.has_other_pages %}
+    <div class="pied-tableau d-flex justify-content-between align-items-center">
+      <span class="small text-secondary">{{ page.start_index }}–{{ page.end_index }} sur {{ page.paginator.count|intcomma }}</span>
+      <ul class="pagination pagination-sm mb-0">
+        {% if page.has_previous %}<li class="page-item"><a class="page-link" href="?{{ params }}&page={{ page.previous_page_number }}"><i class="bi bi-chevron-left"></i></a></li>{% endif %}
+        <li class="page-item active"><span class="page-link">{{ page.number }} / {{ page.paginator.num_pages }}</span></li>
+        {% if page.has_next %}<li class="page-item"><a class="page-link" href="?{{ params }}&page={{ page.next_page_number }}"><i class="bi bi-chevron-right"></i></a></li>{% endif %}
+      </ul>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

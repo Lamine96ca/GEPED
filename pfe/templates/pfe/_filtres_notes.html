@@ -1,0 +1,72 @@
+{# Barre de filtres des pages Notes. Paramètres : avec_licence, avec_recherche, semestre_requis #}
+<form method="get" class="barre-filtres border-bottom" id="filtres-notes">
+  {% if tri %}<input type="hidden" name="tri" value="{{ tri }}"><input type="hidden" name="ordre" value="{{ ordre }}">{% endif %}
+  <div class="row g-2 align-items-end">
+    {% if avec_recherche %}
+      <div class="col-12 col-lg-3">
+        <label class="form-label small text-secondary mb-1" for="f-q">Recherche</label>
+        <div class="champ-icone"><i class="bi bi-search"></i>
+          <input type="search" id="f-q" name="q" value="{{ filtres.q }}" class="form-control" placeholder="{{ placeholder|default:'Nom ou code de la matière' }}">
+        </div>
+      </div>
+    {% endif %}
+    <div class="col-6 col-md-3 col-lg-2">
+      <label class="form-label small text-secondary mb-1" for="f-session">Session</label>
+      <select id="f-session" name="session" class="form-select">
+        <option value="">Toutes</option>
+        {% for s in sessions %}<option value="{{ s.pk }}" {% if filtres.session == s.pk %}selected{% endif %}>{{ s.annee }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-6 col-md-3 col-lg-3">
+      <label class="form-label small text-secondary mb-1" for="f-programme">Programme</label>
+      <select id="f-programme" name="programme" class="form-select">
+        {% if programmes|length != 1 %}<option value="">{% if semestre_requis %}Choisir…{% else %}Tous{% endif %}</option>{% endif %}
+        {% for p in programmes %}<option value="{{ p.pk }}" {% if filtres.programme == p.pk %}selected{% endif %}>{{ p.nom }}</option>{% endfor %}
+      </select>
+    </div>
+    {% if avec_licence %}
+      <div class="col-6 col-md-3 col-lg-2">
+        <label class="form-label small text-secondary mb-1" for="f-licence">Licence</label>
+        <select id="f-licence" name="licence" class="form-select">
+          <option value="">Toutes</option>
+          {% for l in licences %}<option value="{{ l.pk }}" {% if filtres.licence == l.pk %}selected{% endif %}>{{ l.nom }}</option>{% endfor %}
+        </select>
+      </div>
+    {% endif %}
+    {% if semestres_visibles is not False %}
+    <div class="col-6 col-md-3 col-lg-2">
+      <label class="form-label small text-secondary mb-1" for="f-semestre">Semestre</label>
+      <select id="f-semestre" name="semestre" class="form-select">
+        <option value="">{% if semestre_requis %}Choisir…{% else %}Tous{% endif %}</option>
+        {% for s in semestres %}<option value="{{ s.pk }}" data-licence="{{ s.licence_id }}" {% if filtres.semestre == s.pk %}selected{% endif %}>{{ s.nom }} ({{ s.licence.nom }})</option>{% endfor %}
+      </select>
+    </div>
+    {% endif %}
+    {% if avec_statut %}
+      <div class="col-6 col-md-3 col-lg-2">
+        <label class="form-label small text-secondary mb-1" for="f-statut">Statut</label>
+        <select id="f-statut" name="statut" class="form-select">
+          <option value="">Toutes</option>
+          {% for code, libelle in statuts %}<option value="{{ code }}" {% if filtres.statut == code %}selected{% endif %}>{{ libelle }}</option>{% endfor %}
+        </select>
+      </div>
+    {% endif %}
+  </div>
+</form>
+<script>
+  (function () {
+    var form = document.getElementById('filtres-notes');
+    var licence = document.getElementById('f-licence'), semestre = document.getElementById('f-semestre');
+    function filtrer() {
+      if (!licence || !semestre) return;
+      Array.prototype.forEach.call(semestre.options, function (o) {
+        o.hidden = !!(o.value && licence.value && o.dataset.licence !== licence.value);
+      });
+      if (semestre.selectedOptions[0] && semestre.selectedOptions[0].hidden) semestre.value = '';
+    }
+    filtrer();
+    form.querySelectorAll('select').forEach(function (s) {
+      s.addEventListener('change', function () { if (s === licence) filtrer(); form.submit(); });
+    });
+  })();
+</script>

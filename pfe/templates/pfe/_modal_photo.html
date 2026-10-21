@@ -1,0 +1,68 @@
+{% load static %}
+{# Fenêtre photo commune : prise de vue (téléphone ou webcam), chargement, recadrage 3:4, compression ≤ 350 Ko.  #}
+{# S'ouvre depuis tout élément [data-photo-ouvrir] (voir static/pfe/js/photo.js).                               #}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.css">
+<div class="modal fade" id="modal-photo" tabindex="-1" aria-labelledby="modal-photo-titre" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-photo">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="modal-photo-titre"><i class="bi bi-camera"></i> <span data-photo-titre>Photo</span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
+      </div>
+      <div class="modal-body">
+        {% csrf_token %}
+        <div class="alert alert-danger py-2 small d-none" role="alert" data-photo-erreur></div>
+
+        <!-- 1. Choix -->
+        <div data-etape="choix">
+          <div class="choix-photo">
+            <button type="button" class="tuile-choix" data-action="prendre">
+              <i class="bi bi-camera"></i><strong>Prendre une photo</strong><span>Appareil photo du téléphone ou webcam</span>
+            </button>
+            <button type="button" class="tuile-choix" data-action="charger">
+              <i class="bi bi-image"></i><strong>Charger une photo</strong><span>Depuis la galerie ou l'ordinateur</span>
+            </button>
+          </div>
+          <button type="button" class="btn btn-link text-danger w-100 mt-2 d-none" data-action="retirer"><i class="bi bi-trash"></i> Retirer la photo actuelle</button>
+          <p class="small text-secondary text-center mb-0 mt-2"><i class="bi bi-magic"></i> Recadrage au format identité et compression automatique (350 Ko maximum).</p>
+        </div>
+
+        <!-- 2. Webcam (PC) -->
+        <div data-etape="camera" class="d-none">
+          <div class="cadre-camera"><video playsinline autoplay muted data-photo-video></video><span class="gabarit" aria-hidden="true"></span></div>
+          <div class="d-flex gap-2 justify-content-center mt-3">
+            <button type="button" class="btn btn-light" data-action="retour"><i class="bi bi-arrow-left"></i> Retour</button>
+            <button type="button" class="btn btn-light d-none" data-action="basculer" title="Changer de caméra"><i class="bi bi-arrow-repeat"></i></button>
+            <button type="button" class="btn btn-primary" data-action="capturer"><i class="bi bi-camera-fill"></i> Capturer</button>
+          </div>
+        </div>
+
+        <!-- 3. Recadrage -->
+        <div data-etape="recadrage" class="d-none">
+          <div class="cadre-recadrage"><img alt="Photo à recadrer" data-photo-image></div>
+          <div class="d-flex flex-wrap gap-2 justify-content-center mt-3">
+            <button type="button" class="btn btn-icone" data-action="rotation-g" title="Tourner à gauche"><i class="bi bi-arrow-counterclockwise"></i></button>
+            <button type="button" class="btn btn-icone" data-action="rotation-d" title="Tourner à droite"><i class="bi bi-arrow-clockwise"></i></button>
+            <button type="button" class="btn btn-icone" data-action="zoom-moins" title="Dézoomer"><i class="bi bi-zoom-out"></i></button>
+            <button type="button" class="btn btn-icone" data-action="zoom-plus" title="Zoomer"><i class="bi bi-zoom-in"></i></button>
+          </div>
+          <p class="small text-secondary text-center mt-2 mb-0">Déplacez et zoomez la photo pour centrer le visage dans le cadre.</p>
+          <div class="d-flex flex-wrap gap-2 justify-content-end mt-3">
+            <button type="button" class="btn btn-light" data-action="retour"><i class="bi bi-arrow-left"></i> Reprendre</button>
+            <button type="button" class="btn btn-primary" data-action="valider"><i class="bi bi-check-lg"></i> Utiliser cette photo</button>
+          </div>
+        </div>
+
+        <!-- 4. Compression / envoi -->
+        <div data-etape="envoi" class="d-none text-center py-4">
+          <div class="spinner-border text-primary" role="status"></div>
+          <div class="mt-2 text-secondary" data-photo-statut>Compression…</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <input type="file" accept="image/*" capture="user" class="visually-hidden" tabindex="-1" data-photo-input-camera>
+  <input type="file" accept="image/*" class="visually-hidden" tabindex="-1" data-photo-input-fichier>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js"></script>
+<script src="{% static 'pfe/js/photo.js' %}?v={{ version_statique }}"></script>

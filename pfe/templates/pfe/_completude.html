@@ -1,0 +1,5 @@
+{# Taux de fiches renseignées pour une statistique aux données incomplètes. Paramètres : taux, quoi #}
+<div class="completude {% if taux < 50 %}faible{% elif taux < 90 %}moyenne{% else %}bonne{% endif %}">
+  <div class="d-flex justify-content-between small"><span><i class="bi bi-clipboard-data"></i> Fiches renseignées ({{ quoi }}) : <strong>{{ taux }} %</strong> des inscriptions</span>{% if taux < 90 %}<span class="text-secondary">à compléter sur les fiches</span>{% endif %}</div>
+  <div class="jauge"><span style="width:{{ taux|stringformat:'s' }}%"></span></div>
+</div>

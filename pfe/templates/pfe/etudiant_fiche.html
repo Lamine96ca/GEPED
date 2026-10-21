@@ -1,0 +1,166 @@
+{% extends 'pfe/base.html' %}
+{% block titre %}{{ etudiant.prenom }} {{ etudiant.nom }}{% endblock %}
+{% block titre_page %}<a href="{% url 'etudiants_liste' %}" class="text-decoration-none text-secondary me-1" title="Retour à la liste"><i class="bi bi-arrow-left"></i></a> Fiche étudiant{% endblock %}
+{% block contenu %}
+
+{% if request.GET.imprimer and profil.est_scolarite and not etudiant.preinscrit %}
+  <div class="alert alert-success d-flex flex-wrap align-items-center gap-2">
+    <i class="bi bi-printer fs-5"></i>
+    <div class="me-auto">Inscription enregistrée : imprimez la fiche à faire signer par l'étudiant.</div>
+    <a class="btn btn-sm btn-primary" href="{% url 'inscription_fiche_pdf' inscription.pk %}" target="_blank" rel="noopener"><i class="bi bi-printer"></i> Imprimer la fiche</a>
+  </div>
+{% endif %}
+
+<!-- Bandeau de l'étudiant -->
+<div class="bandeau-profil">
+  {% if peut_changer_photo %}
+    <button type="button" class="avatar-profil avatar-cliquable {% if photo_url %}a-photo{% endif %}" data-apercu="etudiant"
+            {% if photo_url %}style="background-image: url('{{ photo_url }}')"{% endif %}
+            data-photo-ouvrir data-photo-url="{% url 'etudiant_photo' etudiant.pk %}" data-photo-cible='[data-apercu="etudiant"]'
+            data-photo-actuelle="{% if photo_url %}1{% else %}0{% endif %}" data-photo-titre="Photo de {{ etudiant.prenom }} {{ etudiant.nom }}"
+            title="{% if photo_url %}Changer la photo{% else %}Ajouter une photo{% endif %}">
+      {{ etudiant.prenom|first }}{{ etudiant.nom|first }}
+      <span class="badge-photo"><i class="bi bi-camera"></i></span>
+    </button>
+  {% else %}
+    <span class="avatar-profil {% if photo_url %}a-photo{% endif %}" {% if photo_url %}style="background-image: url('{{ photo_url }}')"{% endif %}>{{ etudiant.prenom|first }}{{ etudiant.nom|first }}</span>
+  {% endif %}
+  <div style="min-width:0">
+    <div class="surtitre">{{ inscription.get_cycle_display|default:"Étudiant" }} · {{ inscription.licence }}</div>
+    <h2>{{ etudiant.prenom }} {{ etudiant.nom }}</h2>
+    <span class="puce"><i class="bi bi-upc"></i> {{ etudiant.matricule|default:"Sans matricule" }}</span>
+    {% if inscription.filiere %}<span class="puce"><i class="bi bi-diagram-3"></i> {{ inscription.filiere }}</span>{% endif %}
+    <span class="puce"><i class="bi bi-calendar3"></i> Session {{ inscription.session }}</span>
+    {% if inscription.redouble %}<span class="puce"><i class="bi bi-arrow-repeat"></i> Redoublant</span>{% else %}<span class="puce"><i class="bi bi-check2-circle"></i> Passant</span>{% endif %}
+    {% if etudiant.preinscrit %}<span class="puce"><i class="bi bi-hourglass-split"></i> Préinscrit</span>{% endif %}
+  </div>
+  {% if profil.est_scolarite %}
+    <div class="actions">
+      {% if etudiant.preinscrit %}
+        <form method="post" action="{% url 'valider_preinscriptions' %}" class="d-inline">
+          {% csrf_token %}
+          <input type="hidden" name="ids" value="{{ inscription.pk }}">
+          <input type="hidden" name="suivant" value="{{ request.path }}">
+          <button class="btn btn-or-plein"><i class="bi bi-check2-circle"></i> Inscrire l'étudiant</button>
+        </form>
+      {% endif %}
+      {% if not etudiant.preinscrit %}
+        <a class="btn btn-verre" href="{% url 'inscription_fiche_pdf' inscription.pk %}" target="_blank" rel="noopener"
+           title="Fiche à imprimer pour {{ inscription.licence }} · {{ inscription.session }}"><i class="bi bi-printer"></i> Fiche d'inscription</a>
+      {% endif %}
+      {% if etudiant.matricule %}
+        <a class="btn btn-verre" href="{% url 'attestations_type' 'inscription' %}?matricule={{ etudiant.matricule|urlencode }}&licence={{ inscription.licence_id }}"
+           title="Attestation d'inscription pour {{ inscription.licence }} · {{ inscription.session }}"><i class="bi bi-file-earmark-pdf"></i> Attestation</a>
+      {% endif %}
+      <a href="{% url 'inscription_creer' %}?etudiant={{ etudiant.pk }}" class="btn btn-verre"><i class="bi bi-arrow-repeat"></i> Réinscrire</a>
+      <a href="{% url 'inscription_modifier' inscription.pk %}" class="btn btn-or-plein"><i class="bi bi-pencil"></i> Modifier</a>
+    </div>
+  {% endif %}
+</div>
+
+<div class="row g-3">
+  <!-- Inscription -->
+  <div class="col-lg-4 d-flex flex-column gap-3">
+    <div class="card carte-gped">
+      <div class="card-body">
+        <div class="entete-carte">
+          <span class="icone-carte"><i class="bi bi-journal-check"></i></span>
+          <div><h3>Inscription</h3><p>Session {{ inscription.session }}</p></div>
+        </div>
+        <ul class="infos-compte">
+          <li><i class="bi bi-layers"></i><div><div class="lib">Cycle</div><div class="val">{{ inscription.get_cycle_display|default:"—" }}</div></div></li>
+          <li><i class="bi bi-mortarboard"></i><div><div class="lib">Niveau</div><div class="val">{{ inscription.licence }}{% if inscription.semestre %} · {{ inscription.semestre }}{% endif %}</div></div></li>
+          <li><i class="bi bi-diagram-3"></i><div><div class="lib">Programme</div><div class="val">{{ inscription.filiere|default:"—" }}</div></div></li>
+          <li><i class="bi bi-people"></i><div><div class="lib">Promotion</div><div class="val">{{ inscription.promotion|default:"—" }}</div></div></li>
+          <li><i class="bi bi-calendar-check"></i><div><div class="lib">Inscrit le</div><div class="val">{{ inscription.date_inscription|date:"d/m/Y" }}</div></div></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="card carte-gped">
+      <div class="card-body">
+        <div class="entete-carte">
+          <span class="icone-carte"><i class="bi bi-signpost-split"></i></span>
+          <div><h3>Parcours</h3><p>{{ historique|length }} inscription{{ historique|length|pluralize }}</p></div>
+        </div>
+        <div class="parcours">
+          {% for i in historique %}
+            <a class="etape {% if i.pk == inscription.pk %}actuelle{% endif %}" href="{% url 'etudiant_fiche' i.pk %}">
+              <span class="point"><i class="bi {% if i.pk == inscription.pk %}bi-geo-alt-fill{% else %}bi-circle{% endif %}"></i></span>
+              <div style="min-width:0">
+                <div class="titre">{{ i.session }} · {{ i.licence }}</div>
+                <div class="detail">{{ i.filiere|default:"Sans programme" }}{% if i.semestre %} · {{ i.semestre }}{% endif %}{% if i.promotion %} · {{ i.promotion }}{% endif %}</div>
+              </div>
+            </a>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    {% if profil.est_scolarite %}
+    <form method="post" action="{% url 'inscription_supprimer' inscription.pk %}"
+          onsubmit="return confirm('Supprimer cette inscription ({{ inscription.session|escapejs }}) ? La fiche de l’étudiant est conservée.');">
+      {% csrf_token %}
+      <button class="btn btn-danger-doux w-100"><i class="bi bi-trash"></i> Supprimer cette inscription</button>
+    </form>
+    {% endif %}
+  </div>
+
+  <div class="col-lg-8 d-flex flex-column gap-3">
+    <!-- État civil -->
+    <div class="card carte-gped">
+      <div class="card-body">
+        <div class="entete-carte">
+          <span class="icone-carte"><i class="bi bi-person-vcard"></i></span>
+          <div><h3>État civil</h3><p>Identité de l'étudiant</p></div>
+        </div>
+        <ul class="infos-compte grille">
+          <li><i class="bi bi-gender-ambiguous"></i><div><div class="lib">Sexe</div><div class="val">{{ etudiant.get_sexe_display }}</div></div></li>
+          <li><i class="bi bi-flag"></i><div><div class="lib">Nationalité</div><div class="val">{{ etudiant.nationalite|default:"—" }}</div></div></li>
+          <li><i class="bi bi-cake2"></i><div><div class="lib">Date de naissance</div><div class="val">{{ etudiant.date_de_naissance|date:"d/m/Y"|default:"—" }}</div></div></li>
+          <li><i class="bi bi-geo-alt"></i><div><div class="lib">Lieu de naissance</div><div class="val">{{ etudiant.lieu_de_naissance|default:"—" }}</div></div></li>
+          <li><i class="bi bi-person"></i><div><div class="lib">Père</div><div class="val">{{ etudiant.pere|default:"—" }}</div></div></li>
+          <li><i class="bi bi-person"></i><div><div class="lib">Mère</div><div class="val">{{ etudiant.mere|default:"—" }}</div></div></li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Contacts -->
+    <div class="card carte-gped">
+      <div class="card-body">
+        <div class="entete-carte">
+          <span class="icone-carte"><i class="bi bi-telephone"></i></span>
+          <div><h3>Contacts</h3><p>Pour joindre l'étudiant ou son tuteur</p></div>
+        </div>
+        <ul class="infos-compte grille">
+          <li><i class="bi bi-telephone"></i><div><div class="lib">Téléphone</div><div class="val">{% if etudiant.telephone %}<a href="tel:{{ etudiant.telephone }}" class="text-decoration-none">{{ etudiant.telephone }}</a>{% else %}—{% endif %}</div></div></li>
+          <li><i class="bi bi-envelope"></i><div><div class="lib">E-mail</div><div class="val">{{ etudiant.email }}</div></div></li>
+          <li><i class="bi bi-house"></i><div><div class="lib">Adresse</div><div class="val">{{ etudiant.adresse|default:"—" }}{% if etudiant.ville %}, {{ etudiant.ville }}{% endif %}</div></div></li>
+          <li><i class="bi bi-person-heart"></i><div><div class="lib">Tuteur</div><div class="val">{{ etudiant.tuteur|default:"—" }}{% if etudiant.contact_de_tuteur %} · {{ etudiant.contact_de_tuteur }}{% endif %}</div></div></li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Baccalauréat -->
+    <div class="card carte-gped">
+      <div class="card-body">
+        <div class="entete-carte">
+          <span class="icone-carte"><i class="bi bi-award"></i></span>
+          <div><h3>Baccalauréat</h3><p>Parcours avant l'entrée dans l'établissement</p></div>
+        </div>
+        <ul class="infos-compte grille trois">
+          <li><i class="bi bi-upc-scan"></i><div><div class="lib">INE</div><div class="val">{{ etudiant.ine|default:"—" }}</div></div></li>
+          <li><i class="bi bi-file-text"></i><div><div class="lib">PV Bac</div><div class="val">{{ etudiant.pvbac|default:"—" }}</div></div></li>
+          <li><i class="bi bi-graph-up"></i><div><div class="lib">Moyenne</div><div class="val">{{ etudiant.moyenne_au_bac|default:"—" }}</div></div></li>
+          <li><i class="bi bi-book"></i><div><div class="lib">Option</div><div class="val">{{ etudiant.option_de_bac|default:"—" }}</div></div></li>
+          <li><i class="bi bi-calendar"></i><div><div class="lib">Obtention / Orientation</div><div class="val">{{ etudiant.annee_obtention_bac|default:"—" }} / {{ etudiant.annee_orientation|default:"—" }}</div></div></li>
+          <li><i class="bi bi-building"></i><div><div class="lib">École / Centre</div><div class="val">{{ etudiant.ecole_origine|default:"—" }} / {{ etudiant.centre_de_bac|default:"—" }}</div></div></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+{% if peut_changer_photo %}{% include 'pfe/_modal_photo.html' %}{% endif %}
+{% endblock %}

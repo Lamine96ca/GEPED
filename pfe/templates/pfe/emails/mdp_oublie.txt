@@ -1,0 +1,11 @@
+{% autoescape off %}Bonjour {{ user.get_full_name|default:user.username }},
+
+Vous avez demandé à réinitialiser le mot de passe de votre compte gePed (identifiant : {{ user.get_username }}).
+
+Pour choisir un nouveau mot de passe, ouvrez ce lien (valable 2 heures) :
+{{ protocol }}://{{ domain }}{% url 'password_reset_confirm' uidb64=uid token=token %}
+
+Si vous n'êtes pas à l'origine de cette demande, ignorez ce message : votre mot de passe reste inchangé.
+
+— gePed · Institut Supérieur de Technologie de Mamou
+{% endautoescape %}

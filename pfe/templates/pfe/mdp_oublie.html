@@ -1,0 +1,25 @@
+{% extends 'pfe/page_publique.html' %}
+{% block titre %}Mot de passe oublié{% endblock %}
+{% block panneau %}{% include 'pfe/_panneau_mdp.html' %}{% endblock %}
+
+{% block carte %}
+  <div class="surtitre">Étape 1 sur 3</div>
+  <h1>Mot de passe oublié</h1>
+  <p class="intro">Saisissez l'adresse e-mail de votre compte. Nous vous enverrons un lien pour choisir un nouveau mot de passe.</p>
+  <form method="post" novalidate>{% csrf_token %}
+    <div class="mb-4">
+      <label class="form-label" for="{{ form.email.id_for_label }}">{{ form.email.label }}</label>
+      <div class="champ-icone">
+        <i class="bi bi-envelope"></i>
+        <input type="email" class="form-control" name="{{ form.email.html_name }}" id="{{ form.email.id_for_label }}"
+               value="{{ form.email.value|default:'' }}" maxlength="254" autocomplete="email" autofocus required
+               placeholder="nom@exemple.com">
+      </div>
+      {% for err in form.email.errors %}<div class="invalid-feedback d-block">{{ err }}</div>{% endfor %}
+    </div>
+    <button class="btn btn-primary w-100">Envoyer le lien <i class="bi bi-send"></i></button>
+  </form>
+  <div class="text-center mt-4">
+    <a href="{% url 'login' %}" class="small lien-or"><i class="bi bi-arrow-left"></i> Retour à la connexion</a>
+  </div>
+{% endblock %}

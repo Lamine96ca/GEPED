@@ -1,0 +1,12 @@
+{% extends 'pfe/page_publique.html' %}
+{% block titre %}E-mail envoyé{% endblock %}
+{% block panneau %}{% include 'pfe/_panneau_mdp.html' %}{% endblock %}
+
+{% block carte %}
+  <div class="surtitre">Étape 2 sur 3</div>
+  <h1><i class="bi bi-envelope-check" style="color:var(--or)"></i> Vérifiez votre messagerie</h1>
+  <p class="intro">Si un compte correspond à cette adresse, un e-mail contenant un lien de réinitialisation vient de lui être envoyé. Le lien est valable 2 heures.</p>
+  <div class="alert alert-info small">Rien reçu après quelques minutes ? Regardez dans les courriers indésirables, vérifiez l'adresse saisie, ou refaites une demande.</div>
+  <a href="{% url 'login' %}" class="btn btn-primary w-100 mb-3">Retour à la connexion</a>
+  <div class="text-center"><a href="{% url 'password_reset' %}" class="small lien-or">Refaire une demande</a></div>
+{% endblock %}

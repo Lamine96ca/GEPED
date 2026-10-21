@@ -1,0 +1,10 @@
+{% extends 'pfe/page_publique.html' %}
+{% block titre %}Mot de passe modifié{% endblock %}
+{% block panneau %}{% include 'pfe/_panneau_mdp.html' %}{% endblock %}
+
+{% block carte %}
+  <div class="surtitre">Terminé</div>
+  <h1><i class="bi bi-check-circle" style="color:var(--succes)"></i> Mot de passe modifié</h1>
+  <p class="intro">Votre nouveau mot de passe est enregistré. Vous pouvez maintenant vous connecter.</p>
+  <a href="{% url 'login' %}" class="btn btn-primary w-100">Se connecter <i class="bi bi-arrow-right"></i></a>
+{% endblock %}

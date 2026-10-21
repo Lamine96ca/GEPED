@@ -1,0 +1,22 @@
+{# Tableau Hommes / Femmes / Total / % femmes. Paramètres : lignes, total, titre_colonne, extra ('taux' : colonne taux) #}
+<div class="table-responsive">
+  <table class="table table-etudiants table-stat mb-0">
+    <thead><tr><th>{{ titre_colonne }}</th><th class="text-end">Hommes</th><th class="text-end">Femmes</th><th class="text-end">Total</th><th class="text-end">% F</th>{% if extra == 'taux' %}<th class="text-end">{{ titre_taux|default:"Taux" }}</th>{% endif %}<th class="d-none d-md-table-cell" style="width:24%">Répartition</th></tr></thead>
+    <tbody>
+    {% for l in lignes %}
+      <tr style="cursor:default">
+        <td style="white-space:normal">{{ l.libelle }}</td>
+        <td class="text-end">{{ l.h }}</td><td class="text-end">{{ l.f }}</td>
+        <td class="text-end fw-semibold">{{ l.total }}</td><td class="text-end">{{ l.pct_f }} %</td>
+        {% if extra == 'taux' %}<td class="text-end fw-semibold">{{ l.extra.taux }} %</td>{% endif %}
+        <td class="d-none d-md-table-cell"><div class="barre-hf" title="{{ l.h }} H · {{ l.f }} F"><span class="f" style="width:{{ l.pct_f|stringformat:'s' }}%"></span></div></td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="7"><div class="etat-vide py-3">Aucune donnée pour ces filtres.</div></td></tr>
+    {% endfor %}
+    </tbody>
+    {% if lignes %}
+      <tfoot><tr><th>{{ total.libelle }}</th><th class="text-end">{{ total.h }}</th><th class="text-end">{{ total.f }}</th><th class="text-end">{{ total.total }}</th><th class="text-end">{{ total.pct_f }} %</th>{% if extra == 'taux' %}<th class="text-end">{{ total.extra.taux }} %</th>{% endif %}<th class="d-none d-md-table-cell"></th></tr></tfoot>
+    {% endif %}
+  </table>
+</div>

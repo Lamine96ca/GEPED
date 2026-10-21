@@ -1,0 +1,119 @@
+{% extends 'pfe/base.html' %}
+{% block titre %}{{ titre }}{% endblock %}
+{% block titre_page %}<a href="{% url 'projets_liste' %}" class="text-decoration-none text-secondary me-1" title="Retour aux projets"><i class="bi bi-arrow-left"></i></a> {{ titre }}{% endblock %}
+{% block sous_titre %}<div class="sous-titre">{% if projet %}{{ projet.filiere }} · {{ projet.session }} · {{ projet.promotion }}{% else %}Seuls l'intitulé, le programme, la session et la promotion sont obligatoires{% endif %}</div>{% endblock %}
+{% block actions %}
+  {% if projet %}
+    <a href="{% url 'projet_pv' projet.pk %}" target="_blank" rel="noopener" class="btn btn-or"><i class="bi bi-file-earmark-pdf"></i> <span class="d-none d-sm-inline">PV de soutenance</span></a>
+    <a href="{% url 'soutenances_notes' %}?session={{ projet.session_id }}&programme={{ projet.filiere_id }}&promotion={{ projet.promotion_id }}&projet={{ projet.pk }}" class="btn btn-light"><i class="bi bi-123"></i> <span class="d-none d-sm-inline">Saisir les notes</span></a>
+  {% endif %}
+{% endblock %}
+{% block contenu %}
+<form method="post" novalidate>
+  {% csrf_token %}
+  {% if form.errors %}<div class="alert alert-danger py-2 d-flex gap-2 align-items-center"><i class="bi bi-exclamation-circle"></i> Veuillez corriger les champs signalés.</div>{% endif %}
+  {% if form.non_field_errors %}<div class="alert alert-danger py-2">{{ form.non_field_errors|join:" " }}</div>{% endif %}
+  <div class="row g-3">
+    <div class="col-xl-8 d-flex flex-column gap-3">
+      <div class="card carte-gped">
+        <div class="card-body">
+          <div class="entete-carte"><span class="icone-carte"><i class="bi bi-diagram-3"></i></span><div><h3>Projet</h3><p>Intitulé, thème et rattachement</p></div></div>
+          <div class="row g-3">
+            {% include 'pfe/_champ.html' with champ=form.intitule col='col-md-5' %}
+            {% include 'pfe/_champ.html' with champ=form.statut col='col-md-3 col-6' %}
+            {% include 'pfe/_champ.html' with champ=form.cycle col='col-md-4 col-6' %}
+            {% include 'pfe/_champ.html' with champ=form.theme col='col-12' %}
+            {% include 'pfe/_champ.html' with champ=form.filiere col='col-md-6' %}
+            {% include 'pfe/_champ.html' with champ=form.session col='col-md-3 col-6' %}
+            {% include 'pfe/_champ.html' with champ=form.promotion col='col-md-3 col-6' %}
+            <div class="col-12 mt-1"><div class="small text-secondary" id="aide-cycle"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card carte-gped">
+        <div class="card-body">
+          <div class="entete-carte"><span class="icone-carte"><i class="bi bi-people"></i></span><div><h3>Membres ({{ membres|length }})</h3><p>Étudiants qui soutiennent ce projet</p></div></div>
+          {% if membres %}
+            <div class="table-responsive rounded-3 border mb-3">
+              <table class="table table-etudiants mb-0">
+                <thead><tr><th>Étudiant</th><th class="text-end">Note</th><th>Mention</th><th class="text-end">Moy. générale</th><th class="text-center">Retirer</th></tr></thead>
+                <tbody>
+                {% for s in membres %}
+                  <tr style="cursor:default">
+                    <td><a href="{% url 'soutenance_modifier' s.pk %}?suivant={{ request.get_full_path|urlencode }}" class="fw-semibold">{{ s.etudiant.nom }} {{ s.etudiant.prenom }}</a><div class="matricule text-secondary">{{ s.etudiant.matricule }}</div></td>
+                    <td class="text-end text-nowrap">{% if s.verrouillee %}<i class="bi bi-lock-fill text-secondary" title="Note verrouillée"></i> {% endif %}<span class="finale {% if s.note_finale is not None %}{% if s.validee %}ok{% else %}ko{% endif %}{% endif %}">{% if s.note_finale is not None %}{{ s.note_finale|floatformat:"-2" }}{% else %}—{% endif %}</span></td>
+                    <td>{{ s.mention|default:"—" }}{% if s.par_session %} <span class="pill pill-accent">Session</span>{% endif %}</td>
+                    <td class="text-end">{% if s.resultat and s.resultat.moyenne_generale is not None %}{{ s.resultat.moyenne_generale|floatformat:"-2" }}{% else %}—{% endif %}</td>
+                    <td class="text-center"><input type="checkbox" class="form-check-input" name="retirer" value="{{ s.pk }}" aria-label="Retirer {{ s.etudiant.prenom }} {{ s.etudiant.nom }}"></td>
+                  </tr>
+                {% endfor %}
+                </tbody>
+              </table>
+            </div>
+            <div class="small text-secondary mb-3"><i class="bi bi-info-circle"></i> Un membre retiré garde sa soutenance et sa note (sans projet) ; s'il n'avait pas de note, sa soutenance est supprimée.</div>
+          {% endif %}
+          <div class="row g-3">
+            {% include 'pfe/_champ.html' with champ=form.ajouter col='col-12' %}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-xl-4 d-flex flex-column gap-3">
+      <div class="card carte-gped">
+        <div class="card-body">
+          <div class="entete-carte"><span class="icone-carte"><i class="bi bi-pen"></i></span><div><h3>Encadrement et signatures</h3><p>Imprimés sur le PV</p></div></div>
+          <div class="row g-3">
+            {% include 'pfe/_champ.html' with champ=form.encadreur col='col-12' %}
+            {% include 'pfe/_champ.html' with champ=form.chef_departement col='col-12' %}
+            <div class="col-12 mt-1"><div class="small text-secondary">{{ form.chef_departement.help_text }}</div></div>
+            {% include 'pfe/_champ.html' with champ=form.maitre_stage col='col-12' %}
+            {% include 'pfe/_champ.html' with champ=form.entreprise col='col-12' %}
+          </div>
+        </div>
+      </div>
+      <div class="card carte-gped">
+        <div class="card-body">
+          <div class="entete-carte"><span class="icone-carte"><i class="bi bi-calendar-event"></i></span><div><h3>Jury et créneau</h3><p>Le calendrier signale les conflits</p></div></div>
+          <div class="row g-3">
+            {% include 'pfe/_champ.html' with champ=form.president_jury col='col-12' %}
+            {% include 'pfe/_champ.html' with champ=form.examinateur col='col-12' %}
+            {% include 'pfe/_champ.html' with champ=form.rapporteur col='col-12' %}
+            {% include 'pfe/_champ.html' with champ=form.date col='col-6' %}
+            {% include 'pfe/_champ.html' with champ=form.heure col='col-6' %}
+            {% include 'pfe/_champ.html' with champ=form.salle col='col-12' %}
+          </div>
+          <div class="d-grid gap-2 mt-4">
+            <button class="btn btn-primary" name="enregistrer"><i class="bi bi-check-lg"></i> Enregistrer</button>
+            {% if not projet %}<button class="btn btn-or" name="continuer"><i class="bi bi-plus-lg"></i> Enregistrer et créer un autre</button>{% endif %}
+            <a href="{% url 'projets_liste' %}" class="btn btn-light">Annuler</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</form>
+{% endblock %}
+{% block scripts %}
+{{ cycles_des_programmes|json_script:"cycles-des-programmes" }}
+<script>
+  (function () {
+    var cycles = JSON.parse(document.getElementById('cycles-des-programmes').textContent);
+    var prog = document.getElementById('{{ form.filiere.id_for_label }}');
+    var cycle = document.getElementById('{{ form.cycle.id_for_label }}');
+    var aide = document.getElementById('aide-cycle');
+    function maj() {
+      var c = cycle.value || cycles[prog.value] || '';
+      var habituel = !c || c === 'Ingénieur' || c === 'Master';
+      aide.className = 'small ' + (habituel ? 'text-secondary' : 'text-warning-emphasis');
+      aide.innerHTML = '<i class="bi ' + (habituel ? 'bi-info-circle' : 'bi-exclamation-triangle') + '"></i> '
+        + (c ? 'Cycle retenu : <strong>' + c + '</strong>.' : 'Cycle vide : celui du programme est repris.')
+        + (habituel ? '' : " Ce n'est ni Ingénieur ni Master : accepté, mais inhabituel.");
+    }
+    prog.addEventListener('change', maj);
+    cycle.addEventListener('change', maj);
+    maj();
+  })();
+</script>
+{% endblock %}

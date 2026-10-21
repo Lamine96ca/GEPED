@@ -1,0 +1,155 @@
+{% extends 'pfe/base.html' %}
+{% block titre %}Notes · {{ matiere.nom }}{% endblock %}
+{% block titre_page %}<a href="{% url 'notes_matieres' %}?session={{ matiere.session_id }}&programme={{ matiere.filiere_id }}&semestre={{ matiere.semestre_id }}" class="text-decoration-none text-secondary me-1" title="Retour aux matières"><i class="bi bi-arrow-left"></i></a> {{ matiere.nom }}{% endblock %}
+{% block sous_titre %}<div class="sous-titre">{{ matiere.filiere }} · {{ matiere.licence.nom }} · {{ matiere.semestre.nom }} · {{ matiere.session.annee }} · {{ matiere.credit }} crédits{% if matiere.code %} · {{ matiere.code }}{% endif %}</div>{% endblock %}
+{% block actions %}
+  <a href="{% url 'notes_resultats' %}?session={{ matiere.session_id }}&programme={{ matiere.filiere_id }}&semestre={{ matiere.semestre_id }}" class="btn btn-light"><i class="bi bi-bar-chart"></i> <span class="d-none d-sm-inline">Résultats du semestre</span></a>
+{% endblock %}
+{% block contenu %}
+
+{% if delibere %}
+  <div class="alert {% if modifiable %}alert-warning{% else %}alert-secondary{% endif %} d-flex gap-2 align-items-start">
+    <i class="bi bi-lock-fill mt-1"></i>
+    <div>
+      <strong>Semestre délibéré</strong>{% if deliberation %} le {{ deliberation.date|date:"d/m/Y à H:i" }}{% if deliberation.par %} par {{ deliberation.par.get_full_name|default:deliberation.par.username }}{% endif %}{% endif %}.
+      {% if modifiable %}Vous pouvez encore modifier ces notes : indiquez le motif et joignez le justificatif ; chaque modification est tracée.
+      {% else %}Les notes sont verrouillées : seule la scolarité peut encore les modifier.{% endif %}
+    </div>
+  </div>
+{% endif %}
+
+<form method="post" enctype="multipart/form-data" novalidate id="form-notes">
+  {% csrf_token %}
+  {% if erreurs %}<div class="alert alert-danger py-2"><i class="bi bi-exclamation-circle"></i> Certaines notes sont invalides (signalées en rouge) : rien n'a été enregistré.</div>{% endif %}
+  <div class="card carte-gped liste">
+    <div class="card-header d-flex flex-wrap align-items-center gap-3">
+      <div class="entete-carte mb-0 me-auto">
+        <span class="icone-carte"><i class="bi bi-table"></i></span>
+        <div><h3>{{ lignes|length }} étudiant{{ lignes|length|pluralize }} inscrit{{ lignes|length|pluralize }}</h3><p>{{ nb_notes }} note{{ nb_notes|pluralize }} saisie{{ nb_notes|pluralize }} · ABS = 0</p></div>
+      </div>
+      <div class="small text-secondary" style="max-width:520px">
+        <i class="bi bi-calculator"></i> Moyenne = contrôle 25 % + TP 35 % + examen 40 % (sans TP : 40 % + 60 %).
+        Si vous remplissez <strong>Moyenne</strong>, elle est prise telle quelle. Le <strong>rattrapage</strong> remplace la moyenne s'il est meilleur (« Session »).
+      </div>
+    </div>
+    <div class="table-responsive" style="max-height: calc(100vh - 330px);">
+      <table class="table table-etudiants mb-0 grille-notes">
+        <thead><tr><th style="width:3rem">#</th><th>Étudiant</th>
+          <th class="text-center">Contrôle</th><th class="text-center">TP</th><th class="text-center">Examen</th>
+          <th class="text-center">Moyenne</th><th class="text-center">Rattrapage</th><th class="text-center">Finale</th><th>Mention</th></tr></thead>
+        <tbody>
+        {% for l in lignes %}
+          <tr style="cursor:default" data-ligne>
+            <td class="text-secondary">{{ forloop.counter }}</td>
+            <td style="min-width:200px"><b style="color:var(--encre);font-weight:600">{{ l.etudiant.nom }}</b> {{ l.etudiant.prenom }}<div class="matricule text-secondary">{{ l.etudiant.matricule|default:"" }}</div></td>
+            {% for c in l.champs %}
+              <td class="text-center">
+                <input type="text" inputmode="decimal" name="{{ c.nom }}_{{ l.etudiant.pk }}" value="{{ c.valeur }}" data-champ="{{ c.nom }}"
+                       class="form-control form-control-sm note-champ{% if c.erreur %} is-invalid{% endif %}"
+                       {% if c.calculee %}placeholder="{{ c.calculee }}" title="Calculée : {{ c.calculee }}"{% endif %}
+                       {% if c.erreur %}title="{{ c.erreur }}"{% endif %}
+                       {% if not modifiable %}disabled{% endif %} aria-label="{{ c.libelle }} de {{ l.etudiant.prenom }} {{ l.etudiant.nom }}">
+              </td>
+            {% endfor %}
+            <td class="text-center"><span class="finale {% if l.note.moyenne_finale is not None %}{% if l.note.validee %}ok{% else %}ko{% endif %}{% endif %}" data-finale>{% if l.note.moyenne_finale is not None %}{{ l.note.moyenne_finale|floatformat:"-2" }}{% else %}—{% endif %}</span></td>
+            <td class="text-nowrap" data-mention>{{ l.note.mention }}{% if l.note.par_session %} <span class="pill pill-accent">Session</span>{% endif %}</td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="9"><div class="etat-vide"><i class="bi bi-people"></i>Aucun étudiant inscrit en {{ matiere.licence.nom }} · {{ matiere.filiere }} · {{ matiere.session.annee }}.</div></td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if modifiable and lignes %}
+      <div class="pied-tableau">
+        {% if delibere %}
+          <div class="row g-2 mb-3">
+            <div class="col-md-7">
+              <label class="form-label small mb-1" for="motif">Motif de la modification <span class="text-danger">*</span></label>
+              <textarea id="motif" name="motif" rows="2" class="form-control{% if erreur_motif %} is-invalid{% endif %}" placeholder="Ex. : erreur de report constatée par le jury, PV n° …">{{ motif }}</textarea>
+              {% if erreur_motif %}<div class="invalid-feedback d-block">{{ erreur_motif }}</div>{% endif %}
+            </div>
+            <div class="col-md-5">
+              <label class="form-label small mb-1" for="justificatif">Justificatif (PV, courrier…)</label>
+              <input type="file" id="justificatif" name="justificatif" class="form-control" accept=".pdf,image/*">
+              <div class="small text-secondary mt-1"><i class="bi bi-lock"></i> Conservé en interne, jamais publié.</div>
+            </div>
+          </div>
+        {% endif %}
+        <div class="d-flex flex-wrap align-items-center gap-2">
+          <button class="btn btn-primary"><i class="bi bi-check-lg"></i> Enregistrer les notes</button>
+          <span class="small text-secondary" id="nb-modifs"></span>
+        </div>
+      </div>
+    {% endif %}
+  </div>
+</form>
+{% endblock %}
+{% block scripts %}
+{{ regles|json_script:"regles-notes" }}
+<script>
+  // Aperçu immédiat de la moyenne finale (le serveur refait le calcul à l'enregistrement)
+  (function () {
+    var r = JSON.parse(document.getElementById('regles-notes').textContent);
+    function lire(input) {
+      var s = (input.value || '').trim().replace(',', '.').toUpperCase();
+      if (s === '') return null;
+      if (s === 'ABS' || s === 'ABSENT' || s === 'A') return 0;
+      var v = Number(s);
+      return isNaN(v) || v < 0 || v > r.note_max ? NaN : v;
+    }
+    function moyenne(c, tp, e) {
+      var d = {controle: c, tp: tp, examen: e}, cles = Object.keys(d).filter(function (k) { return d[k] !== null; });
+      if (!cles.length) return null;
+      var poids = (cles.length === 2 && cles.indexOf('tp') < 0) ? r.poids_sans_tp : r.poids, total = 0, somme = 0;
+      cles.forEach(function (k) { somme += d[k] * poids[k]; total += poids[k]; });
+      return somme / total;
+    }
+    function mention(m) {
+      if (m === null) return '';
+      for (var i = 0; i < r.mentions.length; i++) { if (m >= r.mentions[i][0]) return r.mentions[i][1]; }
+      return '';
+    }
+    var modifs = 0, initial = new Map();
+    document.querySelectorAll('.note-champ').forEach(function (i) { initial.set(i, i.value); });
+    function maj(tr) {
+      var v = {};
+      tr.querySelectorAll('.note-champ').forEach(function (i) {
+        v[i.dataset.champ] = lire(i);
+        i.classList.toggle('is-invalid', Number.isNaN(v[i.dataset.champ]));
+      });
+      if (Object.values(v).some(Number.isNaN)) return;
+      var moy = v.moyenne !== null ? v.moyenne : moyenne(v.controle, v.tp, v.examen);
+      var session = v.rattrapage !== null && (moy === null || v.rattrapage > moy);
+      var finale = session ? v.rattrapage : moy;
+      var span = tr.querySelector('[data-finale]');
+      span.textContent = finale === null ? '—' : (Math.round(finale * 100) / 100).toString().replace('.', ',');
+      span.className = 'finale ' + (finale === null ? '' : (finale >= r.seuil_validation ? 'ok' : 'ko'));
+      tr.querySelector('[data-mention]').innerHTML = mention(finale) + (session ? ' <span class="pill pill-accent">Session</span>' : '');
+    }
+    document.querySelectorAll('[data-ligne]').forEach(function (tr) {
+      tr.addEventListener('input', function () { maj(tr); compter(); });
+    });
+    function compter() {
+      var n = 0;
+      initial.forEach(function (val, i) { if (i.value !== val) n++; });
+      var el = document.getElementById('nb-modifs');
+      if (el) el.textContent = n ? n + ' case(s) modifiée(s), pas encore enregistrée(s)' : '';
+      modifs = n;
+    }
+    window.addEventListener('beforeunload', function (e) { if (modifs) { e.preventDefault(); e.returnValue = ''; } });
+    var form = document.getElementById('form-notes');
+    if (form) form.addEventListener('submit', function () { modifs = 0; });
+    // Entrée : passer à la même colonne de la ligne suivante
+    document.querySelectorAll('.note-champ').forEach(function (i) {
+      i.addEventListener('keydown', function (e) {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        var tr = i.closest('tr').nextElementSibling;
+        var suivant = tr && tr.querySelector('[data-champ="' + i.dataset.champ + '"]');
+        if (suivant) { suivant.focus(); suivant.select(); }
+      });
+    });
+  })();
+</script>
+{% endblock %}

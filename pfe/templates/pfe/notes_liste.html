@@ -1,0 +1,63 @@
+{% extends 'pfe/base.html' %}
+{% load humanize %}
+{% block titre %}Liste des notes{% endblock %}
+{% block titre_page %}Liste des notes{% endblock %}
+{% block sous_titre %}<div class="sous-titre">{{ page.paginator.count|intcomma }} note{{ page.paginator.count|pluralize }} · sur 10, validée à partir de {{ seuil }}{% if profil.role == 'programme' %} · {{ profil.structure }}{% endif %}</div>{% endblock %}
+{% block actions %}
+  <a href="?{{ params }}{% if params %}&{% endif %}export=xlsx" class="btn btn-or"><i class="bi bi-file-earmark-excel"></i> <span class="d-none d-sm-inline">Exporter (Excel)</span></a>
+  <a href="{% url 'notes_matieres' %}" class="btn btn-primary"><i class="bi bi-pencil-square"></i> <span class="d-none d-sm-inline">Saisir des notes</span></a>
+{% endblock %}
+{% block contenu %}
+<div class="card carte-gped liste">
+  {% include 'pfe/_filtres_notes.html' with avec_licence=True avec_recherche=True avec_statut=True placeholder='Matricule, nom ou matière' %}
+  <div class="table-responsive">
+    <table class="table table-etudiants mb-0">
+      <thead><tr>
+        {% for cle, c in colonnes.items %}
+          {% if cle == 'etudiant' or cle == 'matiere' or cle == 'semestre' or cle == 'programme' or cle == 'session' %}
+            <th data-tri="{{ cle }}" class="{% if c.actif %}trie{% endif %}{% if cle == 'programme' %} d-none d-xl-table-cell{% endif %}">
+              <a href="?{{ c.url }}" class="lien-tri">{{ c.libelle }} <i class="bi {% if c.actif %}{% if c.ordre == 'asc' %}bi-sort-up{% else %}bi-sort-down{% endif %}{% else %}bi-arrow-down-up{% endif %}"></i></a>
+            </th>
+          {% endif %}
+        {% endfor %}
+        <th class="text-center">Contrôle</th><th class="text-center">TP</th><th class="text-center">Examen</th><th class="text-center">Moyenne</th><th class="text-center">Rattrapage</th>
+        {% with c=colonnes.finale %}
+          <th data-tri="finale" class="text-center{% if c.actif %} trie{% endif %}"><a href="?{{ c.url }}" class="lien-tri">{{ c.libelle }} <i class="bi {% if c.actif %}{% if c.ordre == 'asc' %}bi-sort-up{% else %}bi-sort-down{% endif %}{% else %}bi-arrow-down-up{% endif %}"></i></a></th>
+        {% endwith %}
+        <th>Mention</th><th class="text-end"></th>
+      </tr></thead>
+      <tbody>
+      {% for n in page %}
+        <tr style="cursor:default">
+          <td style="min-width:180px"><b style="color:var(--encre);font-weight:600">{{ n.etudiant.nom }}</b> {{ n.etudiant.prenom }}<div class="matricule text-secondary">{{ n.etudiant.matricule|default:"" }}</div></td>
+          <td style="white-space:normal;min-width:170px">{{ n.matiere.nom }}<div class="small text-secondary">{{ n.matiere.credit }} crédits{% if n.matiere.code %} · {{ n.matiere.code }}{% endif %}</div></td>
+          <td>{{ n.matiere.semestre.nom }}</td>
+          <td class="d-none d-xl-table-cell text-truncate" style="max-width:170px" title="{{ n.matiere.filiere }}">{{ n.matiere.filiere }}</td>
+          <td>{{ n.matiere.session.annee }}</td>
+          <td class="text-center">{% if n.controle is not None %}{{ n.controle|floatformat:"-2" }}{% else %}<span class="text-secondary">—</span>{% endif %}</td>
+          <td class="text-center">{% if n.tp is not None %}{{ n.tp|floatformat:"-2" }}{% else %}<span class="text-secondary">—</span>{% endif %}</td>
+          <td class="text-center">{% if n.examen is not None %}{{ n.examen|floatformat:"-2" }}{% else %}<span class="text-secondary">—</span>{% endif %}</td>
+          <td class="text-center">{% if n.moyenne is not None %}{{ n.moyenne|floatformat:"-2" }}{% if n.moyenne_deposee %} <i class="bi bi-box-arrow-in-down small text-secondary" title="Moyenne déposée par le programme"></i>{% endif %}{% else %}<span class="text-secondary">—</span>{% endif %}</td>
+          <td class="text-center">{% if n.rattrapage is not None %}{{ n.rattrapage|floatformat:"-2" }}{% else %}<span class="text-secondary">—</span>{% endif %}</td>
+          <td class="text-center"><span class="resultat-moy {% if n.moyenne_finale is not None %}{% if n.moyenne_finale >= seuil %}ok{% else %}ko{% endif %}{% endif %}">{% if n.moyenne_finale is not None %}{{ n.moyenne_finale|floatformat:"-2" }}{% else %}—{% endif %}</span></td>
+          <td class="text-nowrap">{{ n.mention|default:"—" }}{% if n.par_session %} <span class="pill pill-accent">Session</span>{% endif %}</td>
+          <td class="text-end"><a class="btn btn-icone" href="{% url 'notes_saisie' n.matiere_id %}" title="Ouvrir la saisie de cette matière"><i class="bi bi-pencil"></i></a></td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="13"><div class="etat-vide"><i class="bi bi-123"></i>Aucune note avec ces filtres.</div></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if page.has_other_pages %}
+    <div class="pied-tableau d-flex justify-content-between align-items-center">
+      <span class="small text-secondary">{{ page.start_index }}–{{ page.end_index }} sur {{ page.paginator.count|intcomma }}</span>
+      <ul class="pagination pagination-sm mb-0">
+        {% if page.has_previous %}<li class="page-item"><a class="page-link" href="?{{ params }}&page={{ page.previous_page_number }}"><i class="bi bi-chevron-left"></i></a></li>{% endif %}
+        <li class="page-item active"><span class="page-link">{{ page.number }} / {{ page.paginator.num_pages }}</span></li>
+        {% if page.has_next %}<li class="page-item"><a class="page-link" href="?{{ params }}&page={{ page.next_page_number }}"><i class="bi bi-chevron-right"></i></a></li>{% endif %}
+      </ul>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

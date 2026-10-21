@@ -1,0 +1,168 @@
+{% load static %}<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#41627c">
+  {% include 'pfe/_icones.html' %}
+  <title>{% block titre %}gePed{% endblock %} · gePed</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Questrial&display=swap">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <link rel="stylesheet" href="{% static 'pfe/css/gped.css' %}?v={{ version_statique }}">
+  {% block entete %}{% endblock %}
+</head>
+<body>
+<header class="gped-entete">
+  <button class="btn btn-entete d-lg-none px-2" data-bs-toggle="offcanvas" data-bs-target="#menu" aria-label="Menu"><i class="bi bi-list fs-4"></i></button>
+  <a href="{% url 'tableau_de_bord' %}" class="d-flex align-items-center gap-3 lien-marque text-decoration-none">
+    <img src="{% static 'pfe/img/logo_ist.png' %}?v={{ version_statique }}" class="logo-ist" width="52" height="52" alt="Institut Supérieur de Technologie de Mamou">
+    <span>
+      <span class="nom d-block">gePed</span>
+      <small>IST de Mamou · Gestion pédagogique</small>
+    </span>
+  </a>
+  <div class="ms-auto dropdown">
+    <button class="btn btn-entete d-flex align-items-center gap-2" data-bs-toggle="dropdown" aria-expanded="false">
+      <span class="avatar {% if photo_compte %}a-photo{% endif %}" data-apercu="compte" {% if photo_compte %}style="background-image:url('{{ photo_compte }}')"{% endif %}>{% if user.first_name %}{{ user.first_name|first }}{{ user.last_name|first }}{% else %}{{ user.username|slice:":2" }}{% endif %}</span>
+      <span class="d-none d-md-inline text-start lh-sm">
+        <span class="d-block fw-semibold">{{ user.get_full_name|default:user.username }}</span>
+        <small>{{ profil.libelle }}{% if profil.structure and profil.structure != profil.libelle %} · {{ profil.structure }}{% endif %}</small>
+      </span>
+      <i class="bi bi-chevron-down small"></i>
+    </button>
+    <ul class="dropdown-menu dropdown-menu-end">
+      <li class="px-2 py-1 small text-secondary d-md-none">{{ profil.libelle }}</li>
+      <li><a class="dropdown-item" href="{% url 'mon_compte' %}"><i class="bi bi-person-gear"></i> Mon compte</a></li>
+      <li><hr class="dropdown-divider"></li>
+      <li>
+        <form method="post" action="{% url 'logout' %}">{% csrf_token %}
+          <button class="dropdown-item"><i class="bi bi-box-arrow-right"></i> Déconnexion</button>
+        </form>
+      </li>
+    </ul>
+  </div>
+</header>
+
+<div class="gped-corps">
+  <aside class="gped-sidebar offcanvas-lg offcanvas-start" tabindex="-1" id="menu">
+    <div class="d-flex d-lg-none justify-content-end p-2">
+      <button type="button" class="btn-close btn-close-white" data-bs-dismiss="offcanvas" data-bs-target="#menu" aria-label="Fermer"></button>
+    </div>
+    <div class="menu-profil">
+      {% with p=profil.personnel %}
+      <a href="{% url 'mon_compte' %}" class="avatar-menu {% if photo_compte %}a-photo{% endif %}" data-apercu="compte" title="Mon compte" {% if photo_compte %}style="background-image:url('{{ photo_compte }}')"{% endif %}>{% if p %}{{ p.prenom|first }}{{ p.nom|first }}{% elif user.first_name %}{{ user.first_name|first }}{{ user.last_name|first }}{% else %}{{ user.username|slice:":2" }}{% endif %}</a>
+      <div class="nom">{% if p %}{{ p.prenom }} {{ p.nom }}{% else %}{{ user.get_full_name|default:user.username }}{% endif %}</div>
+      <div class="role">{{ profil.libelle }}</div>
+      {% endwith %}
+    </div>
+    <nav class="nav flex-column gped-nav">
+      <a class="nav-link {% if actif == 'tableau' %}active{% endif %}" href="{% url 'tableau_de_bord' %}"><i class="bi bi-grid-1x2"></i> Tableau de bord</a>
+
+      <!-- 1. Étudiants : sous-menu, ouvert quand on est sur l'une de ses pages -->
+      {% if actif == 'etudiants' or actif == 'preinscriptions' or actif == 'inscrire' or actif == 'importer' or actif == 'statistiques' %}
+        {% firstof 'show' as etu_ouvert %}
+      {% else %}
+        {% firstof '' as etu_ouvert %}
+      {% endif %}
+      <div class="groupe-menu">
+        <button type="button" class="nav-link groupe-titre {% if etu_ouvert %}ouvert{% else %}collapsed{% endif %}"
+                data-bs-toggle="collapse" data-bs-target="#sous-menu-etudiants"
+                aria-expanded="{% if etu_ouvert %}true{% else %}false{% endif %}" aria-controls="sous-menu-etudiants">
+          <i class="bi bi-people"></i> Étudiants
+          {% if nb_preinscrits and not etu_ouvert %}<span class="compteur" title="Préinscrits en attente">{{ nb_preinscrits }}</span>{% endif %}
+          <span class="chevron bi bi-chevron-down"></span>
+        </button>
+        <div class="collapse sous-menu {{ etu_ouvert }}" id="sous-menu-etudiants">
+          <a class="nav-link {% if actif == 'etudiants' %}active{% endif %}" href="{% url 'etudiants_liste' %}">Liste</a>
+          <a class="nav-link {% if actif == 'preinscriptions' %}active{% endif %}" href="{% url 'preinscriptions_liste' %}">Préinscription{% if nb_preinscrits %}<span class="compteur" title="Préinscrits en attente">{{ nb_preinscrits }}</span>{% endif %}</a>
+          {% if profil.est_scolarite %}
+            <a class="nav-link {% if actif == 'inscrire' %}active{% endif %}" href="{% url 'inscription_creer' %}">Inscription</a>
+            <a class="nav-link {% if actif == 'importer' %}active{% endif %}" href="{% url 'importer' %}">Importer une liste</a>
+          {% endif %}
+          <a class="nav-link {% if actif == 'statistiques' %}active{% endif %}" href="{% url 'statistiques' %}">Statistiques</a>
+        </div>
+      </div>
+
+      <!-- 2. Attestations -->
+      {% if profil.est_scolarite %}
+        <a class="nav-link {% if actif == 'attestations' %}active{% endif %}" href="{% url 'attestations' %}"><i class="bi bi-file-earmark-text"></i> Attestations</a>
+      {% endif %}
+      <!-- 3. Matières -->
+      <a class="nav-link {% if actif == 'matieres' %}active{% endif %}" href="{% url 'matieres_liste' %}"><i class="bi bi-journal-bookmark"></i> Matières</a>
+
+      <!-- Notes : scolarité et chefs de programme -->
+      {% if profil.gere_matieres %}
+        {% if actif == 'notes_liste' or actif == 'notes_saisie' or actif == 'notes_importer' or actif == 'notes_resultats' %}
+          {% firstof 'show' as notes_ouvert %}
+        {% else %}
+          {% firstof '' as notes_ouvert %}
+        {% endif %}
+        <div class="groupe-menu">
+          <button type="button" class="nav-link groupe-titre {% if notes_ouvert %}ouvert{% else %}collapsed{% endif %}"
+                  data-bs-toggle="collapse" data-bs-target="#sous-menu-notes"
+                  aria-expanded="{% if notes_ouvert %}true{% else %}false{% endif %}" aria-controls="sous-menu-notes">
+            <i class="bi bi-123"></i> Notes <span class="chevron bi bi-chevron-down"></span>
+          </button>
+          <div class="collapse sous-menu {{ notes_ouvert }}" id="sous-menu-notes">
+            <a class="nav-link {% if actif == 'notes_liste' %}active{% endif %}" href="{% url 'notes_liste' %}">Liste des notes</a>
+            <a class="nav-link {% if actif == 'notes_saisie' %}active{% endif %}" href="{% url 'notes_matieres' %}">Saisie des notes</a>
+            <a class="nav-link {% if actif == 'notes_importer' %}active{% endif %}" href="{% url 'notes_importer' %}">Importer des notes</a>
+            <a class="nav-link {% if actif == 'notes_resultats' %}active{% endif %}" href="{% url 'notes_resultats' %}">Résultats et délibérations</a>
+          </div>
+        </div>
+
+        <!-- Soutenances : scolarité et chefs de programme -->
+        {% if actif == 'sout_liste' or actif == 'sout_projets' or actif == 'sout_notes' or actif == 'sout_calendrier' or actif == 'sout_importer' %}
+          {% firstof 'show' as sout_ouvert %}
+        {% else %}
+          {% firstof '' as sout_ouvert %}
+        {% endif %}
+        <div class="groupe-menu">
+          <button type="button" class="nav-link groupe-titre {% if sout_ouvert %}ouvert{% else %}collapsed{% endif %}"
+                  data-bs-toggle="collapse" data-bs-target="#sous-menu-soutenances"
+                  aria-expanded="{% if sout_ouvert %}true{% else %}false{% endif %}" aria-controls="sous-menu-soutenances">
+            <i class="bi bi-mortarboard"></i> Soutenances <span class="chevron bi bi-chevron-down"></span>
+          </button>
+          <div class="collapse sous-menu {{ sout_ouvert }}" id="sous-menu-soutenances">
+            <a class="nav-link {% if actif == 'sout_liste' %}active{% endif %}" href="{% url 'soutenances' %}">Liste des soutenances</a>
+            <a class="nav-link {% if actif == 'sout_projets' %}active{% endif %}" href="{% url 'projets_liste' %}">Projets de soutenance</a>
+            <a class="nav-link {% if actif == 'sout_notes' %}active{% endif %}" href="{% url 'soutenances_notes' %}">Saisie des notes</a>
+            <a class="nav-link {% if actif == 'sout_calendrier' %}active{% endif %}" href="{% url 'soutenances_calendrier' %}">Calendrier</a>
+            <a class="nav-link {% if actif == 'sout_importer' %}active{% endif %}" href="{% url 'soutenances_importer' %}">Importer</a>
+          </div>
+        </div>
+      {% endif %}
+      <!-- 4. Mon compte -->
+      <a class="nav-link {% if actif == 'compte' %}active{% endif %}" href="{% url 'mon_compte' %}"><i class="bi bi-person-gear"></i> Mon compte</a>
+      {% if user.is_staff %}
+        <a class="btn btn-or-plein" href="{% url 'admin:index' %}"><i class="bi bi-sliders"></i> Administration</a>
+      {% endif %}
+    </nav>
+    <div class="menu-pied">gePed · version {{ version_gped }}{% if en_developpement %} (dev){% endif %}</div>
+  </aside>
+
+  <main class="gped-main">
+    <div class="gped-contenu">
+      <div class="titre-page">
+        <div style="min-width:0">
+          <h1>{% block titre_page %}{% endblock %}</h1>
+          {% block sous_titre %}{% endblock %}
+        </div>
+        <div class="ms-auto d-flex gap-2 flex-wrap">{% block actions %}{% endblock %}</div>
+      </div>
+      {% for m in messages %}
+        <div class="alert alert-{% if m.tags == 'error' %}danger{% else %}{{ m.tags }}{% endif %} alert-dismissible fade show">
+          {{ m }}<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fermer"></button>
+        </div>
+      {% endfor %}
+      {% block contenu %}{% endblock %}
+    </div>
+  </main>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

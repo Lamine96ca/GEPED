@@ -1,0 +1,149 @@
+{% extends 'pfe/base.html' %}
+{% load humanize %}
+{% block titre %}Tableau de bord{% endblock %}
+{% block titre_page %}Tableau de bord{% endblock %}
+{% block contenu %}
+{% if not session %}
+  <div class="alert alert-warning">Aucune session académique n'est définie. Créez-en une dans les référentiels.</div>
+{% endif %}
+
+<!-- Bandeau d'accueil -->
+<div class="bandeau-accueil">
+  <div class="me-auto" style="min-width:0">
+    <div class="surtitre">{{ profil.libelle }}{% if profil.role == 'programme' %} · {{ profil.structure }}{% endif %}</div>
+    <h2>Bonjour {% if profil.personnel %}{{ profil.personnel.prenom }}{% else %}{{ user.first_name|default:user.username }}{% endif %}</h2>
+    <p>Bienvenue sur la plateforme de gestion pédagogique gePed.</p>
+    {% if session %}<span class="puce"><i class="bi bi-calendar3"></i> Session {{ session }}</span>{% endif %}
+    <span class="puce"><i class="bi bi-people"></i> {{ total|intcomma }} étudiant{{ total|pluralize }}</span>
+  </div>
+  <div class="actions d-flex flex-wrap gap-2">
+    <a href="{% url 'etudiants_liste' %}" class="btn btn-verre"><i class="bi bi-list-ul"></i> Liste des étudiants</a>
+    {% if profil.est_scolarite %}
+      <a href="{% url 'importer' %}" class="btn btn-verre"><i class="bi bi-upload"></i> Importer</a>
+      <a href="{% url 'inscription_creer' %}" class="btn btn-or-plein"><i class="bi bi-plus-lg"></i> Nouvelle inscription</a>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Chiffres clés -->
+<div class="row g-3 mb-3">
+  <div class="col-6 col-xl-3">
+    <a href="{% url 'etudiants_liste' %}" class="card kpi text-decoration-none">
+      <div class="haut">
+        <span class="tuile tuile-bleu"><i class="bi bi-mortarboard"></i></span>
+        <div><div class="lib">Étudiants inscrits</div><div class="val">{{ total|intcomma }}</div></div>
+      </div>
+      <div class="bas"><span>{{ nb_programmes }} programme{{ nb_programmes|pluralize }}</span></div>
+    </a>
+  </div>
+  <div class="col-6 col-xl-3">
+    <a href="{% url 'etudiants_liste' %}?sexe=F" class="card kpi text-decoration-none">
+      <div class="haut">
+        <span class="tuile tuile-or"><i class="bi bi-gender-female"></i></span>
+        <div><div class="lib">Filles</div><div class="val">{{ filles|intcomma }}</div></div>
+      </div>
+      <div class="bas"><div class="jauge"><div class="jauge-or" style="width: {{ pct_filles }}%"></div></div><span>{{ pct_filles }} %</span></div>
+    </a>
+  </div>
+  <div class="col-6 col-xl-3">
+    <a href="{% url 'etudiants_liste' %}?statut=redoublant" class="card kpi text-decoration-none">
+      <div class="haut">
+        <span class="tuile tuile-orange"><i class="bi bi-arrow-repeat"></i></span>
+        <div><div class="lib">Redoublants</div><div class="val">{{ redoublants|intcomma }}</div></div>
+      </div>
+      <div class="bas"><div class="jauge"><div class="jauge-orange" style="width: {{ pct_redoublants }}%"></div></div><span>{{ pct_redoublants }} %</span></div>
+    </a>
+  </div>
+  <div class="col-6 col-xl-3">
+    <a href="{% url 'preinscriptions_liste' %}" class="card kpi text-decoration-none">
+      <div class="haut">
+        <span class="tuile tuile-vert"><i class="bi bi-hourglass-split"></i></span>
+        <div><div class="lib">Préinscrits</div><div class="val">{{ preinscrits|intcomma }}</div></div>
+      </div>
+      <div class="bas"><div class="jauge"><div class="jauge-vert" style="width: {{ pct_preinscrits }}%"></div></div><span>{{ pct_preinscrits }} %</span></div>
+    </a>
+  </div>
+</div>
+
+<!-- Graphiques -->
+<div class="row g-3 mb-3">
+  <div class="col-lg-8">
+    <div class="card carte-graphe">
+      <div class="card-body">
+        <div class="entete">
+          <h3 class="me-auto"><i class="bi bi-bar-chart-fill"></i> Effectif par niveau</h3>
+          <div class="legende"><span class="g">Garçons</span><span class="f">Filles</span></div>
+        </div>
+        <div class="barres aere">
+          {% for g in par_niveau %}
+            <div class="ligne" title="{{ g.nom }} : {{ g.M|intcomma }} garçons, {{ g.F|intcomma }} filles">
+              <span class="nom">{{ g.nom }}<small class="detail">{{ g.M|intcomma }} G · {{ g.F|intcomma }} F</small></span>
+              <div class="piste"><div class="barre" style="width: {{ g.largeur }}%"><div class="g" style="width: {{ g.pct_m }}%"></div><div class="f" style="width: {{ g.pct_f }}%"></div></div></div>
+              <span class="total">{{ g.n|intcomma }}</span>
+            </div>
+          {% empty %}
+            <div class="etat-vide"><i class="bi bi-inbox"></i>Aucun étudiant inscrit pour cette session.</div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-4">
+    <div class="card carte-graphe">
+      <div class="card-body">
+        <div class="entete"><h3><i class="bi bi-pie-chart-fill"></i> Répartition par sexe</h3></div>
+        <div class="anneau-sexe" style="--p: {{ pct_garcons }}">
+          <div><div><div class="v">{{ total|intcomma }}</div><div class="l">étudiants</div></div></div>
+        </div>
+        <div class="chiffres-sexe">
+          <div class="g"><div class="v">{{ garcons|intcomma }}</div><div class="l">Garçons · {{ pct_garcons }} %</div></div>
+          <div class="f"><div class="v">{{ filles|intcomma }}</div><div class="l">Filles · {{ pct_filles }} %</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-8">
+    <div class="card carte-graphe">
+      <div class="card-body">
+        <div class="entete">
+          <h3 class="me-auto"><i class="bi bi-diagram-3-fill"></i> Effectif par programme</h3>
+          <div class="legende"><span class="g">Garçons</span><span class="f">Filles</span></div>
+        </div>
+        <div class="barres">
+          {% for g in par_programme %}
+            <div class="ligne" title="{{ g.nom }} : {{ g.M|intcomma }} garçons, {{ g.F|intcomma }} filles">
+              <span class="nom">{{ g.nom }}<small class="detail">{{ g.M|intcomma }} G · {{ g.F|intcomma }} F</small></span>
+              <div class="piste"><div class="barre" style="width: {{ g.largeur }}%"><div class="g" style="width: {{ g.pct_m }}%"></div><div class="f" style="width: {{ g.pct_f }}%"></div></div></div>
+              <span class="total">{{ g.n|intcomma }}</span>
+            </div>
+          {% empty %}
+            <div class="etat-vide"><i class="bi bi-inbox"></i>Aucun étudiant inscrit pour cette session.</div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-4">
+    <div class="card carte-graphe">
+      <div class="card-body">
+        <div class="entete"><h3><i class="bi bi-layers-fill"></i> Par cycle</h3></div>
+        <div class="cycles">
+          {% for c in par_cycle %}
+            <a class="cycle text-decoration-none" href="{% url 'etudiants_liste' %}{% if c.code != '?' %}?cycle={{ c.code }}{% endif %}">
+              <span class="pastille-cycle">{{ c.code }}</span>
+              <span class="nom">{{ c.nom }}</span>
+              <span class="n">{{ c.n|intcomma }}</span>
+              <span class="p">{{ c.pct }} %</span>
+            </a>
+          {% empty %}
+            <p class="text-secondary mb-0">—</p>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

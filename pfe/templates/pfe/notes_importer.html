@@ -1,0 +1,133 @@
+{% extends 'pfe/base.html' %}
+{% load humanize %}
+{% block titre %}Importer des notes{% endblock %}
+{% block titre_page %}Importer des notes{% endblock %}
+{% block sous_titre %}<div class="sous-titre">Fichier Excel (.xlsx) ou CSV · notes sur 10{% if mes_programmes %} · uniquement {% for p in mes_programmes %}{{ p.nom }}{% if not forloop.last %}, {% endif %}{% endfor %}{% endif %}</div>{% endblock %}
+{% block actions %}
+  <a href="{% url 'notes_modele' %}" class="btn btn-or"><i class="bi bi-file-earmark-excel"></i> <span class="d-none d-sm-inline">Télécharger le modèle</span></a>
+{% endblock %}
+{% block contenu %}
+<div class="row g-3">
+  <div class="col-lg-5 d-flex flex-column gap-3">
+    <div class="card carte-gped">
+      <div class="card-body">
+        <div class="entete-carte">
+          <span class="icone-carte"><i class="bi bi-cloud-arrow-up"></i></span>
+          <div><h3>Nouvel import</h3><p>Une ligne = une note</p></div>
+        </div>
+        <form method="post" enctype="multipart/form-data" id="form-import">
+          {% csrf_token %}
+          {% if form.non_field_errors %}<div class="alert alert-danger py-2">{{ form.non_field_errors }}</div>{% endif %}
+          <label class="zone-depot d-block mb-3" id="zone-depot">
+            {{ form.fichier }}
+            <i class="bi bi-file-earmark-arrow-up d-block mb-2"></i>
+            <div class="fw-semibold" style="color:var(--encre)" id="nom-fichier">Glissez votre fichier ici</div>
+            <div class="small text-secondary">ou cliquez pour parcourir · .xlsx, .csv</div>
+          </label>
+          {% for err in form.fichier.errors %}<div class="alert alert-danger py-2 small"><i class="bi bi-x-octagon"></i> {{ err }}</div>{% endfor %}
+          <label class="option-import mb-3" for="{{ form.simulation.id_for_label }}">
+            {{ form.simulation }}
+            <div><strong>Mode simulation</strong><span>Vérifie le fichier sans rien enregistrer. Conseillé pour un premier essai.</span></div>
+          </label>
+          <div class="d-grid">
+            <button class="btn btn-primary" id="btn-import" style="height:46px">
+              <span class="spinner-border spinner-border-sm d-none"></span>
+              <i class="bi bi-upload"></i> Lancer l'import
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-7 d-flex flex-column gap-3">
+    {% if rapport %}
+      <div class="card carte-gped">
+        <div class="card-body">
+          <div class="entete-carte flex-wrap">
+            <span class="icone-carte"><i class="bi bi-clipboard-check"></i></span>
+            <div class="me-auto"><h3>Résultat {% if rapport.simulation %}de la simulation{% else %}de l'import{% endif %}</h3><p>{{ rapport.lignes|intcomma }} ligne{{ rapport.lignes|pluralize }} lue{{ rapport.lignes|pluralize }} dans le fichier</p></div>
+            {% if rapport.simulation %}<span class="pill pill-attention">Simulation · rien n'a été enregistré</span>{% else %}<span class="pill pill-succes">Enregistré</span>{% endif %}
+          </div>
+          <div class="row g-3 mb-3">
+            <div class="col-6 col-md-3"><div class="kpi" style="background:var(--fond)"><div class="haut"><span class="tuile tuile-vert"><i class="bi bi-plus-circle"></i></span>
+              <div><div class="lib">Nouvelles</div><div class="val">{{ rapport.creees|intcomma }}</div></div></div></div></div>
+            <div class="col-6 col-md-3"><div class="kpi" style="background:var(--fond)"><div class="haut"><span class="tuile tuile-bleu"><i class="bi bi-arrow-repeat"></i></span>
+              <div><div class="lib">Mises à jour</div><div class="val">{{ rapport.mises_a_jour|intcomma }}</div></div></div></div></div>
+            <div class="col-6 col-md-3"><div class="kpi" style="background:var(--fond)"><div class="haut"><span class="tuile tuile-bleu"><i class="bi bi-files"></i></span>
+              <div><div class="lib">Inchangées / doublons</div><div class="val">{{ rapport.inchangees|add:rapport.nb_doublons|intcomma }}</div></div></div></div></div>
+            <div class="col-6 col-md-3"><div class="kpi" style="background:var(--fond)"><div class="haut"><span class="tuile {% if rapport.nb_erreurs %}tuile-orange{% else %}tuile-vert{% endif %}"><i class="bi {% if rapport.nb_erreurs %}bi-exclamation-triangle{% else %}bi-check2-all{% endif %}"></i></span>
+              <div><div class="lib">Lignes rejetées</div><div class="val">{{ rapport.nb_erreurs|intcomma }}</div></div></div></div></div>
+          </div>
+          {% include 'pfe/_reparation_fichier.html' %}
+          {% if rapport.colonnes_ignorees %}<p class="small text-secondary"><i class="bi bi-dash-circle"></i> Colonnes ignorées : {{ rapport.colonnes_ignorees|join:", " }}</p>{% endif %}
+          {% if rapport.simulation and rapport.lignes %}
+            <div class="alert alert-info small py-2"><i class="bi bi-lightbulb"></i> Si le résultat vous convient, décochez « Mode simulation » et relancez l'import avec le même fichier.</div>
+          {% endif %}
+          {% if rapport.erreurs %}
+            <div class="table-responsive rounded-3 border" style="max-height: 380px;">
+              <table class="table table-etudiants mb-0">
+                <thead><tr><th style="width: 5rem;">Ligne</th><th>Problème</th></tr></thead>
+                <tbody>
+                {% for ligne, message in rapport.erreurs|slice:":300" %}
+                  <tr style="cursor:default"><td class="fw-semibold">{{ ligne }}</td><td class="text-danger" style="white-space:normal">{{ message }}</td></tr>
+                {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% endif %}
+          {% if rapport.doublons %}
+            {% if rapport.simulation %}
+              <div class="small fw-semibold mt-3 mb-2" style="color:var(--encre)"><i class="bi bi-files"></i> {{ rapport.nb_doublons }} doublon{{ rapport.nb_doublons|pluralize }}, ignoré{{ rapport.nb_doublons|pluralize }} à l'import réel</div>
+              <div class="table-responsive rounded-3 border" style="max-height: 260px;">
+                <table class="table table-etudiants mb-0">
+                  <thead><tr><th style="width: 5rem;">Ligne</th><th>Note déjà présente</th></tr></thead>
+                  <tbody>{% for ligne, message in rapport.doublons|slice:":300" %}<tr style="cursor:default"><td class="fw-semibold">{{ ligne }}</td><td class="text-secondary" style="white-space:normal">{{ message }}</td></tr>{% endfor %}</tbody>
+                </table>
+              </div>
+            {% else %}
+              <p class="small text-secondary mt-3 mb-0"><i class="bi bi-files"></i> {{ rapport.nb_doublons }} doublon{{ rapport.nb_doublons|pluralize }} ignoré{{ rapport.nb_doublons|pluralize }}.</p>
+            {% endif %}
+          {% endif %}
+        </div>
+      </div>
+    {% endif %}
+
+    <div class="card carte-gped">
+      <div class="card-body">
+        <div class="entete-carte">
+          <span class="icone-carte"><i class="bi bi-info-lg"></i></span>
+          <div><h3>Comment ça marche</h3><p>Le format attendu du fichier</p></div>
+        </div>
+        <ol class="etapes-import">
+          <li><strong>Une ligne = une note</strong> d'un étudiant dans une matière. Les colonnes sont repérées par leur nom, dans n'importe quel ordre.</li>
+          <li>Obligatoires : {% for c in obligatoires %}<code>{{ c }}</code>{% if not forloop.last %}, {% endif %}{% endfor %} (<code>matiere</code> = nom ou code). Notes : <code>controle</code>, <code>tp</code>, <code>examen</code>, <code>moyenne</code>, <code>rattrapage</code> (au moins une). <code>programme</code> si besoin de préciser.</li>
+          <li><strong>Sur 10.</strong> <code>ABS</code> = 0. La colonne <code>moyenne</code> (déposée par le programme) est prise telle quelle ; sinon elle est calculée : contrôle 25 % + TP 35 % + examen 40 % (sans TP : 40 % + 60 %). Si la moyenne est remplie et que contrôle, TP et examen valent <strong>tous 0</strong>, ces 0 sont <strong>considérés comme vides</strong>.</li>
+          <li><code>rattrapage</code> : on garde la meilleure des deux notes, avec la mention « Session ».</li>
+          <li>La matière est cherchée dans le programme et la licence de l'inscription de l'étudiant pour la session. Une note déjà enregistrée est <strong>mise à jour</strong> (modification tracée) ; une ligne répétée est ignorée.</li>
+          <li class="pb-0">Semestre <strong>délibéré</strong> : ligne refusée (modification seulement par la scolarité, depuis la saisie, avec un motif).{% if mes_programmes %} <strong>Votre périmètre :</strong> si une ligne concerne un autre programme, tout l'import est refusé.{% endif %}</li>
+        </ol>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  (function () {
+    const zone = document.getElementById('zone-depot');
+    const input = zone.querySelector('input[type=file]');
+    const nom = document.getElementById('nom-fichier');
+    input.classList.remove('form-control');
+    input.addEventListener('change', () => { if (input.files.length) { nom.textContent = input.files[0].name; zone.classList.add('rempli'); } });
+    ['dragenter', 'dragover'].forEach((t) => zone.addEventListener(t, () => zone.classList.add('survol')));
+    ['dragleave', 'drop'].forEach((t) => zone.addEventListener(t, () => zone.classList.remove('survol')));
+    document.getElementById('form-import').addEventListener('submit', function () {
+      const b = document.getElementById('btn-import');
+      b.disabled = true;
+      b.querySelector('.spinner-border').classList.remove('d-none');
+      b.querySelector('.bi').classList.add('d-none');
+    });
+  })();
+</script>
+{% endblock %}

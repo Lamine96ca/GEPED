@@ -1,0 +1,57 @@
+{% extends 'pfe/base.html' %}
+{% load humanize %}
+{% block titre %}Projets de soutenance{% endblock %}
+{% block titre_page %}Projets de soutenance{% endblock %}
+{% block sous_titre %}<div class="sous-titre">Un projet regroupe 1 à 5 étudiants ou plus : thème, encadreur, jury, date et salle</div>{% endblock %}
+{% block actions %}
+  <a href="{% url 'soutenances_calendrier' %}" class="btn btn-light"><i class="bi bi-calendar3"></i> <span class="d-none d-sm-inline">Calendrier</span></a>
+  <a href="{% url 'projet_creer' %}{% if filtres.programme or filtres.session or filtres.promotion %}?programme={{ filtres.programme|default:'' }}&session={{ filtres.session|default:'' }}&promotion={{ filtres.promotion|default:'' }}{% endif %}" class="btn btn-primary"><i class="bi bi-plus-lg"></i> <span class="d-none d-sm-inline">Nouveau projet</span></a>
+{% endblock %}
+{% block contenu %}
+<div class="card carte-gped liste">
+  {% include 'pfe/_filtres_soutenances.html' with avec_recherche=True placeholder='Projet, thème, encadreur, matricule' %}
+  <div class="px-4 pt-3 small text-secondary"><i class="bi bi-diagram-3 text-primary"></i> {{ page.paginator.count|intcomma }} projet{{ page.paginator.count|pluralize }}</div>
+  <div class="table-responsive mt-2">
+    <table class="table table-etudiants mb-0">
+      <thead><tr><th>Projet</th><th>Étudiants</th><th>Encadreur</th><th>Programme · promotion</th><th>Session</th><th>Date</th><th>Statut</th><th class="text-end"></th></tr></thead>
+      <tbody>
+      {% for p in page %}
+        <tr style="cursor:default">
+          <td style="white-space:normal;min-width:220px;max-width:320px"><a href="{% url 'projet_modifier' p.pk %}" class="fw-semibold">{{ p.intitule }}</a>
+            {% if p.theme %}<div class="small text-secondary">{{ p.theme|truncatechars:120 }}</div>{% endif %}</td>
+          <td style="white-space:normal;min-width:200px">
+            <div class="membres-projet">{% for s in p.membres.all %}<span class="pill" title="{{ s.etudiant.matricule }}">{{ s.etudiant.nom }} {{ s.etudiant.prenom|truncatechars:14 }}{% if s.note_finale is not None %} · <strong>{{ s.note_finale|floatformat:"-2" }}</strong>{% endif %}</span>{% empty %}<span class="text-secondary small">Aucun membre</span>{% endfor %}</div>
+          </td>
+          <td class="text-truncate" style="max-width:160px" title="{{ p.encadreur }}">{{ p.encadreur|default:"—" }}</td>
+          <td class="text-truncate" style="max-width:200px" title="{{ p.filiere }}">{{ p.filiere }}<div class="small text-secondary">{{ p.promotion }}</div></td>
+          <td>{{ p.session.annee }}</td>
+          <td class="text-nowrap">{{ p.date|date:"d/m/Y"|default:"—" }}{% if p.heure %}<div class="small text-secondary">{{ p.heure|time:"H\hi" }}{% if p.salle %} · {{ p.salle }}{% endif %}</div>{% endif %}</td>
+          <td><span class="pill {% if p.statut == 'soutenue' %}pill-succes{% elif p.statut == 'programmee' %}pill-accent{% else %}pill-attention{% endif %}">{{ p.get_statut_display }}</span></td>
+          <td class="text-end text-nowrap">
+            <a class="btn btn-icone" href="{% url 'projet_pv' p.pk %}" target="_blank" rel="noopener" title="PV de soutenance (PDF)"><i class="bi bi-file-earmark-pdf"></i></a>
+            <a class="btn btn-icone" href="{% url 'projet_modifier' p.pk %}" title="Modifier"><i class="bi bi-pencil"></i></a>
+            <form method="post" action="{% url 'projet_supprimer' p.pk %}" class="d-inline" onsubmit="return confirm('Supprimer le projet « {{ p.intitule|escapejs }} » ? Les notes déjà saisies sont conservées.');">
+              {% csrf_token %}<input type="hidden" name="suivant" value="{{ request.get_full_path }}">
+              <button class="btn btn-icone text-danger" title="Supprimer"><i class="bi bi-trash"></i></button>
+            </form>
+          </td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="8"><div class="etat-vide"><i class="bi bi-diagram-3"></i>Aucun projet de soutenance avec ces filtres.
+          <div class="mt-2"><a href="{% url 'projet_creer' %}">Créer un projet</a>.</div></div></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if page.has_other_pages %}
+    <div class="pied-tableau d-flex justify-content-between align-items-center">
+      <span class="small text-secondary">{{ page.start_index }}–{{ page.end_index }} sur {{ page.paginator.count|intcomma }}</span>
+      <ul class="pagination pagination-sm mb-0">
+        {% if page.has_previous %}<li class="page-item"><a class="page-link" href="?{{ params }}&page={{ page.previous_page_number }}"><i class="bi bi-chevron-left"></i></a></li>{% endif %}
+        <li class="page-item active"><span class="page-link">{{ page.number }} / {{ page.paginator.num_pages }}</span></li>
+        {% if page.has_next %}<li class="page-item"><a class="page-link" href="?{{ params }}&page={{ page.next_page_number }}"><i class="bi bi-chevron-right"></i></a></li>{% endif %}
+      </ul>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

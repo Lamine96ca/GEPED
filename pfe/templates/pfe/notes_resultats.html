@@ -1,0 +1,104 @@
+{% extends 'pfe/base.html' %}
+{% load humanize %}
+{% block titre %}Résultats et délibérations{% endblock %}
+{% block titre_page %}Résultats et délibérations{% endblock %}
+{% block sous_titre %}<div class="sous-titre">{% if semestre %}{{ programme_choisi }} · {{ semestre.nom }} ({{ semestre.licence.nom }}) · {{ session_choisie.annee }}{% else %}Choisissez la session, le programme et le semestre{% endif %}</div>{% endblock %}
+{% block contenu %}
+
+<div class="card carte-gped liste mb-3">
+  {% include 'pfe/_filtres_notes.html' with semestre_requis=True %}
+</div>
+
+{% if not semestre %}
+  <div class="card carte-gped"><div class="card-body"><div class="etat-vide"><i class="bi bi-funnel"></i>
+    Sélectionnez une <strong>session</strong>, un <strong>programme</strong> et un <strong>semestre</strong> pour voir les résultats et la délibération.
+  </div></div></div>
+{% else %}
+<div class="row g-3">
+  <div class="col-xl-4 d-flex flex-column gap-3">
+    <!-- Délibération -->
+    <div class="card carte-gped">
+      <div class="card-body">
+        <div class="entete-carte">
+          <span class="icone-carte"><i class="bi {% if deliberation %}bi-lock-fill{% else %}bi-unlock{% endif %}"></i></span>
+          <div><h3>Délibération</h3><p>{% if deliberation %}Délibéré le {{ deliberation.date|date:"d/m/Y à H:i" }}{% if deliberation.par %} par {{ deliberation.par.get_full_name|default:deliberation.par.username }}{% endif %}{% else %}Pas encore délibéré{% endif %}</p></div>
+        </div>
+        {% if deliberation %}
+          <div class="note-verrou mt-0 mb-3"><i class="bi bi-lock-fill"></i><span>Les notes du semestre sont <strong>verrouillées</strong> : seule la scolarité peut les modifier, avec un motif et un justificatif.</span></div>
+        {% else %}
+          <div class="note-verrou mt-0 mb-3"><i class="bi bi-info-circle"></i><span>Délibérer <strong>verrouille</strong> les notes du semestre. Les chefs de programme ne pourront plus les modifier.</span></div>
+        {% endif %}
+        {% if notes_manquantes and not deliberation %}<div class="alert alert-warning small py-2"><i class="bi bi-exclamation-triangle"></i> {{ notes_manquantes }} note{{ notes_manquantes|pluralize }} manquante{{ notes_manquantes|pluralize }} (compte{{ notes_manquantes|pluralize:"nt" }} 0).</div>{% endif %}
+        {% if profil.est_scolarite %}
+          <form method="post" action="{% url 'notes_deliberer' %}" class="d-grid gap-2"
+                onsubmit="return confirm('{% if deliberation %}Annuler la délibération ? Les notes redeviendront modifiables.{% else %}Délibérer ce semestre ? Ses notes seront verrouillées.{% endif %}');">
+            {% csrf_token %}
+            <input type="hidden" name="programme" value="{{ filtres.programme }}">
+            <input type="hidden" name="session" value="{{ filtres.session }}">
+            <input type="hidden" name="semestre" value="{{ filtres.semestre }}">
+            {% if not deliberation %}
+              <button class="btn btn-or-plein" {% if not resultats %}disabled{% endif %}><i class="bi bi-hammer"></i> Délibérer le semestre</button>
+            {% elif user.is_superuser %}
+              <button class="btn btn-outline-danger" name="action" value="annuler"><i class="bi bi-unlock"></i> Annuler la délibération</button>
+            {% endif %}
+          </form>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Matières du semestre -->
+    <div class="card carte-gped">
+      <div class="card-body">
+        <div class="entete-carte">
+          <span class="icone-carte"><i class="bi bi-journal-bookmark"></i></span>
+          <div><h3>Matières du semestre</h3><p>{{ matieres|length }} matière{{ matieres|length|pluralize }} · {{ credits_semestre }} crédits</p></div>
+        </div>
+        <div class="parcours">
+          {% for m in matieres %}
+            <a class="etape align-items-center" href="{% url 'notes_saisie' m.pk %}">
+              <span class="point"><i class="bi bi-pencil-square"></i></span>
+              <div class="flex-grow-1" style="min-width:0">
+                <div class="titre text-truncate">{{ m.nom }}</div>
+                <div class="detail">{{ m.credit }} crédits · {{ m.nb_notes }} / {{ nb_inscrits }} notes</div>
+              </div>
+            </a>
+          {% empty %}
+            <p class="text-secondary mb-0">Aucune matière pour ce semestre.</p>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-xl-8">
+    <div class="row g-3 mb-3">
+      <div class="col-6 col-md-3"><div class="kpi carte-gped bg-white"><div class="haut"><span class="tuile tuile-bleu"><i class="bi bi-people"></i></span><div><div class="lib">Inscrits</div><div class="val">{{ nb_inscrits }}</div></div></div></div></div>
+      <div class="col-6 col-md-3"><div class="kpi carte-gped bg-white"><div class="haut"><span class="tuile tuile-vert"><i class="bi bi-check2-circle"></i></span><div><div class="lib">Moyenne ≥ 5</div><div class="val">{{ nb_valides }}</div></div></div></div></div>
+      <div class="col-6 col-md-3"><div class="kpi carte-gped bg-white"><div class="haut"><span class="tuile tuile-or"><i class="bi bi-graph-up"></i></span><div><div class="lib">Moyenne promo</div><div class="val">{{ moyenne_promo|default:"—" }}</div></div></div></div></div>
+      <div class="col-6 col-md-3"><div class="kpi carte-gped bg-white"><div class="haut"><span class="tuile {% if notes_manquantes %}tuile-orange{% else %}tuile-vert{% endif %}"><i class="bi bi-hourglass"></i></span><div><div class="lib">Notes manquantes</div><div class="val">{{ notes_manquantes }}</div></div></div></div></div>
+    </div>
+    <div class="card carte-gped liste">
+      <div class="table-responsive">
+        <table class="table table-etudiants mb-0">
+          <thead><tr><th style="width:4rem">Rang</th><th>Étudiant</th><th class="text-end">Moyenne /10</th><th class="text-end">Crédits validés</th><th>Mention</th><th class="text-end">Manquantes</th></tr></thead>
+          <tbody>
+          {% for r in resultats %}
+            <tr style="cursor:default">
+              <td class="fw-semibold">{{ r.rang|default:"—" }}</td>
+              <td><b style="color:var(--encre);font-weight:600">{{ r.etudiant.nom }}</b> {{ r.etudiant.prenom }}<div class="matricule text-secondary">{{ r.etudiant.matricule|default:"" }}</div></td>
+              <td class="text-end"><span class="resultat-moy {% if r.moyenne is not None %}{% if r.moyenne >= 5 %}ok{% else %}ko{% endif %}{% endif %}">{% if r.moyenne is not None %}{{ r.moyenne|floatformat:"-2" }}{% else %}—{% endif %}</span></td>
+              <td class="text-end">{{ r.credits_valides }} / {{ r.credits_total }}</td>
+              <td>{{ r.mention|default:"—" }}</td>
+              <td class="text-end">{% if r.notes_manquantes %}<span class="pill pill-attention">{{ r.notes_manquantes }}</span>{% else %}<span class="text-secondary">0</span>{% endif %}</td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="6"><div class="etat-vide"><i class="bi bi-bar-chart"></i>Aucun résultat : pas d'étudiant inscrit ou pas de matière pour ce semestre.</div></td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

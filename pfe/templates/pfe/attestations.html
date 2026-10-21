@@ -1,0 +1,196 @@
+{% extends 'pfe/base.html' %}
+{% load humanize %}
+{% block titre %}Attestations{% endblock %}
+{% block titre_page %}Attestations{% endblock %}
+{% block sous_titre %}<div class="sous-titre">Même cadre et numérotation continue pour tous les types · prochain n° <strong>{{ prochaine_ref }}</strong></div>{% endblock %}
+{% block contenu %}
+
+<!-- Types d'attestation -->
+<div class="onglets-attestation mb-3">
+  {% for cle, code, nom, dispo in types %}
+    <a href="{% url 'attestations_type' cle %}" class="onglet {% if cle == type_url %}actif{% endif %} {% if not dispo %}bientot{% endif %}">
+      <i class="bi {% if cle == 'orientation' %}bi-compass{% elif cle == 'inscription' %}bi-journal-check{% elif cle == 'niveau' %}bi-bar-chart-steps{% else %}bi-mortarboard{% endif %}"></i>
+      {{ nom }}{% if not dispo %} <span class="pill">bientôt</span>{% endif %}
+    </a>
+  {% endfor %}
+</div>
+
+{% if not disponible %}
+  <div class="card carte-gped"><div class="card-body">
+    <div class="etat-vide">
+      <i class="bi bi-hourglass-split"></i>
+      <div class="fw-semibold mb-1" style="color:var(--encre);font-size:1.1rem">Attestation {{ complement }} : contenu à venir</div>
+      <p class="mb-0">Elle utilisera le même cadre et la même numérotation que l'attestation d'inscription.</p>
+    </div>
+  </div></div>
+{% else %}
+<div class="row g-3">
+  <!-- Formulaire (modèle Attestation) -->
+  <div class="col-xl-5 d-flex flex-column gap-3">
+    <div class="card carte-gped">
+      <div class="card-body">
+        <div class="entete-carte">
+          <span class="icone-carte"><i class="bi {% if instance %}bi-pencil-square{% else %}bi-file-earmark-plus{% endif %}"></i></span>
+          <div>
+            <h3>{% if instance %}Modifier l'attestation n° {{ instance.num_ref }}{% else %}Nouvelle attestation {{ complement }}{% endif %}</h3>
+            <p>{% if instance %}Le n° de référence et la date ne changent pas{% else %}N° attribué à l'enregistrement : <strong>{{ prochaine_ref }}</strong>{% endif %}</p>
+          </div>
+        </div>
+        <form method="post" novalidate>
+          {% csrf_token %}
+          {% if form.non_field_errors %}<div class="alert alert-danger py-2">{{ form.non_field_errors|join:" " }}</div>{% endif %}
+          <div class="row g-3">
+            <div class="{% if type_url == 'orientation' %}col-12{% else %}col-md-6{% endif %}">
+              <label class="form-label" for="{{ form.matricule.id_for_label }}">{{ form.matricule.label }} <span class="text-danger">*</span></label>
+              <div class="champ-icone"><i class="bi bi-upc"></i>{{ form.matricule }}</div>
+              {% for err in form.matricule.errors %}<div class="invalid-feedback d-block">{{ err }}</div>{% endfor %}
+            </div>
+            {% if type_url == 'orientation' %}
+              <div class="col-12">
+                <div class="note-verrou mt-0"><i class="bi bi-info-circle"></i>
+                  <span>L'<strong>INE</strong>, le <strong>PV Bac</strong>, le <strong>profil</strong>, le <strong>centre</strong> et la <strong>session d'orientation</strong> viennent de la fiche de l'étudiant ; le <strong>département</strong> de sa dernière inscription. Une seule attestation d'orientation par étudiant.</span>
+                </div>
+              </div>
+            {% elif type_url == 'fin-etudes' %}
+              {% include 'pfe/_champ.html' with champ=form.cycle %}
+              <div class="col-12">
+                <div class="note-verrou mt-0"><i class="bi bi-info-circle"></i>
+                  <span>Le <strong>cycle</strong> (ex. « Premier cycle LMD » pour la Licence) est imprimé à côté du titre et dans le texte. Sans choix, celui de la dernière inscription est pris ; le <strong>département</strong> vient de la dernière inscription dans ce cycle. Une attestation par étudiant et par cycle.</span>
+                </div>
+                <div class="note-verrou mt-2"><i class="bi bi-pen"></i>
+                  {% if user.is_superuser %}
+                    <span>Imprimée <strong>sans cachet ni signature</strong> (à signer à la main). En tant que super utilisateur, vous pouvez aussi l'imprimer <strong>avec cachet et signature</strong> (bouton <i class="bi bi-pen"></i>).</span>
+                  {% else %}
+                    <span>Imprimée <strong>sans cachet ni signature</strong> : à signer et tamponner à la main.</span>
+                  {% endif %}
+                </div>
+              </div>
+            {% else %}
+              {% include 'pfe/_champ.html' with champ=form.licence %}
+              <div class="col-12">
+                <div class="note-verrou mt-0"><i class="bi bi-info-circle"></i>
+                  {% if type_url == 'niveau' %}
+                    <span>La <strong>session</strong>, le <strong>département</strong> et les <strong>semestres</strong> suivis sont repris de l'inscription de l'étudiant à cette licence. Une attestation de niveau par licence et par année.</span>
+                  {% else %}
+                    <span>La <strong>session</strong> et le <strong>programme</strong> sont repris de l'inscription de l'étudiant à cette licence. Titre : <strong>ATTESTATION D'INSCRIPTION</strong> pour Licence 1, 1ère Année et M1 ; <strong>DE REINSCRIPTION</strong> pour les autres niveaux.</span>
+                  {% endif %}
+                </div>
+              </div>
+            {% endif %}
+            <div class="col-12 d-flex flex-wrap gap-2">
+              <button class="btn btn-primary"><i class="bi bi-check-lg"></i> Enregistrer</button>
+              {% if instance %}<a href="{% url 'attestations_type' type_url %}" class="btn btn-light">Annuler</a>{% endif %}
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Aide : retrouver l'étudiant -->
+    <div class="card carte-gped">
+      <div class="card-body">
+        <div class="entete-carte">
+          <span class="icone-carte"><i class="bi bi-search"></i></span>
+          <div><h3>Retrouver un étudiant</h3><p>Pour remplir le formulaire si vous n'avez pas le matricule</p></div>
+        </div>
+        <form method="get" class="mb-3">
+          <div class="champ-icone">
+            <i class="bi bi-search"></i>
+            <input type="search" name="etudiant" value="{{ q_etudiant }}" class="form-control" placeholder="Matricule, nom, prénom ou INE">
+          </div>
+        </form>
+        {% if q_etudiant %}
+          <div class="parcours">
+            {% for c in candidats %}
+              <div class="etape align-items-center">
+                <span class="point"><i class="bi bi-person"></i></span>
+                <div class="flex-grow-1" style="min-width:0">
+                  <div class="titre">{{ c.etudiant.prenom }} {{ c.etudiant.nom }} <span class="matricule text-secondary fw-normal">{{ c.etudiant.matricule|default:"" }}</span></div>
+                  <div class="detail">{{ c.licence }} · {{ c.session }}{% if c.filiere %} · {{ c.filiere }}{% endif %}</div>
+                </div>
+                {% if c.attestation %}
+                  <a class="btn btn-sm btn-light" target="_blank" href="{% url 'attestation_pdf' c.attestation.pk %}" title="Déjà enregistrée"><i class="bi bi-printer"></i> {{ c.attestation.num_ref }}</a>
+                {% elif c.etudiant.matricule %}
+                  <a class="btn btn-sm btn-or" href="?matricule={{ c.etudiant.matricule|urlencode }}&licence={{ c.licence_id }}&cycle={{ c.cycle|default:'' }}"><i class="bi bi-arrow-up-circle"></i> Choisir</a>
+                {% endif %}
+              </div>
+            {% empty %}
+              <p class="text-secondary mb-0">Aucun étudiant ne correspond à « {{ q_etudiant }} ».</p>
+            {% endfor %}
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Enregistrées -->
+  <div class="col-xl-7">
+    {% if imprimer %}
+      <div class="alert alert-success d-flex flex-wrap align-items-center gap-2">
+        <i class="bi bi-check-circle-fill"></i>
+        <span class="me-auto">Attestation n° <strong>{{ imprimer.num_ref }}</strong> prête : {{ imprimer.etudiant.prenom }} {{ imprimer.etudiant.nom }}, {{ imprimer.licence }} ({{ imprimer.session }}).</span>
+        <a class="btn btn-sm btn-primary" target="_blank" href="{% url 'attestation_pdf' imprimer.pk %}"><i class="bi bi-printer"></i> Imprimer{% if type_url == 'fin-etudes' %} (sans cachet ni signature){% endif %}</a>
+        {% if type_url == 'fin-etudes' and user.is_superuser %}
+          <a class="btn btn-sm btn-or-plein" target="_blank" href="{% url 'attestation_pdf' imprimer.pk %}?signature=1"><i class="bi bi-pen"></i> Avec cachet et signature</a>
+        {% endif %}
+      </div>
+    {% endif %}
+    <div class="card carte-gped liste">
+      <div class="card-header d-flex flex-wrap align-items-center gap-3">
+        <div class="entete-carte mb-0 me-auto">
+          <span class="icone-carte"><i class="bi bi-archive"></i></span>
+          <div><h3>Attestations enregistrées</h3><p>{{ page.paginator.count|intcomma }} attestation{{ page.paginator.count|pluralize }} {{ complement }}</p></div>
+        </div>
+        <form method="get" style="min-width:240px">
+          <div class="champ-icone"><i class="bi bi-search"></i>
+            <input type="search" name="q" value="{{ q }}" class="form-control form-control-sm" style="height:38px" placeholder="N° réf., matricule, nom">
+          </div>
+        </form>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-etudiants mb-0">
+          <thead><tr><th>N° Réf.</th><th>Délivrée le</th><th>Étudiant</th><th>Licence</th><th>Programme</th><th>Session</th><th class="text-end"></th></tr></thead>
+          <tbody>
+          {% for a in page %}
+            <tr style="cursor:default" {% if imprimer and imprimer.pk == a.pk %}class="table-active"{% endif %}>
+              <td class="fw-semibold">{{ a.num_ref }}</td>
+              <td>{{ a.date_delivrance|date:"d/m/Y" }}</td>
+              <td><b style="color:var(--encre);font-weight:600">{{ a.etudiant.nom }}</b> {{ a.etudiant.prenom }}<div class="matricule text-secondary">{{ a.etudiant.matricule|default:"" }}</div></td>
+              <td>{{ a.licence|default:"—" }}</td>
+              <td class="text-truncate" style="max-width:180px" title="{{ a.filiere|default:'' }}">{{ a.filiere|default:"—" }}</td>
+              <td>{{ a.session|default:"—" }}</td>
+              <td class="text-end text-nowrap">
+                <a class="btn btn-sm btn-primary" target="_blank" href="{% url 'attestation_pdf' a.pk %}"
+                   title="Imprimer{% if type_url == 'fin-etudes' %} sans cachet ni signature{% endif %}"><i class="bi bi-printer"></i></a>
+                {% if type_url == 'fin-etudes' and user.is_superuser %}
+                  <a class="btn btn-sm btn-or-plein" target="_blank" href="{% url 'attestation_pdf' a.pk %}?signature=1"
+                     title="Imprimer avec cachet et signature"><i class="bi bi-pen"></i></a>
+                {% endif %}
+                <a class="btn btn-icone" href="?modifier={{ a.pk }}" title="Modifier"><i class="bi bi-pencil"></i></a>
+                <form method="post" action="{% url 'attestation_supprimer' a.pk %}" class="d-inline"
+                      onsubmit="return confirm('Supprimer l’attestation n° {{ a.num_ref|escapejs }} ? Ce numéro ne sera pas réutilisé.');">
+                  {% csrf_token %}
+                  <button class="btn btn-icone text-danger" title="Supprimer"><i class="bi bi-trash"></i></button>
+                </form>
+              </td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="7"><div class="etat-vide"><i class="bi bi-inbox"></i>Aucune attestation {{ complement }} enregistrée{% if q %} pour « {{ q }} »{% endif %}.</div></td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if page.has_other_pages %}
+        <div class="pied-tableau d-flex justify-content-end">
+          <ul class="pagination pagination-sm mb-0">
+            {% if page.has_previous %}<li class="page-item"><a class="page-link" href="?q={{ q|urlencode }}&page={{ page.previous_page_number }}"><i class="bi bi-chevron-left"></i></a></li>{% endif %}
+            <li class="page-item active"><span class="page-link">{{ page.number }} / {{ page.paginator.num_pages }}</span></li>
+            {% if page.has_next %}<li class="page-item"><a class="page-link" href="?q={{ q|urlencode }}&page={{ page.next_page_number }}"><i class="bi bi-chevron-right"></i></a></li>{% endif %}
+          </ul>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

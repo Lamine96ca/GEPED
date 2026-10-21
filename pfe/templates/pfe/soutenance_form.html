@@ -1,0 +1,134 @@
+{% extends 'pfe/base.html' %}
+{% block titre %}{{ titre }}{% endblock %}
+{% block titre_page %}<a href="{{ retour }}" class="text-decoration-none text-secondary me-1" title="Retour"><i class="bi bi-arrow-left"></i></a> {{ titre }}{% endblock %}
+{% block sous_titre %}<div class="sous-titre">{% if soutenance %}{{ soutenance.etudiant.prenom }} {{ soutenance.etudiant.nom }} · {{ soutenance.etudiant.matricule }}{% else %}Les champs marqués <span class="text-danger">*</span> sont obligatoires{% endif %}</div>{% endblock %}
+{% block contenu %}
+<form method="post" enctype="multipart/form-data" novalidate>
+  {% csrf_token %}
+  <input type="hidden" name="suivant" value="{{ suivant }}">
+  {% if form.errors %}<div class="alert alert-danger py-2 d-flex gap-2 align-items-center"><i class="bi bi-exclamation-circle"></i> Veuillez corriger les champs signalés.</div>{% endif %}
+  {% if form.non_field_errors %}<div class="alert alert-danger py-2">{{ form.non_field_errors|join:" " }}</div>{% endif %}
+  {% if form.note_verrouillee %}
+    <div class="alert {% if profil.est_scolarite %}alert-warning{% else %}alert-secondary{% endif %} d-flex gap-2 align-items-start">
+      <i class="bi bi-lock-fill mt-1"></i>
+      <div><strong>Note verrouillée</strong>{% if soutenance.verrouillee_le %} le {{ soutenance.verrouillee_le|date:"d/m/Y à H:i" }}{% if soutenance.verrouillee_par %} par {{ soutenance.verrouillee_par.get_full_name|default:soutenance.verrouillee_par.username }}{% endif %}{% endif %}.
+        {% if profil.est_scolarite %}Vous pouvez la modifier : indiquez le motif et joignez le justificatif ; la modification est tracée.
+        {% else %}Seule la scolarité peut la modifier. Le projet de soutenance reste modifiable.{% endif %}</div>
+    </div>
+  {% endif %}
+  <div class="row g-3">
+    <div class="col-xl-7">
+      <div class="card carte-gped">
+        <div class="card-body">
+          <div class="entete-carte">
+            <span class="icone-carte"><i class="bi bi-person-badge"></i></span>
+            <div><h3>Étudiant et rattachement</h3><p id="nom-etudiant">{% if soutenance %}{{ soutenance.etudiant.prenom }} {{ soutenance.etudiant.nom }}{% else %}Saisissez le matricule : le programme, la session et la promotion de sa dernière inscription sont proposés{% endif %}</p></div>
+          </div>
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label small mb-1" for="{{ form.matricule.id_for_label }}">{{ form.matricule.label }} <span class="text-danger">*</span></label>
+              <div class="champ-icone"><i class="bi bi-upc"></i>{{ form.matricule }}</div>
+              {% for err in form.matricule.errors %}<div class="invalid-feedback d-block">{{ err }}</div>{% endfor %}
+            </div>
+            {% include 'pfe/_champ.html' with champ=form.filiere col='col-md-6' %}
+            {% include 'pfe/_champ.html' with champ=form.session col='col-md-4' %}
+            {% include 'pfe/_champ.html' with champ=form.promotion col='col-md-4' %}
+            {% include 'pfe/_champ.html' with champ=form.cycle col='col-md-4' %}
+            <div class="col-12 mt-1"><div class="small text-secondary" id="aide-cycle"><i class="bi bi-info-circle"></i> Cycle vide : celui du programme est repris. La soutenance concerne d'habitude les cycles Ingénieur et Master.</div></div>
+            {% include 'pfe/_champ.html' with champ=form.projet col='col-12' %}
+            <div class="col-12 mt-1"><div class="small text-secondary"><i class="bi bi-diagram-3"></i> Facultatif. Le thème, l'encadreur, le jury et la date se renseignent sur le <a href="{% url 'projets_liste' %}">projet de soutenance</a>{% if soutenance.projet %} : <a href="{% url 'projet_modifier' soutenance.projet.pk %}">ouvrir « {{ soutenance.projet.intitule }} »</a>{% endif %}.</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-xl-5 d-flex flex-column gap-3">
+      <div class="card carte-gped">
+        <div class="card-body">
+          <div class="entete-carte">
+            <span class="icone-carte"><i class="bi bi-123"></i></span>
+            <div><h3>Note</h3><p>Sur 10 · ABS = 0 · validée à partir de 5</p></div>
+          </div>
+          <div class="row g-3">
+            {% include 'pfe/_champ.html' with champ=form.note col='col-6' %}
+            {% include 'pfe/_champ.html' with champ=form.note_session col='col-6' %}
+            <div class="col-12 mt-1"><div class="small text-secondary">{{ form.note_session.help_text }}</div></div>
+            {% if soutenance and soutenance.note_finale is not None %}
+              <div class="col-12"><span class="small text-secondary">Note retenue :</span> <span class="finale {% if soutenance.validee %}ok{% else %}ko{% endif %}">{{ soutenance.note_finale|floatformat:"-2" }}</span> {{ soutenance.mention }}{% if soutenance.par_session %} <span class="pill pill-accent">Session</span>{% endif %}</div>
+            {% endif %}
+            {% if form.note_verrouillee and profil.est_scolarite %}
+              {% include 'pfe/_champ.html' with champ=form.motif col='col-12' %}
+              <div class="col-12">
+                <label class="form-label small mb-1" for="{{ form.justificatif.id_for_label }}">{{ form.justificatif.label }}</label>
+                {{ form.justificatif }}
+                <div class="small text-secondary mt-1"><i class="bi bi-lock"></i> Conservé en interne, jamais publié.</div>
+              </div>
+            {% endif %}
+          </div>
+          <div class="d-grid gap-2 mt-4">
+            <button class="btn btn-primary" name="enregistrer"><i class="bi bi-check-lg"></i> Enregistrer</button>
+            {% if not soutenance %}<button class="btn btn-or" name="continuer"><i class="bi bi-plus-lg"></i> Enregistrer et ajouter une autre</button>{% endif %}
+            <a href="{{ retour }}" class="btn btn-light">Annuler</a>
+          </div>
+        </div>
+      </div>
+      {% if historique %}
+        <div class="card carte-gped">
+          <div class="card-body">
+            <div class="entete-carte"><span class="icone-carte"><i class="bi bi-clock-history"></i></span><div><h3>Historique de la note</h3><p>Modifications tracées</p></div></div>
+            <ul class="list-unstyled small mb-0">
+              {% for h in historique %}
+                <li class="mb-2"><strong>{{ h.date|date:"d/m/Y H:i" }}</strong> · {{ h.utilisateur.get_full_name|default:h.utilisateur.username|default:"—" }}
+                  <div>{{ h.avant.note_finale|default_if_none:"—" }} → <strong>{{ h.apres.note_finale|default_if_none:"—" }}</strong>{% if h.note_verrouillee %} <i class="bi bi-lock-fill text-secondary" title="Note verrouillée"></i>{% endif %}</div>
+                  {% if h.motif %}<div class="text-secondary">{{ h.motif }}</div>{% endif %}</li>
+              {% endfor %}
+            </ul>
+          </div>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+</form>
+{% endblock %}
+{% block scripts %}
+{{ cycles_des_programmes|json_script:"cycles-des-programmes" }}
+<script>
+  (function () {
+    var cycles = JSON.parse(document.getElementById('cycles-des-programmes').textContent);
+    var prog = document.getElementById('{{ form.filiere.id_for_label }}');
+    var cycle = document.getElementById('{{ form.cycle.id_for_label }}');
+    var aide = document.getElementById('aide-cycle');
+    function majAide() {
+      var c = cycle.value || cycles[prog.value] || '';
+      var habituel = !c || c === 'Ingénieur' || c === 'Master';
+      aide.className = 'small ' + (habituel ? 'text-secondary' : 'text-warning-emphasis');
+      aide.innerHTML = '<i class="bi ' + (habituel ? 'bi-info-circle' : 'bi-exclamation-triangle') + '"></i> '
+        + (c ? 'Cycle retenu : <strong>' + c + '</strong>. ' : 'Cycle vide : celui du programme est repris. ')
+        + (habituel ? "La soutenance concerne d'habitude les cycles Ingénieur et Master." : "Ce n'est ni Ingénieur ni Master : la soutenance sera acceptée, avec un avertissement.");
+    }
+    prog.addEventListener('change', majAide);
+    cycle.addEventListener('change', majAide);
+    majAide();
+
+    // Nouvelle soutenance : le matricule propose la dernière inscription de l'étudiant
+    var matricule = document.getElementById('{{ form.matricule.id_for_label }}');
+    if (!matricule || matricule.disabled) return;
+    var nom = document.getElementById('nom-etudiant');
+    var session = document.getElementById('{{ form.session.id_for_label }}');
+    var promotion = document.getElementById('{{ form.promotion.id_for_label }}');
+    function choisir(select, valeur) {
+      if (valeur && select.querySelector('option[value="' + valeur + '"]')) select.value = String(valeur);
+    }
+    matricule.addEventListener('change', function () {
+      if (!matricule.value.trim()) return;
+      fetch('{% url "soutenance_etudiant" %}?matricule=' + encodeURIComponent(matricule.value.trim()))
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (!d.trouve) { nom.textContent = 'Aucun étudiant avec ce matricule.'; return; }
+          nom.textContent = d.nom + (d.preinscrit ? ' (préinscrit : finalisez d\'abord son inscription)' : '');
+          choisir(prog, d.programme); choisir(session, d.session); choisir(promotion, d.promotion);
+          majAide();
+        });
+    });
+  })();
+</script>
+{% endblock %}

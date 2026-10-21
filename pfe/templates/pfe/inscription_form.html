@@ -1,0 +1,142 @@
+{% extends 'pfe/base.html' %}
+{% block titre %}{{ titre }}{% endblock %}
+{% block titre_page %}{{ titre }}{% endblock %}
+{% block sous_titre %}<div class="sous-titre">Les champs marqués <span class="text-danger">*</span> sont obligatoires.</div>{% endblock %}
+{% block contenu %}
+<form method="post" enctype="multipart/form-data" novalidate>
+  {% csrf_token %}
+  {% if form_etu.non_field_errors or form_insc.non_field_errors %}
+    <div class="alert alert-danger">{{ form_etu.non_field_errors }}{{ form_insc.non_field_errors }}</div>
+  {% endif %}
+  {% if form_etu.errors or form_insc.errors %}
+    <div class="alert alert-danger py-2 d-flex gap-2 align-items-center"><i class="bi bi-exclamation-circle"></i> Veuillez corriger les champs signalés.</div>
+  {% endif %}
+
+  <div class="row g-3">
+    <div class="col-xl-8 d-flex flex-column gap-3">
+      <div class="card carte-gped">
+        <div class="card-body">
+          <div class="entete-carte">
+            <span class="icone-carte"><i class="bi bi-person-vcard"></i></span>
+            <div><h3>Identité</h3><p>État civil de l'étudiant</p></div>
+          </div>
+          <div class="row g-3">
+            <div class="col-12">
+              <div class="bloc-photo {% if form_etu.photo.errors %}erreur{% endif %}">
+                <button type="button" class="apercu-photo avatar-cliquable {% if form_etu.photo_actuelle %}a-photo{% endif %}" data-apercu="formulaire"
+                        {% if form_etu.photo_actuelle %}style="background-image:url('{{ form_etu.photo_actuelle.url }}')"{% endif %}
+                        data-photo-ouvrir data-photo-input="{{ form_etu.photo.id_for_label }}" data-photo-retirer="{{ form_etu.retirer_photo.id_for_label }}"
+                        data-photo-cible='[data-apercu="formulaire"]' data-photo-actuelle="{% if form_etu.photo_actuelle %}1{% else %}0{% endif %}"
+                        data-photo-titre="Photo de l'étudiant" aria-label="Prendre ou charger la photo">
+                  <i class="bi bi-person-bounding-box"></i>
+                  <span class="badge-photo"><i class="bi bi-camera"></i></span>
+                </button>
+                <div style="min-width:0">
+                  <div class="fw-semibold" style="color:var(--encre)">Photo de l'étudiant</div>
+                  <div class="small text-secondary">Prise de vue ou chargement · recadrée au format identité et compressée (350 Ko maximum)</div>
+                  <div class="d-flex flex-wrap align-items-center gap-2 mt-2">
+                    <button type="button" class="btn btn-sm btn-or"
+                            data-photo-ouvrir data-photo-input="{{ form_etu.photo.id_for_label }}" data-photo-retirer="{{ form_etu.retirer_photo.id_for_label }}"
+                            data-photo-cible='[data-apercu="formulaire"]' data-photo-actuelle="{% if form_etu.photo_actuelle %}1{% else %}0{% endif %}"
+                            data-photo-titre="Photo de l'étudiant">
+                      <i class="bi bi-camera"></i> {% if form_etu.photo_actuelle %}Changer la photo{% else %}Prendre ou charger une photo{% endif %}
+                    </button>
+                    {{ form_etu.photo }}
+                    <span class="d-none">{{ form_etu.retirer_photo }}</span>
+                  </div>
+                  <div class="small text-secondary mt-1" data-photo-info></div>
+                  {% for err in form_etu.photo.errors %}<div class="invalid-feedback d-block">{{ err }}</div>{% endfor %}
+                </div>
+              </div>
+            </div>
+            {% include 'pfe/_champ.html' with champ=form_etu.matricule col='col-md-4' %}
+            {% include 'pfe/_champ.html' with champ=form_etu.prenom col='col-md-4' %}
+            {% include 'pfe/_champ.html' with champ=form_etu.nom col='col-md-4' %}
+            {% include 'pfe/_champ.html' with champ=form_etu.sexe col='col-md-3' %}
+            {% include 'pfe/_champ.html' with champ=form_etu.date_de_naissance col='col-md-3' %}
+            {% include 'pfe/_champ.html' with champ=form_etu.lieu_de_naissance col='col-md-3' %}
+            {% include 'pfe/_champ.html' with champ=form_etu.nationalite col='col-md-3' %}
+            {% include 'pfe/_champ.html' with champ=form_etu.pere %}
+            {% include 'pfe/_champ.html' with champ=form_etu.mere %}
+          </div>
+        </div>
+      </div>
+
+      <div class="card carte-gped">
+        <div class="card-body">
+          <div class="entete-carte">
+            <span class="icone-carte"><i class="bi bi-telephone"></i></span>
+            <div><h3>Contacts</h3><p>Pour joindre l'étudiant ou son tuteur</p></div>
+          </div>
+          <div class="row g-3">
+            {% include 'pfe/_champ.html' with champ=form_etu.telephone col='col-md-4' %}
+            {% include 'pfe/_champ.html' with champ=form_etu.email col='col-md-8' %}
+            {% include 'pfe/_champ.html' with champ=form_etu.adresse col='col-md-8' %}
+            {% include 'pfe/_champ.html' with champ=form_etu.ville col='col-md-4' %}
+            {% include 'pfe/_champ.html' with champ=form_etu.tuteur %}
+            {% include 'pfe/_champ.html' with champ=form_etu.contact_de_tuteur %}
+          </div>
+        </div>
+      </div>
+
+      <div class="card carte-gped">
+        <div class="card-body">
+          <div class="entete-carte">
+            <span class="icone-carte"><i class="bi bi-award"></i></span>
+            <div><h3>Baccalauréat</h3><p>Parcours avant l'entrée dans l'établissement</p></div>
+          </div>
+          <div class="row g-3">
+            {% include 'pfe/_champ.html' with champ=form_etu.ine %}
+            {% include 'pfe/_champ.html' with champ=form_etu.pvbac %}
+            {% include 'pfe/_champ.html' with champ=form_etu.option_de_bac %}
+            {% include 'pfe/_champ.html' with champ=form_etu.moyenne_au_bac col='col-md-2' %}
+            {% include 'pfe/_champ.html' with champ=form_etu.annee_obtention_bac col='col-md-2' %}
+            {% include 'pfe/_champ.html' with champ=form_etu.annee_orientation col='col-md-2' %}
+            {% include 'pfe/_champ.html' with champ=form_etu.ecole_origine %}
+            {% include 'pfe/_champ.html' with champ=form_etu.centre_de_bac %}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-xl-4">
+      <div class="card carte-gped resume-inscription">
+        <div class="card-body">
+          <div class="entete-carte">
+            <span class="icone-carte"><i class="bi bi-journal-check"></i></span>
+            <div><h3>Inscription</h3><p>Session, cycle et programme</p></div>
+          </div>
+          <div class="row g-3">
+            {% include 'pfe/_champ.html' with champ=form_insc.session col='col-12' %}
+            {% include 'pfe/_champ.html' with champ=form_insc.cycle col='col-12' %}
+            {% include 'pfe/_champ.html' with champ=form_insc.licence col='col-12' %}
+            {% include 'pfe/_champ.html' with champ=form_insc.semestre col='col-12' %}
+            {% include 'pfe/_champ.html' with champ=form_insc.filiere col='col-12' %}
+            {% include 'pfe/_champ.html' with champ=form_insc.promotion col='col-12' %}
+            <div class="col-12 d-flex flex-column gap-2">
+              <label class="option-import" for="{{ form_insc.redouble.id_for_label }}">
+                {{ form_insc.redouble }}
+                <div><strong>Redoublant</strong><span>L'étudiant reprend ce niveau.</span></div>
+              </label>
+              <label class="option-import" for="{{ form_etu.preinscrit.id_for_label }}">
+                {{ form_etu.preinscrit }}
+                <div><strong>Préinscrit</strong><span>Inscription pas encore finalisée.</span></div>
+              </label>
+            </div>
+          </div>
+          <div class="d-grid gap-2 mt-4">
+            <button class="btn btn-primary" name="enregistrer"><i class="bi bi-check-lg"></i> Enregistrer</button>
+            {% if not inscription and not etudiant %}
+              <button class="btn btn-or" name="continuer"><i class="bi bi-plus-lg"></i> Enregistrer et inscrire un autre</button>
+            {% endif %}
+            <a href="{% if inscription %}{% url 'etudiant_fiche' inscription.pk %}{% else %}{% url 'etudiants_liste' %}{% endif %}" class="btn btn-light">Annuler</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</form>
+{% endblock %}
+{% block scripts %}
+{% include 'pfe/_modal_photo.html' %}
+{% endblock %}

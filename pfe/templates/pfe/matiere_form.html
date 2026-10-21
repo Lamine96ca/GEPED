@@ -1,0 +1,96 @@
+{% extends 'pfe/base.html' %}
+{% block titre %}{{ titre }}{% endblock %}
+{% block titre_page %}<a href="{% url 'matieres_liste' %}" class="text-decoration-none text-secondary me-1" title="Retour aux matières"><i class="bi bi-arrow-left"></i></a> {{ titre }}{% endblock %}
+{% block sous_titre %}<div class="sous-titre">Les champs marqués <span class="text-danger">*</span> sont obligatoires.</div>{% endblock %}
+{% block contenu %}
+<form method="post" novalidate>
+  {% csrf_token %}
+  {% if form.errors %}
+    <div class="alert alert-danger py-2 d-flex gap-2 align-items-center"><i class="bi bi-exclamation-circle"></i> Veuillez corriger les champs signalés.</div>
+  {% endif %}
+  {% if form.non_field_errors %}<div class="alert alert-danger py-2">{{ form.non_field_errors|join:" " }}</div>{% endif %}
+  <div class="row g-3">
+    <div class="col-xl-8">
+      <div class="card carte-gped">
+        <div class="card-body">
+          <div class="entete-carte">
+            <span class="icone-carte"><i class="bi bi-journal-bookmark"></i></span>
+            <div><h3>Matière</h3><p>Intitulé, code et nombre de crédits</p></div>
+          </div>
+          <div class="row g-3">
+            {% include 'pfe/_champ.html' with champ=form.nom col='col-md-8' %}
+            {% include 'pfe/_champ.html' with champ=form.code col='col-md-2 col-6' %}
+            {% include 'pfe/_champ.html' with champ=form.credit col='col-md-2 col-6' %}
+            {% include 'pfe/_champ.html' with champ=form.description col='col-12' %}
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-xl-4">
+      <div class="card carte-gped">
+        <div class="card-body">
+          <div class="entete-carte">
+            <span class="icone-carte"><i class="bi bi-diagram-3"></i></span>
+            <div><h3>Rattachement</h3><p>Programme, année et semestre</p></div>
+          </div>
+          <div class="row g-3">
+            {% include 'pfe/_champ.html' with champ=form.filiere col='col-12' %}
+            {% if un_seul_programme %}<div class="col-12 mt-1"><div class="small text-secondary"><i class="bi bi-lock"></i> Votre programme est choisi d'office.</div></div>{% endif %}
+            {% include 'pfe/_champ.html' with champ=form.cycle col='col-12' %}
+            <div class="col-12 mt-1"><div class="small text-secondary" id="aide-cycle"><i class="bi bi-info-circle"></i> Vide : le cycle du programme est repris.</div></div>
+            {% include 'pfe/_champ.html' with champ=form.session col='col-12' %}
+            {% include 'pfe/_champ.html' with champ=form.licence col='col-12' %}
+            {% include 'pfe/_champ.html' with champ=form.semestre col='col-12' %}
+            {% include 'pfe/_champ.html' with champ=form.promotion col='col-12' %}
+          </div>
+          <div class="d-grid gap-2 mt-4">
+            <button class="btn btn-primary" name="enregistrer"><i class="bi bi-check-lg"></i> Enregistrer</button>
+            {% if not matiere %}<button class="btn btn-or" name="continuer"><i class="bi bi-plus-lg"></i> Enregistrer et ajouter une autre</button>{% endif %}
+            <a href="{% url 'matieres_liste' %}" class="btn btn-light">Annuler</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</form>
+{% endblock %}
+{% block scripts %}
+{{ semestres_par_licence|json_script:"semestres-par-licence" }}
+{{ cycles_des_programmes|json_script:"cycles-des-programmes" }}
+<script>
+  // Aide : rappelle le cycle du programme choisi (repris si le champ Cycle reste vide)
+  (function () {
+    var cycles = JSON.parse(document.getElementById('cycles-des-programmes').textContent);
+    var prog = document.getElementById('{{ form.filiere.id_for_label }}');
+    var aide = document.getElementById('aide-cycle');
+    function maj() {
+      var c = cycles[prog.value];
+      aide.innerHTML = '<i class="bi bi-info-circle"></i> ' + (prog.value
+        ? (c ? 'Vide : cycle du programme repris (<strong>' + c + '</strong>).' : "Ce programme n'a pas de cycle : choisissez-le.")
+        : 'Vide : le cycle du programme est repris.');
+    }
+    prog.addEventListener('change', maj);
+    maj();
+  })();
+</script>
+<script>
+  // Seuls les semestres de la licence choisie sont proposés (le serveur le vérifie aussi)
+  (function () {
+    var carte = JSON.parse(document.getElementById('semestres-par-licence').textContent);
+    var licence = document.getElementById('{{ form.licence.id_for_label }}');
+    var semestre = document.getElementById('{{ form.semestre.id_for_label }}');
+    function filtrer() {
+      Array.prototype.forEach.call(semestre.options, function (o) {
+        o.hidden = !!(o.value && licence.value && String(carte[o.value]) !== licence.value);
+      });
+      if (semestre.selectedOptions[0] && semestre.selectedOptions[0].hidden) semestre.value = '';
+    }
+    licence.addEventListener('change', filtrer);
+    // Choisir un semestre renseigne sa licence
+    semestre.addEventListener('change', function () {
+      if (semestre.value && !licence.value) { licence.value = String(carte[semestre.value]); filtrer(); }
+    });
+    filtrer();
+  })();
+</script>
+{% endblock %}

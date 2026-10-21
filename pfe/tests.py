@@ -1,0 +1,1526 @@
+import io
+import os
+import re
+from pathlib import Path as pathlib_path
+from urllib.parse import quote
+
+import openpyxl
+from django.contrib.auth.models import User
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import TestCase
+from django.urls import reverse
+
+from .importer import importer_etudiants
+from .models import Etudiant, Inscription, Licence, Personnel, Promotion, Promotion_Licence_Session, Service, Session
+
+
+def fichier_xlsx(lignes, nom='import.xlsx'):
+    wb = openpyxl.Workbook()
+    for l in lignes:
+        wb.active.append(l)
+    flux = io.BytesIO()
+    wb.save(flux)
+    return SimpleUploadedFile(nom, flux.getvalue())
+
+
+class GpedTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.session = Session.objects.create(annee='2025-2026', en_cours=True)
+        cls.licence = Licence.objects.create(nom='Licence 1')
+        cls.scol = Service.objects.create(nom='Scolarité', code='SCOL')
+        cls.dep = Service.objects.create(nom='Département', code='DEP')
+        cls.info = Service.objects.create(nom='Informatique', code='INFO', programme=True)
+        cls.gc = Service.objects.create(nom='Génie civil', code='GC', programme=True)
+        for i, (login, service) in enumerate([('scol', cls.scol), ('dep', cls.dep), ('info', cls.info)]):
+            u = User.objects.create_user(login, password='x')
+            p = Personnel.objects.create(utilisateur=u, prenom=login, nom='T', telephone=str(i),
+                                         email=f'{login}@t.local', fonc='Agent')
+            p.service.add(service)
+        User.objects.create_user('sans_service', password='x')
+        for k, prog in enumerate([cls.info, cls.info, cls.gc]):
+            e = Etudiant.objects.create(matricule=f'M{k}', prenom='P', nom=f'N{k}', email=f'e{k}@t.local')
+            Inscription.objects.create(etudiant=e, session=cls.session, licence=cls.licence, filiere=prog)
+
+        # Parcours des promotions (Promotion_Licence_Session)
+        cls.s2324 = Session.objects.create(annee='2023-2024')
+        cls.s2425 = Session.objects.create(annee='2024-2025')
+        cls.l2 = Licence.objects.create(nom='Licence 2')
+        cls.l3 = Licence.objects.create(nom='Licence 3')
+        cls.p18 = Promotion.objects.create(nom='P18')      # 3 niveaux
+        cls.p20 = Promotion.objects.create(nom='P20')      # 1 niveau
+        Promotion.objects.create(nom='P21')                # aucun niveau défini
+        for promo, lic, ses in [(cls.p18, cls.licence, cls.s2324), (cls.p18, cls.l2, cls.s2425),
+                                (cls.p18, cls.l3, cls.session), (cls.p20, cls.licence, cls.session)]:
+            Promotion_Licence_Session.objects.create(promotion=promo, licence=lic, session=ses)
+
+    def connecter(self, login):
+        self.client.login(username=login, password='x')
+
+    def donnees(self, **params):
+        return self.client.get(reverse('etudiants_donnees'), params).json()
+
+    def test_perimetre_par_role(self):
+        self.connecter('scol')
+        self.assertEqual(self.donnees()['total'], 3)
+        self.connecter('dep')
+        self.assertEqual(self.donnees()['total'], 3)
+        self.connecter('info')
+        self.assertEqual(self.donnees()['total'], 2)
+        # un programme ne peut pas élargir son périmètre via les filtres
+        self.assertEqual(self.donnees(programme=self.gc.id)['total'], 0)
+
+    def test_scolarite_reconnue_par_son_nom(self):
+        """« Service Scolarité » (code 0000, comme dans la base de l'IST) donne le rôle scolarité."""
+        svc = Service.objects.create(nom='Service Scolarité', code='0000')
+        u = User.objects.create_user('sc_nom', password='x')
+        Personnel.objects.create(utilisateur=u, prenom='S', nom='C', telephone='99', email='sc@t.local',
+                                 fonc='Agent').service.add(svc)
+        self.connecter('sc_nom')
+        self.assertEqual(self.client.get(reverse('importer')).status_code, 200)
+        # un autre service au code 0000 reste un simple service
+        dg = Service.objects.create(nom='Direction Générale', code='0000')
+        u2 = User.objects.create_user('dg', password='x')
+        Personnel.objects.create(utilisateur=u2, prenom='D', nom='G', telephone='98', email='dg@t.local',
+                                 fonc='Agent').service.add(dg)
+        self.connecter('dg')
+        self.assertEqual(self.client.get(reverse('importer')).status_code, 403)
+        self.assertEqual(self.client.get(reverse('etudiants_liste')).status_code, 200)
+
+    def test_attestation_inscription_titre_numero_et_pdf(self):
+        from pfe.attestations import contenu_inscription, titre_inscription
+        from .models import Attestation, Semestre
+        Semestre.objects.create(nom='Semestre 3', abrege='S3', licence=self.l2)
+        Semestre.objects.create(nom='Semestre 4', abrege='S4', licence=self.l2)
+        # Titre selon le niveau
+        self.assertEqual(titre_inscription(self.licence), "ATTESTATION D'INSCRIPTION")          # Licence 1
+        self.assertEqual(titre_inscription(Licence(nom='1ère Année')), "ATTESTATION D'INSCRIPTION")
+        self.assertEqual(titre_inscription(Licence(nom='M1')), "ATTESTATION D'INSCRIPTION")
+        self.assertEqual(titre_inscription(self.l2), "ATTESTATION DE REINSCRIPTION")
+
+        e = Etudiant.objects.get(matricule='M0')
+        insc_l2 = Inscription.objects.create(etudiant=e, session=self.s2425, licence=self.l2, filiere=self.info)
+        insc_l1 = Inscription.objects.get(etudiant=e, licence=self.licence)
+        self.connecter('scol')
+
+        url = reverse('attestations_type', args=['inscription'])
+
+        # Formulaire « Enregistrer » : matricule + licence ; session et programme viennent de l'inscription
+        r = self.client.get(url, {'matricule': 'M0', 'licence': self.l2.pk})
+        self.assertContains(r, 'Enregistrer')
+        self.assertContains(r, 'value="M0"')
+        r = self.client.post(url, {'matricule': 'm0', 'licence': self.l2.pk})
+        a1 = Attestation.objects.get()
+        self.assertRedirects(r, f'{url}?imprimer={a1.pk}', fetch_redirect_response=False)
+        self.assertEqual((a1.type, a1.etudiant, a1.session, a1.filiere, a1.licence),
+                         (Attestation.INSCRIPTION, e, self.s2425, self.info, self.l2))
+        self.assertEqual(a1.session_actuelle, self.session)
+        self.assertTrue(a1.num_ref.startswith('0001/ISTM/SC/'))
+        self.assertContains(self.client.get(f'{url}?imprimer={a1.pk}'), 'prête')
+        r = self.client.get(reverse('attestation_pdf', args=[a1.pk]))
+        self.assertEqual((r.status_code, r['Content-Type'], r.content[:4]), (200, 'application/pdf', b'%PDF'))
+
+        # Doublon refusé (même étudiant, licence, session) ; erreurs claires
+        r = self.client.post(url, {'matricule': 'M0', 'licence': self.l2.pk})
+        self.assertContains(r, 'existe déjà')
+        self.assertContains(self.client.post(url, {'matricule': 'XXX', 'licence': self.l2.pk}), 'Aucun étudiant')
+        self.assertContains(self.client.post(url, {'matricule': 'M0', 'licence': self.l3.pk}), "aucune inscription")
+        self.assertEqual(Attestation.objects.count(), 1)
+
+        # Deuxième attestation : n° suivant
+        self.client.post(url, {'matricule': 'M0', 'licence': self.licence.pk})
+        a2 = Attestation.objects.order_by('id').last()
+        self.assertEqual(a2.num_ref[:4], '0002')
+
+        # Modification : le n° ne change pas, session/programme recalculés
+        r = self.client.post(f'{url}?modifier={a2.pk}', {'matricule': 'M1', 'licence': self.licence.pk})
+        a2.refresh_from_db()
+        self.assertEqual((a2.num_ref[:4], a2.etudiant.matricule), ('0002', 'M1'))
+
+        # Suppression de la DERNIÈRE attestation : son n° n'est pas réattribué
+        self.client.post(reverse('attestation_supprimer', args=[a2.pk]))
+        self.assertEqual(Attestation.objects.count(), 1)
+        self.assertEqual(Attestation.prochaine_reference()[:4], '0003')
+
+        # Le n° suit le plus grand numéro de l'année, tous types confondus (jamais réutilisé)
+        Attestation.objects.create(type=Attestation.NIVEAU, etudiant=e)                    # 0003
+        Attestation.objects.create(type=Attestation.NIVEAU, etudiant=e)                    # 0004
+        Attestation.objects.filter(num_ref__startswith='0004').delete()
+        self.assertEqual(Attestation.prochaine_reference()[:4], '0005')
+
+        # Contenu : semestres et année, programme, session
+        titre, (texte, _) = contenu_inscription(a1)
+        self.assertEqual(titre, 'ATTESTATION DE REINSCRIPTION')
+        for attendu in ('<b>Semestres S3 et S4</b> (2ème Année)', 'Matricule : <b>M0</b>',
+                        'Département <b>Informatique</b>', '<b>2024-2025</b>'):
+            self.assertIn(attendu, texte)
+
+        # Réservé à la scolarité ; liste et recherche
+        r = self.client.get(reverse('attestations'), {'etudiant': 'M0'})
+        self.assertContains(r, a1.num_ref)
+        self.connecter('info')
+        self.assertEqual(self.client.get(reverse('attestations')).status_code, 403)
+        self.assertEqual(self.client.get(reverse('attestation_pdf', args=[a1.pk])).status_code, 403)
+
+    def test_attestation_orientation(self):
+        from pfe.attestations import contenu_orientation
+        from .models import Attestation
+        e = Etudiant.objects.get(matricule='M0')
+        Etudiant.objects.filter(pk=e.pk).update(ine='INE1', pvbac='303462', option_de_bac='Sciences mathématiques',
+                                                centre_de_bac='GSP LE MERITE', annee_orientation='2023')
+        Inscription.objects.create(etudiant=e, session=self.s2324, licence=self.l2, filiere=self.gc)  # plus ancienne
+        self.connecter('scol')
+        url = reverse('attestations_type', args=['orientation'])
+
+        # Une inscription d'abord : la numérotation est continue entre les types
+        self.client.post(reverse('attestations_type', args=['inscription']), {'matricule': 'M1', 'licence': self.licence.pk})
+
+        r = self.client.get(url)
+        self.assertContains(r, 'Enregistrer')
+        self.assertContains(r, '0002/ISTM/DG/')                       # n° suivant, suffixe DG
+        r = self.client.post(url, {'matricule': 'M0'})
+        a = Attestation.objects.get(type=Attestation.ORIENTATION)
+        self.assertRedirects(r, f'{url}?imprimer={a.pk}', fetch_redirect_response=False)
+        self.assertTrue(a.num_ref.startswith('0002/ISTM/DG/'))
+        # Département = programme de la DERNIÈRE inscription (2025-2026, Informatique)
+        self.assertEqual((a.filiere, a.session, a.licence), (self.info, self.session, self.licence))
+
+        titre, (texte, _), _style = contenu_orientation(a)
+        self.assertEqual(titre[0][:30], 'ATTESTATION DE REUSSITE A LA S')
+        for attendu in ('INE : <b>INE1</b>', 'PV Bac Unique : <b>303462</b>', 'Profil : <b>Sciences mathématiques</b>',
+                        'Centre : <b>GSP LE MERITE</b>', 'Session : <b>2023</b>', 'Département : <b>Informatique</b>'):
+            self.assertIn(attendu, texte)
+        r = self.client.get(reverse('attestation_pdf', args=[a.pk]))
+        self.assertEqual((r.status_code, r.content[:4]), (200, b'%PDF'))
+
+        # Une seule par étudiant ; fiche incomplète -> avertissement, « — » à l'impression
+        self.assertContains(self.client.post(url, {'matricule': 'M0'}), "déjà une attestation d&#x27;orientation")
+        r = self.client.post(url, {'matricule': 'M2'}, follow=True)
+        self.assertContains(r, 'Informations absentes')
+        self.assertEqual(Attestation.objects.filter(type=Attestation.ORIENTATION).count(), 2)
+
+    def test_attestation_niveau(self):
+        from pfe.attestations import contenu_niveau
+        from .models import Attestation, Semestre
+        Semestre.objects.create(nom='Semestre 3', abrege='S3', licence=self.l2)
+        Semestre.objects.create(nom='Semestre 4', abrege='S4', licence=self.l2)
+        e = Etudiant.objects.get(matricule='M0')
+        Inscription.objects.create(etudiant=e, session=self.s2425, licence=self.l2, filiere=self.info)
+        self.connecter('scol')
+        url = reverse('attestations_type', args=['niveau'])
+
+        # Inscription puis niveau pour la même année : autorisé (types différents), n° continus
+        self.client.post(reverse('attestations_type', args=['inscription']), {'matricule': 'M0', 'licence': self.l2.pk})
+        self.assertContains(self.client.get(url), 'Enregistrer')
+        r = self.client.post(url, {'matricule': 'M0', 'licence': self.l2.pk})
+        a = Attestation.objects.get(type=Attestation.NIVEAU)
+        self.assertRedirects(r, f'{url}?imprimer={a.pk}', fetch_redirect_response=False)
+        self.assertTrue(a.num_ref.startswith('0002/ISTM/SC/'))
+        self.assertEqual((a.session, a.filiere, a.licence), (self.s2425, self.info, self.l2))
+
+        titre, (texte, _) = contenu_niveau(a)
+        self.assertEqual(titre, 'ATTESTATION DE NIVEAU')
+        for attendu in ('Je soussigné, atteste', '<b>P N0</b>', 'Matricule : <b>M0</b>', 'Département : <b>Informatique</b>',
+                        'cours théoriques et pratiques des Semestres <b>S3 et S4</b>', '<b>2024-2025</b>'):
+            self.assertIn(attendu, texte)
+        self.assertEqual(self.client.get(reverse('attestation_pdf', args=[a.pk])).content[:4], b'%PDF')
+
+        # Doublon de niveau refusé ; page publique de vérification
+        self.assertContains(self.client.post(url, {'matricule': 'M0', 'licence': self.l2.pk}), 'attestation de niveau existe')
+        self.client.logout()
+        r = self.client.get(reverse('verifier_document', args=[a.code_verification]))
+        self.assertContains(r, 'ATTESTATION DE NIVEAU')
+        self.assertContains(r, 'Semestres S3 et S4 (2ème Année)')
+
+    def test_attestation_fin_etudes_avec_cycle(self):
+        from pfe.attestations import contenu_fin_etudes, placer_texte, titre_document
+        from .models import Attestation
+        e = Etudiant.objects.get(matricule='M0')
+        Etudiant.objects.filter(pk=e.pk).update(ine='DIHO0807698329')
+        Inscription.objects.filter(etudiant=e).update(cycle='Licence')
+        Inscription.objects.create(etudiant=e, session=self.s2324, licence=self.l2, filiere=self.gc, cycle='Licence')
+        self.connecter('scol')
+        url = reverse('attestations_type', args=['fin-etudes'])
+        self.assertContains(self.client.get(url), 'Cycle terminé')
+
+        # Sans choix de cycle : celui de la dernière inscription (Licence 2025-2026, Informatique)
+        r = self.client.post(url, {'matricule': 'M0', 'cycle': ''})
+        a = Attestation.objects.get(type=Attestation.FIN_ETUDES)
+        self.assertRedirects(r, f'{url}?imprimer={a.pk}', fetch_redirect_response=False)
+        self.assertEqual((a.cycle, a.filiere, a.session), ('Licence', self.info, self.session))
+        self.assertTrue(a.num_ref.startswith('0001/ISTM/SC/'))
+
+        titre, (texte, fin) = contenu_fin_etudes(a)
+        self.assertEqual(titre, "ATTESTATION DE FIN D'ETUDES SUPERIEURES")
+        for attendu in ('M ou Mme', '<b>P N0</b>', 'INE : <b>DIHO0807698329</b>', 'Département <b>Informatique</b>',
+                        'pratiques du <b>Premier cycle LMD (Licence)</b> de notre institution'):
+            self.assertIn(attendu, texte)
+        self.assertEqual(titre_document(a), "ATTESTATION DE FIN D'ETUDES SUPERIEURES (Premier cycle LMD)")
+        self.assertEqual(self.client.get(reverse('attestation_pdf', args=[a.pk])).content[:4], b'%PDF')
+
+        # Un seul par cycle ; un autre cycle sans inscription est refusé
+        self.assertContains(self.client.post(url, {'matricule': 'M0', 'cycle': 'Licence'}), 'déjà une attestation de fin')
+        self.assertContains(self.client.post(url, {'matricule': 'M0', 'cycle': 'Master'}), 'aucune inscription en Master')
+        # Cycle absent de l'inscription et non choisi : on demande de le préciser
+        self.assertContains(self.client.post(url, {'matricule': 'M1', 'cycle': ''}), "Le cycle n&#x27;est pas renseigné")
+
+        # Page publique : cycle validé
+        self.client.logout()
+        r = self.client.get(reverse('verifier_document', args=[a.code_verification]))
+        self.assertContains(r, 'Premier cycle LMD (Licence)')
+        self.assertContains(r, 'DIHO0807698329')
+
+    def test_fin_etudes_cachet_signature_reserves_au_super_utilisateur(self):
+        from .models import Attestation
+        e = Etudiant.objects.get(matricule='M0')
+        Inscription.objects.filter(etudiant=e).update(cycle='Licence')
+        a = Attestation.objects.create(type=Attestation.FIN_ETUDES, etudiant=e, licence=self.licence,
+                                       session=self.session, filiere=self.info, cycle='Licence',
+                                       num_ref=Attestation.prochaine_reference(Attestation.FIN_ETUDES))
+        pdf = reverse('attestation_pdf', args=[a.pk])
+        liste = reverse('attestations_type', args=['fin-etudes'])
+        images = lambda r: r.content.count(b'/Subtype /Image')            # noqa: E731
+
+        # Scolarité : sans cachet ni signature, même en ajoutant « ?signature=1 » à la main
+        self.connecter('scol')
+        sans = self.client.get(pdf)
+        force = self.client.get(pdf + '?signature=1')
+        self.assertEqual(images(force), images(sans))
+        self.assertNotIn('signee', force['Content-Disposition'])
+        self.assertEqual(sans['Cache-Control'], 'no-store, private')
+        self.assertNotContains(self.client.get(liste), '?signature=1')
+
+        # Super utilisateur : bouton et version avec cachet et signature (image en plus)
+        User.objects.create_superuser('admin', password='x')
+        self.client.login(username='admin', password='x')
+        self.assertContains(self.client.get(liste), f'{pdf}?signature=1')
+        avec = self.client.get(pdf + '?signature=1')
+        self.assertGreater(images(avec), images(sans))
+        self.assertIn('_signee.pdf', avec['Content-Disposition'])
+        self.assertEqual(images(self.client.get(pdf)), images(sans))     # « Imprimer » : sans, pour lui aussi
+
+        # Les autres attestations gardent leur signature, et l'option ne s'y applique pas
+        insc = Attestation.objects.create(type=Attestation.INSCRIPTION, etudiant=e, licence=self.licence,
+                                          session=self.session, filiere=self.info,
+                                          num_ref=Attestation.prochaine_reference(Attestation.INSCRIPTION))
+        r_insc = reverse('attestation_pdf', args=[insc.pk])
+        self.assertEqual(images(self.client.get(r_insc)), images(self.client.get(r_insc + '?signature=1')))
+        self.assertGreater(images(self.client.get(r_insc)), images(sans))
+
+    def test_texte_trop_long_jamais_perdu(self):
+        """Un texte qui déborde est réduit, jamais tronqué (tous les paragraphes sont dessinés)."""
+        import io as _io
+        from reportlab.pdfgen.canvas import Canvas
+        from pfe.attestations import STYLE_TEXTE, placer_texte
+        c = Canvas(_io.BytesIO(), pageCompression=0)
+        long = 'Département ' + 'TRES LONG NOM ' * 60
+        placer_texte(c, [long, 'En foi de quoi, dernier paragraphe.'], STYLE_TEXTE, 60, 240, 700, 405)
+        c.showPage()
+        self.assertIn(b'En foi de quoi', c.getpdfdata().replace(b'\\', b''))
+
+    def test_verification_publique_par_qr_code(self):
+        from .models import Attestation
+        a = Attestation.objects.create(type=Attestation.INSCRIPTION, etudiant=Etudiant.objects.get(matricule='M0'),
+                                       licence=self.licence, filiere=self.info, session=self.session)
+        b = Attestation.objects.create(type=Attestation.INSCRIPTION, etudiant=Etudiant.objects.get(matricule='M1'),
+                                       licence=self.licence, filiere=self.info, session=self.session)
+        self.assertEqual(len(a.code_verification), 22)
+        self.assertNotEqual(a.code_verification, b.code_verification)     # aléatoire, non déductible
+
+        # Page publique : sans connexion, elle confirme et affiche le contenu du document
+        self.client.logout()
+        r = self.client.get(reverse('verifier_document', args=[a.code_verification]))
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r['X-Robots-Tag'], 'noindex, nofollow')
+        for attendu in ('Document authentique', a.num_ref, "ATTESTATION D&#x27;INSCRIPTION", 'P N0', 'M0',
+                        'Informatique', '2025-2026'):
+            self.assertContains(r, attendu)
+        self.assertNotContains(r, 'e0@t.local')                           # rien d'autre sur l'étudiant
+
+        # Code absent de la base (inventé, trafiqué, trop long, injection…) : page gePed « non reconnu »
+        for faux in ['CodeInventeABCDEFGHIJ12', 'faux-code', 'x', 'A' * 300, '<script>alert(1)</script>',
+                     "1' OR '1'='1", 'a/b/c', a.code_verification[:-1] + ('A' if a.code_verification[-1] != 'A' else 'B')]:
+            r = self.client.get('/verifier/' + quote(faux, safe='') + '/')
+            self.assertContains(r, 'Document non reconnu', status_code=404, msg_prefix=faux)
+            self.assertNotContains(r, '<script>alert', status_code=404)
+        code = b.code_verification
+        b.delete()
+        self.assertEqual(self.client.get(reverse('verifier_document', args=[code])).status_code, 404)
+
+        # Le PDF contient le QR code : on vérifie que l'adresse publique est bien utilisée
+        from pfe.views import url_verification
+        from django.test import RequestFactory, override_settings
+        req = RequestFactory().get('/')
+        self.assertEqual(url_verification(req, a), f'http://testserver/verifier/{a.code_verification}/')
+        with override_settings(GPED_URL_PUBLIQUE='https://geped.istmamou.org'):
+            self.assertEqual(url_verification(req, a), f'https://geped.istmamou.org/verifier/{a.code_verification}/')
+        self.connecter('scol')
+        r = self.client.get(reverse('attestation_pdf', args=[a.pk]))
+        self.assertEqual((r.status_code, r.content[:4]), (200, b'%PDF'))
+
+    def test_sans_service_refuse(self):
+        self.connecter('sans_service')
+        self.assertEqual(self.client.get(reverse('etudiants_liste')).status_code, 403)
+
+    def test_actions_reservees_scolarite(self):
+        insc = Inscription.objects.filter(filiere=self.info).first()
+        for login in ('dep', 'info'):
+            self.connecter(login)
+            self.assertEqual(self.client.get(reverse('importer')).status_code, 403)
+            self.assertEqual(self.client.get(reverse('inscription_creer')).status_code, 403)
+            self.assertEqual(self.client.get(reverse('inscription_modifier', args=[insc.pk])).status_code, 403)
+        self.connecter('scol')
+        self.assertEqual(self.client.get(reverse('importer')).status_code, 200)
+
+    def test_fiche_hors_perimetre_404(self):
+        autre = Inscription.objects.get(filiere=self.gc)
+        self.connecter('info')
+        self.assertEqual(self.client.get(reverse('etudiant_fiche', args=[autre.pk])).status_code, 404)
+
+    def test_export_respecte_perimetre(self):
+        self.connecter('info')
+        r = self.client.get(reverse('etudiants_export'), {'format': 'csv'})
+        contenu = b''.join(r.streaming_content).decode('utf-8-sig')
+        self.assertEqual(len(contenu.strip().splitlines()), 3)   # en-tête + 2
+        r = self.client.get(reverse('etudiants_export'), {'format': 'xlsx'})
+        ws = openpyxl.load_workbook(io.BytesIO(r.content)).active
+        self.assertEqual(ws.max_row, 3)
+
+    def test_recherche_et_tri(self):
+        self.connecter('scol')
+        self.assertEqual(self.donnees(q='N2')['total'], 1)
+        d = self.donnees(tri='nom', ordre='desc')
+        self.assertEqual(d['lignes'][0][3], 'N2')
+
+    def test_import_une_ligne_une_inscription(self):
+        entetes = ['matricule', 'prenom', 'nom', 'sexe', 'date_de_naissance', 'email',
+                   'programme', 'promotion', 'session', 'licence']
+        f = fichier_xlsx([
+            entetes,
+            ['2601', 'Awa', 'NOUVELLE', 'Femme', None, None, 'Génie civil', 'p 18', '2023 - 2024', 'L1'],   # 2 crée
+            [2601, 'Awa', 'NOUVELLE', 'F', None, None, 'Génie civil', 'P18', '2024-2025', 'Licence 2'],     # 3 crée
+            ['2601', 'Awa', 'NOUVELLE', 'F', None, None, 'INFO', 'P18', '2025/2026', 'LICENCE 3'],          # 4 crée
+            ['M0', 'Paul', 'CHANGE', 'M', None, None, 'INFO', 'P20', '2025-2026', 'Licence 1'],             # 5 déjà en base
+            ['2601', 'Awa', 'NOUVELLE', 'F', None, None, 'INFO', 'P18', '2023-2024', 'Licence 1'],          # 6 doublon fichier
+            [None] * 10,                                                                                   # 7 vide
+            ['M9', 'X', 'Y', 'M', None, None, 'INCONNU', 'P20', '2025-2026', 'L1'],
+            ['M8', 'X', 'Y', 'M', None, None, 'INFO', 'P99', '2025-2026', 'L1'],
+            ['M7', 'X', 'Y', 'M', None, None, 'INFO', 'P20', '2030-2031', 'L1'],
+            ['M6', 'X', 'Y', 'M', None, None, 'INFO', 'P20', '2025-2026', 'Licence 9'],
+            ['', 'X', 'Y', 'M', None, None, 'INFO', None, '2025-2026', 'L1'],
+            ['M5', 'X', 'Y', 'M', 'pas une date', None, 'INFO', 'P20', '2025-2026', 'L1'],
+            ['M4', 'Z', 'Z', 'M', None, 'e0@t.local', 'INFO', 'P20', '2025-2026', 'L1'],                     # e-mail pris
+        ])
+        total = Inscription.objects.count()
+        rapport = importer_etudiants(f, simulation=True)
+        self.assertEqual((rapport.lignes, rapport.inscriptions_creees, rapport.etudiants_crees,
+                          rapport.etudiants_existants, rapport.nb_doublons, rapport.nb_erreurs), (12, 3, 1, 1, 2, 7))
+        messages = ' '.join(m for _, m in rapport.erreurs)
+        for attendu in ('programme inconnu « INCONNU »',
+                        'promotion inconnue « P99 »', 'session inconnue « 2030-2031 »', 'licence inconnue « Licence 9 »',
+                        'valeur manquante : matricule, promotion', 'date invalide', 'e-mail e0@t.local déjà utilisé'):
+            self.assertIn(attendu, messages)
+        self.assertEqual([n for n, _ in rapport.erreurs], [8, 9, 10, 11, 12, 13, 14])
+        # Doublons (en base ou répétés dans le fichier) : ignorés, ce ne sont pas des erreurs
+        self.assertEqual(rapport.doublons, [(5, 'M0 · Licence 1 · 2025-2026 : déjà inscrit(e) dans gePed'),
+                                            (6, '2601 · Licence 1 · 2023-2024 : déjà présente à la ligne 2 du fichier')])
+        self.assertFalse(Etudiant.objects.filter(matricule='2601').exists())       # simulation : rien d'écrit
+
+        f.seek(0)
+        rapport = importer_etudiants(f)
+        self.assertEqual((rapport.inscriptions_creees, rapport.nb_doublons), (3, 2))
+        # Chaque ligne telle quelle : session, licence, programme et promotion du fichier
+        lignes = Inscription.objects.filter(etudiant__matricule='2601').order_by('session__annee')
+        self.assertEqual([(i.session.annee, i.licence.nom, i.filiere.nom, i.promotion.nom) for i in lignes],
+                         [('2023-2024', 'Licence 1', 'Génie civil', 'P18'),
+                          ('2024-2025', 'Licence 2', 'Génie civil', 'P18'),
+                          ('2025-2026', 'Licence 3', 'Informatique', 'P18')])
+        nouvelle = Etudiant.objects.get(matricule='2601')
+        self.assertEqual((nouvelle.sexe, nouvelle.email), ('F', '2601@etudiant.gped'))
+        # L'étudiant existant n'est pas modifié, son inscription n'est pas dupliquée
+        m0 = Etudiant.objects.get(matricule='M0')
+        self.assertEqual((m0.nom, Inscription.objects.filter(etudiant=m0).count()), ('N0', 1))
+        self.assertEqual(Inscription.objects.count(), total + 3)
+
+        # Réimport : tout est déjà là
+        f.seek(0)
+        rapport = importer_etudiants(f)
+        self.assertEqual((rapport.inscriptions_creees, rapport.etudiants_crees, rapport.nb_doublons), (0, 0, 5))
+        self.assertEqual(Inscription.objects.count(), total + 3)
+
+    def test_import_doublons_vus_en_simulation_ignores_a_l_import(self):
+        csv = ('matricule;prenom;nom;programme;promotion;session;licence\n'
+               'M0;Paul;N0;Informatique;P20;2025-2026;Licence 1\n'           # 2 déjà en base
+               'D1;Ana;BAH;Informatique;P20;2025-2026;Licence 1\n'           # 3 nouvelle
+               'D1;Ana;BAH;Informatique;P20;2025-2026;Licence 1\n').encode('utf-8')   # 4 répétée
+        fichier = lambda: SimpleUploadedFile('l.csv', csv)                 # noqa: E731
+        self.connecter('scol')
+        # Simulation : la liste des doublons est affichée
+        r = self.client.post(reverse('importer'), {'fichier': fichier(), 'simulation': 'on'})
+        self.assertContains(r, 'Inscription déjà existante')
+        self.assertContains(r, 'déjà présente à la ligne 3 du fichier')
+        self.assertEqual(r.context['rapport'].nb_erreurs, 0)
+        # Import réel : les doublons sont ignorés (compteur seulement), les autres lignes enregistrées
+        r = self.client.post(reverse('importer'), {'fichier': fichier()})
+        self.assertNotContains(r, 'Inscription déjà existante')
+        self.assertContains(r, '2 doublons ignorés')
+        self.assertEqual(Inscription.objects.filter(etudiant__matricule='D1').count(), 1)
+        self.assertEqual(Inscription.objects.filter(etudiant__matricule='M0').count(), 1)
+
+    def test_import_preinscription_genere_les_matricules(self):
+        from .importer import code_lettre
+        self.assertEqual((code_lettre('Ana'), code_lettre('éric'), code_lettre('  moussa')), ('35', '39', '47'))
+        tc = Service.objects.create(nom='Tronc commun', code='1', programme=True)      # code « 1 » → « 01 »
+        Etudiant.objects.create(matricule='2601000135', prenom='Déjà', nom='PRIS', email='pris@t.local')
+        entete = 'prenom;nom;date_de_naissance;email;programme;promotion;session;licence\n'
+        lignes = ('Ana;BAH;01/01/2005;;TRONC COMMUN;P20;2025-2026;Licence 1\n'       # 2
+                  'Éric;SOW;;Eric@T.local;Tronc commun;P20;2025-2026;Licence 1\n'     # 3
+                  'Ana;BAH;01/01/2005;;Tronc commun;P20;2025-2026;Licence 1\n'        # 4 doublon fichier
+                  'Moussa;DIALLO;;;INFO;P20;2025 - 2026;L1\n')                          # 5
+        f = lambda texte: SimpleUploadedFile('p.csv', (entete + texte).encode('utf-8'))  # noqa: E731
+
+        # Inscrits : le matricule reste obligatoire
+        with self.assertRaisesMessage(ValueError, '« matricule »'):
+            importer_etudiants(f(lignes))
+
+        r = importer_etudiants(f(lignes), preinscription=True)
+        self.assertEqual((r.etudiants_crees, r.inscriptions_creees, r.nb_erreurs, r.nb_doublons), (3, 3, 0, 1))
+        self.assertIn('déjà présente à la ligne 2 du fichier', r.doublons[0][1])
+        # session 26 + code programme + compteur (inscriptions du programme + 1) + lettre du prénom ;
+        # 2601000135 est déjà pris : on passe au compteur suivant
+        self.assertEqual([(n, m) for n, _, _, m in r.matricules_generes],
+                         [(2, '2601000235'), (3, '2601000339'), (5, '26INFO000347')])
+        ana = Etudiant.objects.get(matricule='2601000235')
+        self.assertEqual((ana.prenom, ana.preinscrit, ana.email), ('Ana', True, '2601000235@etudiant.gped'))
+        self.assertEqual(Inscription.objects.get(etudiant=ana).filiere, tc)
+
+        # Réimport : reconnus par date de naissance + nom + prénom, ou par e-mail → pas de doublon
+        r = importer_etudiants(f(lignes.split('Ana;BAH;01/01/2005;;Tronc commun')[0]), preinscription=True)
+        self.assertEqual((r.etudiants_crees, r.inscriptions_creees, r.nb_doublons, r.matricules_generes), (0, 0, 2, []))
+
+    def test_import_preinscrit_reconnu_par_ine(self):
+        csv = ('prenom;nom;ine;email;programme;promotion;session;licence\n'
+               'Awa;DIALLO;diho0807698329;awa@t.local;Informatique;P20;2025-2026;Licence 1\n').encode('utf-8')
+        importer_etudiants(SimpleUploadedFile('p.csv', csv), preinscription=True)
+        awa = Etudiant.objects.get(nom='DIALLO')
+        self.assertEqual(awa.ine, 'DIHO0807698329')                      # INE enregistré (en majuscules)
+        # Même INE, e-mail différent, autre année : même étudiant, nouvelle inscription, pas de 2e matricule
+        csv = ('prenom;nom;ine;email;programme;promotion;session;licence\n'
+               'Awa;DIALLO;DIHO0807698329;autre@t.local;Informatique;P20;2024-2025;Licence 2\n').encode('utf-8')
+        r = importer_etudiants(SimpleUploadedFile('p.csv', csv), preinscription=True)
+        self.assertEqual((r.etudiants_crees, r.inscriptions_creees, r.matricules_generes), (0, 1, []))
+        self.assertEqual(Etudiant.objects.filter(nom='DIALLO').count(), 1)
+        self.assertEqual(awa.etudiant_inscription.count(), 2)
+
+    def test_import_colonnes_obligatoires(self):
+        csv = 'matricule;prenom;nom;promotion\nC1;Ana;BAH;P20\n'.encode('utf-8')
+        with self.assertRaisesMessage(ValueError, '« programme », « session », « licence »'):
+            importer_etudiants(SimpleUploadedFile('l.csv', csv))
+
+    def test_import_csv_preinscription_et_cycle(self):
+        csv = ('matricule;prenom;nom;programme;promotion;session;licence;cycle\n'
+               'P1;Ana;BAH;Informatique;P20;2025-2026;Licence 1;\n'
+               'P2;Ali;SOW;GENIE CIVIL;P20;2025-2026;Licence 1;Ingénieur\n'
+               'P3;Awa;BARRY;Informatique;P20;2025-2026;Licence 1;Inconnu\n').encode('utf-8-sig')
+        rapport = importer_etudiants(SimpleUploadedFile('l.csv', csv), cycle='DUT', preinscription=True)
+        self.assertEqual((rapport.etudiants_crees, rapport.nb_erreurs), (2, 1))
+        self.assertTrue(rapport.preinscription)
+        p1 = Inscription.objects.get(etudiant__matricule='P1')
+        self.assertEqual((p1.cycle, p1.filiere, p1.etudiant.preinscrit), ('DUT', self.info, True))  # cycle du formulaire
+        p2 = Inscription.objects.get(etudiant__matricule='P2')
+        self.assertEqual((p2.cycle, p2.filiere), ('Ingénieur', self.gc))      # colonne du fichier, programme sans accents
+
+        # Import « inscription » d'une autre année : nouvelle inscription, l'étudiant n'est plus préinscrit,
+        # le reste de sa fiche ne change pas
+        csv = ('matricule;prenom;nom;programme;promotion;session;licence\n'
+               'P1;Autre;NOM;Informatique;P20;2024-2025;Licence 2\n').encode('utf-8')
+        importer_etudiants(SimpleUploadedFile('l.csv', csv))
+        e = Etudiant.objects.get(matricule='P1')
+        self.assertEqual((e.prenom, e.nom, e.preinscrit, e.etudiant_inscription.count()), ('Ana', 'BAH', False, 2))
+
+    def test_inscription_formulaire(self):
+        self.connecter('scol')
+        r = self.client.post(reverse('inscription_creer'), {
+            'etu-prenom': 'Ana', 'etu-nom': 'SOW', 'etu-sexe': 'F', 'etu-email': 'ana@t.local',
+            'insc-session': self.session.id, 'insc-licence': self.licence.id, 'insc-filiere': self.info.id,
+        })
+        self.assertEqual(r.status_code, 302)
+        self.assertFalse(Inscription.objects.get(etudiant__email='ana@t.local').redouble)
+
+    def _media_temporaire(self):
+        import shutil, tempfile
+        from django.test import override_settings
+        dossier = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, dossier, True)
+        reglage = override_settings(MEDIA_ROOT=dossier)
+        reglage.enable()
+        self.addCleanup(reglage.disable)
+        return dossier
+
+    @staticmethod
+    def _image(format_='PNG', taille=(60, 80), mode='RGB', nom=None, **options):
+        from PIL import Image
+        flux = io.BytesIO()
+        couleur = (65, 98, 124, 120) if mode == 'RGBA' else (65, 98, 124)
+        Image.new(mode, taille, couleur).save(flux, format_, **options)
+        return SimpleUploadedFile(nom or f'photo.{format_.lower()}', flux.getvalue(), content_type=f'image/{format_.lower()}')
+
+    def test_compression_photo(self):
+        from django.core.exceptions import ValidationError
+        from PIL import Image
+        from .photos import POIDS_CIBLE, compresser
+
+        # Grande photo de téléphone « couchée » (EXIF orientation 6) et très chargée (bruit) avec EXIF
+        img = Image.effect_noise((2400, 1800), 90).convert('RGB')
+        exif = Image.Exif()
+        exif[0x0112] = 6                      # orientation : à tourner de 90°
+        exif[0x010F] = 'Telephone test'       # marque de l'appareil
+        flux = io.BytesIO()
+        img.save(flux, 'JPEG', quality=95, exif=exif)
+        resultat = compresser(SimpleUploadedFile('p.jpg', flux.getvalue()))
+        sortie = Image.open(io.BytesIO(resultat))
+        self.assertEqual((sortie.format, sortie.size), ('JPEG', (600, 800)))      # redressée puis réduite
+        self.assertFalse(sortie.info.get('exif'))                                # métadonnées supprimées
+        self.assertLessEqual(len(resultat), POIDS_CIBLE)
+        # Au-delà de 10 Mo : refusé
+        with self.assertRaisesMessage(ValidationError, '10 Mo maximum'):
+            compresser(SimpleUploadedFile('lourde.jpg', b'0' * (10 * 1024 * 1024 + 1)))
+
+        # PNG transparent → JPEG sur fond blanc
+        sortie = Image.open(io.BytesIO(compresser(self._image('PNG', mode='RGBA'))))
+        self.assertEqual((sortie.format, sortie.mode), ('JPEG', 'RGB'))
+        # Déjà conforme (JPEG léger, sans EXIF, ≤ 600 × 800) : gardé tel quel
+        deja = self._image('JPEG', (300, 400))
+        brut = deja.read()
+        self.assertEqual(compresser(deja), brut)
+        # Pas une image
+        with self.assertRaisesMessage(ValidationError, "pas une image lisible"):
+            compresser(SimpleUploadedFile('cv.pdf', b'%PDF-1.4 pas une image'))
+
+    def test_photo_formulaire_inscription(self):
+        from .photos import POIDS_CIBLE
+        self._media_temporaire()
+        base = {'etu-prenom': 'Ana', 'etu-nom': 'SOW', 'etu-sexe': 'F', 'etu-email': 'photo@t.local',
+                'insc-session': self.session.id, 'insc-licence': self.licence.id, 'insc-filiere': self.info.id}
+        self.connecter('scol')
+        html = self.client.get(reverse('inscription_creer')).content.decode()
+        self.assertIn('Prendre ou charger une photo', html)
+        self.assertIn('cropper.min.js', html)
+        # Fichier qui n'est pas une image : refusé
+        r = self.client.post(reverse('inscription_creer'),
+                             {**base, 'etu-photo': SimpleUploadedFile('cv.pdf', b'%PDF', content_type='application/pdf')})
+        self.assertContains(r, 'image lisible : choisissez une photo JPG, PNG ou WEBP')
+        # Grande photo : compressée en JPEG à l'enregistrement, nommée d'après l'étudiant
+        r = self.client.post(reverse('inscription_creer'), {**base, 'etu-photo': self._image('PNG', (1800, 2400))})
+        insc = Inscription.objects.get(etudiant__email='photo@t.local')
+        self.assertRedirects(r, reverse('etudiant_fiche', args=[insc.pk]) + '?imprimer=1', fetch_redirect_response=False)
+        photo = insc.etudiant.photo
+        self.assertRegex(photo.name, r'^etudiant/photo/etudiant-\d+_\d{14}\.jpg$')
+        self.assertLessEqual(photo.size, POIDS_CIBLE)
+        self.assertContains(self.client.get(reverse('etudiant_fiche', args=[insc.pk])), photo.url)
+        # Après l'inscription : la fiche propose d'imprimer la fiche d'inscription (PDF léger, avec la photo)
+        self.assertContains(self.client.get(reverse('etudiant_fiche', args=[insc.pk]), {'imprimer': 1}),
+                            'Imprimer la fiche')
+        r = self.client.get(reverse('inscription_fiche_pdf', args=[insc.pk]))
+        self.assertEqual((r.status_code, r['Content-Type'], r.content[:4]), (200, 'application/pdf', b'%PDF'))
+        self.assertIn('fiche_inscription_', r['Content-Disposition'])                 # Licence 1 : inscription
+        self.assertIn(b'/Subtype /Image', r.content)
+        self.assertLess(len(r.content), 120 * 1024)
+        # Autre niveau : fiche de réinscription
+        from .fiche_inscription import titre_fiche
+        self.assertEqual(titre_fiche(self.l2), "FICHE DE RÉINSCRIPTION")
+        self.assertEqual(titre_fiche(Licence(nom='1ère Année')), "FICHE D'INSCRIPTION")
+        self.connecter('dep')                                                     # réservé à la scolarité
+        self.assertEqual(self.client.get(reverse('inscription_fiche_pdf', args=[insc.pk])).status_code, 403)
+        self.connecter('scol')
+        # Modification : « Retirer la photo » supprime aussi le fichier
+        chemin = photo.path
+        self.client.post(reverse('inscription_modifier', args=[insc.pk]), {**base, 'etu-retirer_photo': 'on'})
+        insc.etudiant.refresh_from_db()
+        self.assertFalse(insc.etudiant.photo)
+        self.assertFalse(os.path.exists(chemin))
+
+    def test_photo_directe_et_droits(self):
+        import os as _os
+        self._media_temporaire()
+        e = Etudiant.objects.get(matricule='M0')
+        url = reverse('etudiant_photo', args=[e.pk])
+        fiche = reverse('etudiant_fiche', args=[Inscription.objects.get(etudiant=e).pk])
+
+        # Département : voit la fiche mais ne peut pas changer la photo
+        self.connecter('dep')
+        self.assertNotContains(self.client.get(fiche), 'data-photo-ouvrir')
+        self.assertEqual(self.client.post(url, {'photo': self._image()}).status_code, 403)
+
+        # Scolarité : enregistre ; une nouvelle photo remplace (et supprime) l'ancienne
+        self.connecter('scol')
+        self.assertContains(self.client.get(fiche), 'data-photo-ouvrir')
+        d = self.client.post(url, {'photo': self._image()}).json()
+        e.refresh_from_db()
+        self.assertEqual(d['url'], e.photo.url)
+        ancienne = e.photo.path
+        d = self.client.post(url, {'photo': self._image('JPEG')}).json()
+        e.refresh_from_db()
+        self.assertFalse(_os.path.exists(ancienne))
+        self.assertTrue(_os.path.exists(e.photo.path))
+        r = self.client.post(url, {'photo': SimpleUploadedFile('x.txt', b'texte')})
+        self.assertEqual((r.status_code, 'image lisible' in r.json()['erreur']), (400, True))
+
+        # L'étudiant lui-même (compte lié à sa fiche) peut changer sa photo, pas celle d'un autre
+        u = User.objects.create_user('etu_m0', password='x')
+        Etudiant.objects.filter(pk=e.pk).update(utilisateur=u)
+        self.client.login(username='etu_m0', password='x')
+        self.assertEqual(self.client.post(url, {'retirer': '1'}).json(), {'url': None})
+        autre = Etudiant.objects.get(matricule='M1')
+        self.assertEqual(self.client.post(reverse('etudiant_photo', args=[autre.pk]),
+                                          {'photo': self._image()}).status_code, 403)
+
+    def test_photo_mon_compte(self):
+        self._media_temporaire()
+        self.connecter('info')
+        self.assertContains(self.client.get(reverse('mon_compte')), 'data-photo-ouvrir')
+        d = self.client.post(reverse('mon_compte_photo'), {'photo': self._image()}).json()
+        p = Personnel.objects.get(utilisateur__username='info')
+        self.assertEqual(d['url'], p.photo.url)
+        self.assertTrue(p.photo.name.startswith('personnel/photo/info_'))
+        # La photo s'affiche dans l'en-tête et le menu de toutes les pages
+        self.assertContains(self.client.get(reverse('tableau_de_bord')), p.photo.url, count=2)
+        # Compte sans fiche (ni personnel ni étudiant) : refus explicite
+        self.client.login(username='sans_service', password='x')
+        r = self.client.post(reverse('mon_compte_photo'), {'photo': self._image()})
+        self.assertEqual(r.status_code, 400)
+
+    def test_case_redoublant_decochee_par_defaut(self):
+        self.connecter('scol')
+        html = self.client.get(reverse('inscription_creer')).content.decode()
+        champ = html.split('id="id_insc-redouble"')[0].rsplit('<input', 1)[1]
+        self.assertNotIn('checked', champ)
+
+    def test_filtres_cycle_et_statut(self):
+        Inscription.objects.filter(etudiant__matricule='M0').update(cycle='Master')
+        Etudiant.objects.filter(matricule='M1').update(preinscrit=True)
+        self.connecter('scol')
+        self.assertEqual(self.donnees(cycle='Master')['total'], 1)
+        self.assertEqual(self.donnees(statut='preinscrit')['total'], 1)
+        self.assertEqual(self.donnees(statut='inscrit')['total'], 2)
+        r = self.client.get(reverse('etudiants_export'), {'format': 'csv', 'cycle': 'Master'})
+        contenu = b''.join(r.streaming_content).decode('utf-8-sig')
+        self.assertIn(';Master;', contenu)
+
+    def test_mon_compte_coordonnees_seulement(self):
+        self.connecter('info')
+        self.assertEqual(self.client.get(reverse('mon_compte')).status_code, 200)
+        r = self.client.post(reverse('mon_compte'), {
+            'coordonnees': '1', 'email': 'Nouveau@T.local', 'telephone': '620 11 22 33',
+            # champs non autorisés : doivent être ignorés
+            'nom': 'PIRATE', 'fonc': 'Directeur', 'username': 'autre', 'service': self.scol.id,
+        })
+        self.assertEqual(r.status_code, 302)
+        p = Personnel.objects.get(utilisateur__username='info')
+        self.assertEqual((p.email, p.telephone, p.nom, p.fonc), ('nouveau@t.local', '620 11 22 33', 'T', 'Agent'))
+        self.assertEqual(list(p.service.all()), [self.info])
+        self.assertEqual(p.utilisateur.email, 'nouveau@t.local')
+        self.assertEqual(p.utilisateur.username, 'info')
+
+    def test_mon_compte_email_ou_telephone_deja_pris(self):
+        self.connecter('info')
+        r = self.client.post(reverse('mon_compte'), {'coordonnees': '1', 'email': 'scol@t.local', 'telephone': '0'})
+        self.assertEqual(r.status_code, 200)
+        self.assertIn('email', r.context['form_coord'].errors)
+        self.assertIn('telephone', r.context['form_coord'].errors)
+        self.assertEqual(Personnel.objects.get(utilisateur__username='info').email, 'info@t.local')
+
+    def test_mon_compte_mot_de_passe(self):
+        self.connecter('info')
+        r = self.client.post(reverse('mon_compte'), {
+            'mot_de_passe': '1', 'old_password': 'mauvais', 'new_password1': 'Nv@2026xyz', 'new_password2': 'Nv@2026xyz'})
+        self.assertEqual(r.status_code, 200)               # ancien mot de passe faux
+        r = self.client.post(reverse('mon_compte'), {
+            'mot_de_passe': '1', 'old_password': 'x', 'new_password1': 'Nv@2026xyz', 'new_password2': 'Nv@2026xyz'})
+        self.assertEqual(r.status_code, 302)
+        self.assertTrue(User.objects.get(username='info').check_password('Nv@2026xyz'))
+        # toujours connecté après le changement
+        self.assertEqual(self.client.get(reverse('etudiants_liste')).status_code, 200)
+
+    def test_mot_de_passe_oublie_parcours_complet(self):
+        from django.core import mail
+        # L'e-mail n'est que sur la fiche personnel (User.email vide)
+        self.assertEqual(User.objects.get(username='info').email, '')
+        r = self.client.post(reverse('password_reset'), {'email': 'INFO@t.local'})
+        self.assertRedirects(r, reverse('password_reset_done'))
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ['info@t.local'])
+        lien = re.search(r'https?://[^/]+(/reinitialiser/\S+/)', mail.outbox[0].body).group(1)
+
+        r = self.client.get(lien, follow=True)                 # redirige vers .../set-password/
+        self.assertTrue(r.context['validlink'])
+        r = self.client.post(r.redirect_chain[-1][0], {'new_password1': 'Oubli@2026x', 'new_password2': 'Oubli@2026x'})
+        self.assertRedirects(r, reverse('password_reset_complete'))
+        self.assertTrue(User.objects.get(username='info').check_password('Oubli@2026x'))
+        # Le lien ne peut pas resservir
+        self.assertFalse(self.client.get(lien, follow=True).context['validlink'])
+
+    def test_mot_de_passe_oublie_adresse_inconnue(self):
+        from django.core import mail
+        r = self.client.post(reverse('password_reset'), {'email': 'personne@nulle.part'})
+        self.assertRedirects(r, reverse('password_reset_done'))   # même réponse : ne révèle rien
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_tableau_de_bord_par_role(self):
+        self.connecter('scol')
+        r = self.client.get(reverse('tableau_de_bord'))
+        self.assertEqual(r.context['total'], 3)
+        self.assertEqual({g['nom']: g['n'] for g in r.context['par_programme']}, {'Informatique': 2, 'Génie civil': 1})
+        self.connecter('info')
+        r = self.client.get(reverse('tableau_de_bord'))
+        self.assertEqual(r.context['total'], 2)
+        self.assertEqual([g['nom'] for g in r.context['par_programme']], ['Informatique'])
+        self.assertNotContains(r, 'Nouvelle inscription')
+
+    def test_preinscriptions_liste_et_inscription_directe(self):
+        Etudiant.objects.filter(matricule__in=['M0', 'M2']).update(preinscrit=True)
+        i0 = Inscription.objects.get(etudiant__matricule='M0')
+        i2 = Inscription.objects.get(etudiant__matricule='M2')    # Génie civil
+
+        # Un programme voit la page mais seulement ses préinscrits, et ne peut pas inscrire
+        self.connecter('info')
+        r = self.client.get(reverse('preinscriptions_liste'))
+        self.assertEqual(r.status_code, 200)
+        self.assertFalse(r.context['peut_inscrire'])
+        self.assertEqual(r.context['nb_preinscrits'], 1)
+        self.assertEqual(self.donnees(statut='preinscrit')['total'], 1)
+        r = self.client.post(reverse('valider_preinscriptions'), {'ids': [i0.pk]})
+        self.assertEqual(r.status_code, 403)
+
+        # La scolarité inscrit directement (AJAX) ; un id déjà inscrit est ignoré
+        self.connecter('scol')
+        self.assertTrue(self.client.get(reverse('preinscriptions_liste')).context['peut_inscrire'])
+        i1 = Inscription.objects.get(etudiant__matricule='M1')
+        r = self.client.post(reverse('valider_preinscriptions'), {'ids': [i0.pk, i1.pk]},
+                             HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertEqual(r.json(), {'inscrits': 1})
+        self.assertFalse(Etudiant.objects.get(matricule='M0').preinscrit)
+
+        # Depuis la fiche : formulaire classique avec retour sur la fiche
+        fiche = reverse('etudiant_fiche', args=[i2.pk])
+        r = self.client.post(reverse('valider_preinscriptions'), {'ids': [i2.pk], 'suivant': fiche})
+        self.assertRedirects(r, fiche)
+        self.assertFalse(Etudiant.objects.get(matricule='M2').preinscrit)
+        # Redirection externe refusée
+        r = self.client.post(reverse('valider_preinscriptions'), {'ids': [i2.pk], 'suivant': '//evil.example'})
+        self.assertRedirects(r, reverse('preinscriptions_liste'))
+
+    # ---------------------------------------------------------------- matières
+
+    def _semestres(self):
+        from .models import Semestre
+        Service.objects.filter(pk__in=[self.info.pk, self.gc.pk]).update(cycle='Licence')   # cycle des programmes
+        s1 = Semestre.objects.create(nom='SEMESTRE 1', abrege='S1', licence=self.licence)
+        s3 = Semestre.objects.create(nom='SEMESTRE 3', abrege='S3', licence=self.l2)
+        return s1, s3
+
+    def _matiere(self, nom, programme, semestre, **extra):
+        from .models import Matiere
+        return Matiere.objects.create(nom=nom, filiere=programme, semestre=semestre, licence=semestre.licence,
+                                      session=self.session, credit=extra.pop('credit', 6), **extra)
+
+    def test_matieres_droits_par_role(self):
+        s1, _ = self._semestres()
+        m_info = self._matiere('Algorithmique', self.info, s1)
+        m_gc = self._matiere('Résistance des matériaux', self.gc, s1)
+        liste = reverse('matieres_liste')
+
+        # Scolarité : tout voir, tout gérer
+        self.connecter('scol')
+        r = self.client.get(liste)
+        self.assertContains(r, 'Algorithmique')
+        self.assertContains(r, 'Résistance des matériaux')
+        self.assertContains(r, reverse('matiere_creer'))
+
+        # Autre service (département) : voit tout, ne modifie rien
+        self.connecter('dep')
+        r = self.client.get(liste)
+        self.assertContains(r, 'Résistance des matériaux')
+        self.assertNotContains(r, reverse('matiere_creer'))
+        self.assertEqual(self.client.get(reverse('matiere_creer')).status_code, 403)
+        self.assertEqual(self.client.get(reverse('matiere_modifier', args=[m_info.pk])).status_code, 403)
+
+        # Chef de programme (Informatique) : uniquement ses matières ; celles des autres « n'existent pas »
+        self.connecter('info')
+        r = self.client.get(liste)
+        self.assertContains(r, 'Algorithmique')
+        self.assertNotContains(r, 'Résistance des matériaux')
+        self.assertEqual(self.client.get(reverse('matiere_modifier', args=[m_gc.pk])).status_code, 404)
+        self.assertEqual(self.client.post(reverse('matiere_supprimer', args=[m_gc.pk])).status_code, 404)
+        # Liste déroulante : son seul programme, choisi d'office ; un autre programme est refusé
+        r = self.client.get(reverse('matiere_creer'))
+        self.assertEqual(list(r.context['form'].fields['filiere'].queryset), [self.info])
+        self.assertEqual(r.context['form'].initial['filiere'], self.info.pk)
+        r = self.client.post(reverse('matiere_creer'), {'nom': 'Pirate', 'filiere': self.gc.pk, 'session': self.session.pk,
+                                                        'licence': self.licence.pk, 'semestre': s1.pk})
+        self.assertIn('filiere', r.context['form'].errors)
+
+    def test_description_repliee_dans_la_liste(self):
+        s1, _ = self._semestres()
+        self._matiere('Chimie', self.info, s1)
+        self.connecter('scol')
+        r = self.client.get(reverse('matieres_liste'))
+        self.assertNotContains(r, 'id="tout-deplier"')                        # aucune description : pas de bouton
+        m = self._matiere('Biologie', self.info, s1, description='Cours magistral\net travaux dirigés')
+        r = self.client.get(reverse('matieres_liste'))
+        self.assertContains(r, 'id="tout-deplier"')
+        self.assertContains(r, f'id="description-{m.pk}"')
+        self.assertContains(r, 'class="collapse description-matiere"')          # repliée par défaut
+        self.assertContains(r, 'Cours magistral<br>et travaux dirigés')
+        self.assertContains(r, '<div class="collapse" id="detail-credits">')        # crédits par semestre repliés
+        self.assertContains(r, 'cr. (2)')
+
+    def test_tri_des_matieres(self):
+        s1, s3 = self._semestres()
+        self._matiere('Chimie', self.info, s1, credit=2, code='C3')
+        self._matiere('Algèbre', self.gc, s3, credit=6, code='A1')
+        self._matiere('Biologie', self.info, s1, credit=4, code='B2')
+        self.connecter('scol')
+        noms = lambda **p: [m.nom for m in self.client.get(reverse('matieres_liste'), p).context['page']]  # noqa: E731
+        self.assertEqual(noms(tri='nom'), ['Algèbre', 'Biologie', 'Chimie'])
+        self.assertEqual(noms(tri='nom', ordre='desc'), ['Chimie', 'Biologie', 'Algèbre'])
+        self.assertEqual(noms(tri='credit', ordre='desc'), ['Algèbre', 'Biologie', 'Chimie'])
+        self.assertEqual(noms(tri='code'), ['Algèbre', 'Biologie', 'Chimie'])
+        self.assertEqual(noms(tri='semestre', ordre='desc')[0], 'Algèbre')
+        # Par défaut (ou tri inconnu) : programme, licence, semestre, nom
+        self.assertEqual(noms(), ['Algèbre', 'Biologie', 'Chimie'])            # Génie civil avant Informatique
+        self.assertEqual(noms(tri='pirate'), noms())
+        # Le lien du titre actif inverse l'ordre, et le tri suit les filtres
+        r = self.client.get(reverse('matieres_liste'), {'tri': 'credit', 'programme': self.info.pk})
+        credit = next(c for c in r.context['colonnes'] if c['cle'] == 'credit')
+        self.assertTrue(credit['actif'])
+        self.assertIn('ordre=desc', credit['url'])
+        self.assertIn(f'programme={self.info.pk}', credit['url'])
+        self.assertEqual([m.nom for m in r.context['page']], ['Chimie', 'Biologie'])
+
+    def test_matiere_formulaire_et_suppression_protegee(self):
+        from .models import Matiere, Note
+        s1, s3 = self._semestres()
+        self.connecter('scol')
+        base = {'nom': 'Bases de données', 'filiere': self.info.pk, 'session': self.session.pk,
+                'licence': self.licence.pk, 'semestre': s1.pk, 'credit': ''}
+        # Semestre d'une autre licence : refusé
+        r = self.client.post(reverse('matiere_creer'), {**base, 'semestre': s3.pk})
+        self.assertIn("SEMESTRE 3 n'appartient pas à Licence 1", r.context['form'].errors['semestre'][0])
+        # Crédit vide : 6 ; cycle vide : celui du programme
+        self.client.post(reverse('matiere_creer'), base)
+        m = Matiere.objects.get(nom='Bases de données')
+        self.assertEqual((m.credit, m.filiere, m.semestre, m.cycle), (6, self.info, s1, 'Licence'))
+        # Cycle choisi : gardé
+        self.client.post(reverse('matiere_creer'), {**base, 'nom': 'Réseaux', 'cycle': 'Ingénieur'})
+        self.assertEqual(Matiere.objects.get(nom='Réseaux').cycle, 'Ingénieur')
+        # Programme sans cycle et cycle vide : refusé
+        Service.objects.filter(pk=self.gc.pk).update(cycle=None)
+        r = self.client.post(reverse('matiere_creer'), {**base, 'nom': 'Topographie', 'filiere': self.gc.pk})
+        self.assertIn("Précisez le cycle", r.context['form'].errors['cycle'][0])
+        # Même nom (autre casse), même programme, même session : refusé
+        r = self.client.post(reverse('matiere_creer'), {**base, 'nom': '  BASES  de donnees '})
+        self.assertIn('existe déjà', r.context['form'].errors['nom'][0])
+        # Modification
+        self.client.post(reverse('matiere_modifier', args=[m.pk]), {**base, 'credit': 4, 'code': 'INF102'})
+        m.refresh_from_db()
+        self.assertEqual((m.credit, m.code), (4, 'INF102'))
+        # Suppression refusée si la matière a des notes, possible sinon
+        e = Etudiant.objects.get(matricule='M0')
+        Note.objects.create(etudiant=e, matiere=m, controle=6, examen=7)
+        r = self.client.post(reverse('matiere_supprimer', args=[m.pk]), follow=True)
+        self.assertContains(r, 'Suppression impossible')
+        self.assertTrue(Matiere.objects.filter(pk=m.pk).exists())
+        Note.objects.all().delete()
+        self.client.post(reverse('matiere_supprimer', args=[m.pk]))
+        self.assertFalse(Matiere.objects.filter(pk=m.pk).exists())
+
+    def test_import_matieres(self):
+        from .import_matieres import ImportRefuse, importer_matieres
+        from .models import Matiere
+        from .roles import get_profil
+        s1, s3 = self._semestres()
+        self._matiere('Algorithmique', self.info, s1, credit=4, code='ALG')
+        entetes = ['matiere', 'programme', 'licence', 'semestre', 'session', 'code', 'credits', 'description']
+        fichier = lambda *lignes: fichier_xlsx([entetes, *lignes])           # noqa: E731
+        lignes = [
+            ['ALGORITHMIQUE', 'INFO', 'Licence 1', 'S1', '2025 - 2026', None, 5, None],            # 2 mise à jour
+            ['Réseaux', 'Informatique', 'L1', 'SEMESTRE 1', '2025-2026', 'RES1', None, 'Intro'],   # 3 crédit vide → 6
+            [None] * 8,                                                                            # 4 vide
+            ['Béton armé', 'Génie civil', 'Licence 2', 'S3', '2025-2026', None, '3', None],       # 5
+            ['Réseaux', 'Informatique', 'Licence 1', 'S1', '2025-2026', None, 6, None],            # 6 doublon fichier
+            ['Analyse', 'Informatique', 'Licence 1', 'S3', '2025-2026', None, None, None],         # 7 S3 ≠ L1
+            ['Physique', 'MEDECINE', 'Licence 1', 'S1', '2025-2026', None, None, None],            # 8 programme inconnu
+            ['Chimie', 'Informatique', 'Licence 1', 'S1', '2025-2026', None, 'beaucoup', None],    # 9 crédit invalide
+        ]
+        self.connecter('scol')
+        profil_scol = get_profil(self.client.get(reverse('matieres_liste')).wsgi_request)
+        r = importer_matieres(fichier(*lignes), profil_scol, simulation=True)
+        self.assertEqual((r.lignes, r.creees, r.mises_a_jour, r.nb_erreurs), (7, 2, 1, 4))
+        self.assertEqual([n for n, _ in r.erreurs], [6, 7, 8, 9])
+        messages = ' '.join(m for _, m in r.erreurs)
+        for attendu in ('doublon dans le fichier', "SEMESTRE 3 n'appartient pas à Licence 1", 'programme inconnu',
+                        'crédit invalide'):
+            self.assertIn(attendu, messages)
+        self.assertFalse(Matiere.objects.filter(nom='Réseaux').exists())                  # simulation
+
+        r = importer_matieres(fichier(*lignes), profil_scol)
+        algo = Matiere.objects.get(nom='Algorithmique')
+        self.assertEqual((algo.credit, algo.code), (5, 'ALG'))          # mis à jour ; code vide : conservé
+        reseaux = Matiere.objects.get(nom='Réseaux')
+        self.assertEqual((reseaux.credit, reseaux.code, reseaux.description, reseaux.cycle), (6, 'RES1', 'Intro', 'Licence'))
+        self.assertEqual(Matiere.objects.get(nom='Béton armé').filiere, self.gc)
+        self.assertEqual(algo.cycle, 'Licence')          # matière existante sans cycle : celui du programme
+
+        # Colonne « cycle » : prise telle quelle ; programme sans cycle et colonne vide : ligne rejetée
+        Service.objects.filter(pk=self.gc.pk).update(cycle=None)
+        avec_cycle = fichier_xlsx([entetes + ['cycle'],
+                                   ['Mécanique', 'GENIE CIVIL', 'Licence 1', 'S1', '2025-2026', None, None, None, 'ING'],
+                                   ['Hydraulique', 'GENIE CIVIL', 'Licence 1', 'S1', '2025-2026', None, None, None, None]])
+        r = importer_matieres(avec_cycle, profil_scol)
+        self.assertEqual(Matiere.objects.get(nom='Mécanique').cycle, 'Ingénieur')
+        self.assertEqual(r.erreurs, [(3, "cycle manquant : le programme Génie civil n'en a pas, "
+                                         "précisez-le dans la colonne « cycle »")])
+        Service.objects.filter(pk=self.gc.pk).update(cycle='Licence')
+        # Réimport : rien ne change
+        r = importer_matieres(fichier(*lignes), profil_scol)
+        self.assertEqual((r.creees, r.mises_a_jour, r.inchangees), (0, 0, 3))
+
+        # Chef de programme : une ligne d'un autre programme → tout l'import est refusé
+        self.connecter('info')
+        profil_info = get_profil(self.client.get(reverse('matieres_liste')).wsgi_request)
+        mix = fichier(['Compilation', 'Informatique', 'Licence 1', 'S1', '2025-2026', None, None, None],
+                      ['Topographie', 'GENIE CIVIL', 'Licence 1', 'S1', '2025-2026', None, None, None])
+        with self.assertRaisesMessage(ImportRefuse, 'ligne 3 (GENIE CIVIL)'):
+            importer_matieres(mix, profil_info)
+        self.assertFalse(Matiere.objects.filter(nom__in=['Compilation', 'Topographie']).exists())
+        r = self.client.post(reverse('matieres_importer'), {'fichier': fichier(
+            ['Compilation', 'Informatique', 'Licence 1', 'S1', '2025-2026', None, None, None],
+            ['Topographie', 'MEDECINE', 'Licence 1', 'S1', '2025-2026', None, None, None])})
+        self.assertContains(r, 'Import refusé')
+        self.assertFalse(Matiere.objects.filter(nom='Compilation').exists())
+        # Son programme uniquement : accepté
+        r = importer_matieres(fichier(['Compilation', 'INFO', 'Licence 1', 'S1', '2025-2026', None, None, None]),
+                              profil_info)
+        self.assertEqual(r.creees, 1)
+        self.assertEqual(self.client.get(reverse('matieres_modele')).status_code, 200)
+
+    # ---------------------------------------------------------------- notes
+
+    def test_moyenne_d_une_matiere_et_mentions(self):
+        from .notes import mention, moyenne_des_notes
+        self.assertEqual(moyenne_des_notes(8, 6, 7), 6.9)          # 25 % + 35 % + 40 %
+        self.assertEqual(moyenne_des_notes(8, None, 7), 7.4)       # sans TP : 40 % + 60 %
+        self.assertEqual(moyenne_des_notes(None, None, 6), 6)      # une seule note : elle-même
+        self.assertEqual(moyenne_des_notes(None, 6, 7), 6.53)      # poids ramenés aux notes données
+        self.assertIsNone(moyenne_des_notes(None, None, None))
+        for moyenne, attendu in ((4.99, ''), (5, 'Passable'), (6, 'Assez bien'), (7, 'Très bien'),
+                                 (7.99, 'Très bien'), (8, 'Excellent'), (10, 'Excellent'), (None, '')):
+            self.assertEqual(mention(moyenne), attendu, moyenne)
+
+    def test_note_moyenne_deposee_rattrapage_absent(self):
+        from django.core.exceptions import ValidationError
+        from .models import Note
+        s1, _ = self._semestres()
+        m = self._matiere('Électronique', self.info, s1)
+        e0, e1, e2 = (Etudiant.objects.get(matricule=f'M{k}') for k in range(3))
+        # Moyenne déposée par le programme : gardée telle quelle, même si des notes sont données
+        n = Note.objects.create(etudiant=e0, matiere=m, controle=2, examen=2, moyenne=6.4, moyenne_deposee=True)
+        self.assertEqual((n.moyenne, n.moyenne_finale, n.validee, n.mention), (6.4, 6.4, True, 'Assez bien'))
+        # Rattrapage meilleur : retenu, mention « Session »
+        n = Note.objects.create(etudiant=e1, matiere=m, controle=4, examen=4, rattrapage=7)
+        self.assertEqual((n.moyenne, n.moyenne_finale, n.par_session, n.validee), (4.0, 7, True, True))
+        # Rattrapage moins bon : on garde la moyenne
+        n.rattrapage = 3
+        n.save()
+        self.assertEqual((n.moyenne_finale, n.par_session), (4.0, False))
+        # Absent = 0 : matière non validée
+        n = Note.objects.create(etudiant=e2, matiere=m, examen=0)
+        self.assertEqual((n.moyenne_finale, n.validee, n.mention), (0, False, ''))
+        # Barème sur 10
+        with self.assertRaises(ValidationError):
+            Note(etudiant=e2, matiere=m, examen=11).full_clean()
+
+    def test_resultats_semestre_annee_cycle_et_soutenance(self):
+        from .models import Deliberation, Note, Resultat, Semestre, Soutenance
+        from .notes import recalculer
+        s1, _ = self._semestres()
+        s2 = Semestre.objects.create(nom='SEMESTRE 2', abrege='S2', licence=self.licence)
+        Inscription.objects.filter(filiere=self.info).update(cycle='Licence')
+        e0, e1 = Etudiant.objects.get(matricule='M0'), Etudiant.objects.get(matricule='M1')
+        m1 = self._matiere('Algorithmique', self.info, s1, credit=6)
+        m2 = self._matiere('Anglais', self.info, s1, credit=4)
+        m3 = self._matiere('Réseaux', self.info, s2, credit=6)
+        Note.objects.create(etudiant=e0, matiere=m1, moyenne=8, moyenne_deposee=True)
+        Note.objects.create(etudiant=e0, matiere=m2, controle=4, examen=4)
+        Note.objects.create(etudiant=e1, matiere=m1, moyenne=9, moyenne_deposee=True)
+        Note.objects.create(etudiant=e1, matiere=m2, moyenne=9, moyenne_deposee=True)
+        recalculer([e0.pk, e1.pk])
+        res = lambda etu, niveau, **f: Resultat.objects.get(etudiant=etu, niveau=niveau, **f)   # noqa: E731
+
+        # Semestre 1 : pondéré par les crédits (8×6 + 4×4) / 10 = 6,4 ; seule la matière ≥ 5 est validée
+        s1_e0 = res(e0, Resultat.SEMESTRE, semestre=s1)
+        self.assertEqual((s1_e0.moyenne, s1_e0.credits_valides, s1_e0.credits_total, s1_e0.mention, s1_e0.rang),
+                         (6.4, 6, 10, 'Assez bien', 2))
+        self.assertEqual(res(e1, Resultat.SEMESTRE, semestre=s1).rang, 1)
+        # Semestre 2 sans aucune note : pas de moyenne, note manquante signalée
+        s2_e0 = res(e0, Resultat.SEMESTRE, semestre=s2)
+        self.assertEqual((s2_e0.moyenne, s2_e0.notes_manquantes), (None, 1))
+        # Année : la matière sans note compte 0 → (48 + 16 + 0) / 16 = 4,0
+        a = res(e0, Resultat.ANNEE)
+        self.assertEqual((a.moyenne, a.credits_valides, a.credits_total, a.notes_manquantes, a.mention), (4.0, 6, 16, 1, ''))
+
+        # Note ajoutée en S2, soutenance : année 6,25 ; générale = 6,25 × 0,87 + 9 × 0,13 = 6,61
+        Note.objects.create(etudiant=e0, matiere=m3, moyenne=6, moyenne_deposee=True)
+        Soutenance.objects.create(etudiant=e0, cycle='Licence', filiere=self.info, session=self.session,
+                                  promotion=self.p18, note=9)
+        recalculer([e0.pk])
+        self.assertEqual(res(e0, Resultat.ANNEE).moyenne, 6.25)
+        c = res(e0, Resultat.CYCLE)
+        self.assertEqual((c.moyenne, c.soutenance, c.moyenne_generale, c.mention, c.session), (6.25, 9, 6.61, 'Assez bien', self.session))
+
+        # Licence redoublée : le cycle prend la dernière année de chaque licence
+        Inscription.objects.create(etudiant=e0, session=self.s2425, licence=self.licence, filiere=self.info, cycle='Licence')
+        from .models import Matiere
+        ancienne = Matiere.objects.create(nom='Algorithmique', filiere=self.info, semestre=s1, licence=self.licence,
+                                          session=self.s2425, credit=6)
+        Note.objects.create(etudiant=e0, matiere=ancienne, moyenne=2, moyenne_deposee=True)
+        recalculer([e0.pk])
+        self.assertEqual(res(e0, Resultat.ANNEE, session=self.s2425).moyenne, 2.0)
+        self.assertEqual(res(e0, Resultat.CYCLE).moyenne, 6.25)
+
+        # Délibération : la note est verrouillée
+        n = Note.objects.get(etudiant=e0, matiere=m1)
+        self.assertFalse(n.verrouillee)
+        Deliberation.objects.create(filiere=self.info, session=self.session, semestre=s1)
+        self.assertTrue(n.verrouillee)
+        self.assertFalse(Note.objects.get(etudiant=e0, matiere=m3).verrouillee)       # S2 pas délibéré
+
+    # ---------------------------------------------------------------- écrans des notes
+
+    def _preparer_notes(self):
+        s1, _ = self._semestres()
+        Inscription.objects.update(cycle='Licence')
+        algo = self._matiere('Algorithmique', self.info, s1, credit=6, code='ALG1')
+        anglais = self._matiere('Anglais', self.info, s1, credit=4)
+        return s1, algo, anglais
+
+    def test_saisie_des_notes_par_matiere(self):
+        import shutil, tempfile
+        from django.test import override_settings
+        from .models import Deliberation, Note, NoteHistorique, Resultat
+        s1, algo, _ = self._preparer_notes()
+        e0, e1 = Etudiant.objects.get(matricule='M0'), Etudiant.objects.get(matricule='M1')
+        url = reverse('notes_saisie', args=[algo.pk])
+
+        self.connecter('dep')                                     # autre service : pas d'accès aux notes
+        self.assertEqual(self.client.get(url).status_code, 403)
+        self.connecter('info')                                    # chef de programme : ses matières
+        r = self.client.get(url)
+        self.assertContains(r, 'N0')
+        self.assertContains(r, 'N1')
+        self.assertNotContains(r, '>N2</b>')                      # inscrit en Génie civil (pas « N2 » seul :
+                                                                  # le jeton CSRF aléatoire peut le contenir)
+        gc = self._matiere('Topographie', self.gc, s1)
+        self.assertEqual(self.client.get(reverse('notes_saisie', args=[gc.pk])).status_code, 404)
+
+        # Une note invalide : rien n'est enregistré
+        r = self.client.post(url, {f'controle_{e0.pk}': '6', f'examen_{e0.pk}': 'x'})
+        self.assertContains(r, 'note invalide')
+        self.assertFalse(Note.objects.exists())
+        # Sans TP : 40 % + 60 % → 7,2 ; moyenne déposée 6,5 + rattrapage 7 → 7 « Session »
+        r = self.client.post(url, {f'controle_{e0.pk}': '6', f'examen_{e0.pk}': '8',
+                                   f'moyenne_{e1.pk}': '6,5', f'rattrapage_{e1.pk}': '7'})
+        self.assertRedirects(r, url)
+        n0, n1 = Note.objects.get(etudiant=e0, matiere=algo), Note.objects.get(etudiant=e1, matiere=algo)
+        self.assertEqual((n0.moyenne, n0.moyenne_finale, n0.moyenne_deposee), (7.2, 7.2, False))
+        self.assertEqual((n1.moyenne, n1.moyenne_finale, n1.par_session), (6.5, 7, True))
+        self.assertTrue(Resultat.objects.filter(etudiant=e0, niveau=Resultat.SEMESTRE, semestre=s1).exists())
+        # Modification : tracée
+        self.client.post(url, {f'controle_{e0.pk}': '6', f'examen_{e0.pk}': '9',
+                               f'moyenne_{e1.pk}': '6,5', f'rattrapage_{e1.pk}': '7'})
+        h = NoteHistorique.objects.get()
+        self.assertEqual((h.avant['examen'], h.apres['examen'], h.apres_deliberation), (8, 9, False))
+
+        # Délibéré : le chef de programme ne peut plus modifier, la scolarité oui avec motif
+        Deliberation.objects.create(filiere=self.info, session=self.session, semestre=s1)
+        self.assertContains(self.client.get(url), 'disabled')
+        self.assertEqual(self.client.post(url, {f'examen_{e0.pk}': '10'}).status_code, 403)
+        self.connecter('scol')
+        r = self.client.post(url, {f'controle_{e0.pk}': '6', f'examen_{e0.pk}': '10',
+                                   f'moyenne_{e1.pk}': '6,5', f'rattrapage_{e1.pk}': '7'})
+        self.assertContains(r, 'indiquez le motif')
+        dossier = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, dossier, True)
+        with override_settings(BASE_DIR=pathlib_path(dossier)):
+            self.client.post(url, {f'controle_{e0.pk}': '6', f'examen_{e0.pk}': '10',
+                                   f'moyenne_{e1.pk}': '6,5', f'rattrapage_{e1.pk}': '7',
+                                   'motif': 'Erreur de report, PV du jury',
+                                   'justificatif': SimpleUploadedFile('pv.pdf', b'%PDF-1.4 pv')})
+        h = NoteHistorique.objects.filter(apres_deliberation=True).get()
+        self.assertEqual((h.motif, h.apres['examen']), ('Erreur de report, PV du jury', 10))
+        self.assertTrue(h.justificatif.name.startswith('justificatifs/notes/'))
+        self.assertTrue((pathlib_path(dossier) / 'prive' / h.justificatif.name).exists())
+
+    def test_import_des_notes(self):
+        from .import_matieres import ImportRefuse
+        from .import_notes import importer_notes
+        from .models import Deliberation, Note, NoteHistorique
+        from .roles import get_profil
+        s1, algo, anglais = self._preparer_notes()
+        entetes = ['matricule', 'matiere', 'session', 'controle', 'tp', 'examen', 'moyenne', 'rattrapage']
+        fichier = lambda *l: fichier_xlsx([entetes, *l])           # noqa: E731
+        lignes = [
+            ['M0', 'Algorithmique', '2025 - 2026', 6, 7, 8, None, None],          # 2 → 7,15
+            ['M1', 'alg1', '2025-2026', None, None, None, '6,75', None],          # 3 code, moyenne déposée
+            ['M0', 'ALGORITHMIQUE', '2025-2026', 9, 9, 9, None, None],            # 4 doublon
+            ['M9', 'Algorithmique', '2025-2026', None, None, None, 5, None],      # 5 matricule inconnu
+            ['M1', 'Inconnue', '2025-2026', None, None, None, 5, None],           # 6 matière introuvable
+            ['M0', 'Algorithmique', '2024-2025', None, None, None, 5, None],      # 7 pas inscrit
+            ['M0', 'Anglais', '2025-2026', None, None, 'ABS', None, None],        # 8 absent = 0
+            ['M1', 'Anglais', '2025-2026', 12, None, None, None, None],           # 9 hors barème
+            ['M2', 'Algorithmique', '2025-2026', None, None, None, 5, None],      # 10 autre programme
+        ]
+        self.connecter('scol')
+        scol = get_profil(self.client.get(reverse('notes_importer')).wsgi_request)
+        r = importer_notes(fichier(*lignes), scol, simulation=True)
+        self.assertEqual((r.lignes, r.creees, r.nb_doublons), (9, 3, 1))
+        self.assertEqual([n for n, _ in r.erreurs], [5, 6, 7, 9, 10])
+        self.assertFalse(Note.objects.exists())                                   # simulation
+        r = importer_notes(fichier(*lignes), scol)
+        self.assertEqual(Note.objects.get(etudiant__matricule='M0', matiere=algo).moyenne_finale, 7.15)
+        self.assertEqual(Note.objects.get(etudiant__matricule='M1', matiere=algo).moyenne_finale, 6.75)
+        self.assertEqual(Note.objects.get(etudiant__matricule='M0', matiere=anglais).moyenne_finale, 0)
+        # Réimport : inchangé ; puis mise à jour tracée
+        r = importer_notes(fichier(*lignes[:3]), scol)
+        self.assertEqual((r.creees, r.mises_a_jour, r.inchangees), (0, 0, 2))
+        r = importer_notes(fichier(['M1', 'Algorithmique', '2025-2026', None, None, None, 5, None]), scol)
+        self.assertEqual((r.mises_a_jour, NoteHistorique.objects.count()), (1, 1))
+        # Moyenne remplie et contrôle / TP / examen tous à 0 : ces 0 sont vides ; un seul 0 avec d'autres notes reste
+        importer_notes(fichier(['M0', 'Anglais', '2025-2026', 0, 0, 0, '6,5', None],
+                               ['M1', 'Anglais', '2025-2026', 0, 0, 8, None, None]), scol)
+        a0 = Note.objects.get(etudiant__matricule='M0', matiere=anglais)
+        self.assertEqual((a0.controle, a0.tp, a0.examen, a0.moyenne_finale), (None, None, None, 6.5))
+        a1 = Note.objects.get(etudiant__matricule='M1', matiere=anglais)
+        self.assertEqual((a1.controle, a1.tp, a1.examen, a1.moyenne_finale), (0, 0, 8, 3.2))   # sans moyenne : gardés
+
+        # Chef de programme : une ligne d'un autre programme → tout est refusé
+        self.connecter('info')
+        info = get_profil(self.client.get(reverse('notes_importer')).wsgi_request)
+        self._matiere('Topographie', self.gc, s1)
+        with self.assertRaisesMessage(ImportRefuse, 'ligne 3'):
+            importer_notes(fichier(['M0', 'Anglais', '2025-2026', None, None, None, 8, None],
+                                   ['M2', 'Topographie', '2025-2026', None, None, None, 6, None]), info)
+        self.assertEqual(Note.objects.get(etudiant__matricule='M0', matiere=anglais).moyenne_finale, 6.5)  # inchangée
+        # Semestre délibéré : ligne refusée
+        Deliberation.objects.create(filiere=self.info, session=self.session, semestre=s1)
+        r = importer_notes(fichier(['M0', 'Anglais', '2025-2026', None, None, None, 8, None]), info)
+        self.assertIn('déjà délibérée', r.erreurs[0][1])
+        self.assertEqual(self.client.get(reverse('notes_modele')).status_code, 200)
+
+    def test_resultats_et_deliberation(self):
+        from .models import Deliberation, Note
+        s1, algo, _ = self._preparer_notes()
+        Note.objects.create(etudiant=Etudiant.objects.get(matricule='M0'), matiere=algo, moyenne=8, moyenne_deposee=True)
+        params = {'session': self.session.pk, 'programme': self.info.pk, 'semestre': s1.pk}
+        self.connecter('info')
+        r = self.client.get(reverse('notes_resultats'), params)
+        self.assertContains(r, 'N0')
+        self.assertNotContains(r, 'Délibérer le semestre')                      # réservé à la scolarité
+        self.assertEqual(self.client.post(reverse('notes_deliberer'), params).status_code, 403)
+        self.connecter('scol')
+        self.assertContains(self.client.get(reverse('notes_resultats'), params), 'Délibérer le semestre')
+        self.client.post(reverse('notes_deliberer'), params)
+        self.assertTrue(Deliberation.objects.filter(filiere=self.info, semestre=s1).exists())
+        # Annuler : super utilisateur seulement
+        self.assertEqual(self.client.post(reverse('notes_deliberer'), {**params, 'action': 'annuler'}).status_code, 403)
+        User.objects.create_superuser('chef', password='x')
+        self.client.login(username='chef', password='x')
+        self.client.post(reverse('notes_deliberer'), {**params, 'action': 'annuler'})
+        self.assertFalse(Deliberation.objects.exists())
+
+    # ---------------------------------------------------------------- statistiques
+
+    def test_statistiques_des_inscriptions(self):
+        import datetime
+        Etudiant.objects.filter(matricule='M1').update(sexe='F', date_de_naissance=datetime.date(2005, 3, 1),
+                                                       nationalite='GUINEENNE', option_de_bac='SCIENCES MATHEMATIQUES')
+        Etudiant.objects.filter(matricule='M0').update(date_de_naissance=datetime.date(2202, 4, 28),   # incohérente
+                                                       nationalite='Guinéenné')
+        Inscription.objects.filter(etudiant__matricule='M2').update(redouble=True)
+        url = reverse('statistiques')
+        self.connecter('sans_service')
+        self.assertEqual(self.client.get(url).status_code, 403)
+        self.connecter('scol')
+        r = self.client.get(url)
+        niveaux, total = r.context['niveaux']
+        self.assertEqual((total.h, total.f, total.total, total.pct_f), (2, 1, 3, 33.3))
+        programmes = {l.libelle: (l.h, l.f) for l in r.context['programmes'][0]}
+        self.assertEqual(programmes, {'Informatique': (1, 1), 'Génie civil': (1, 0)})
+        self.assertEqual(r.context['feminisation'][0].libelle, 'Informatique')
+        ages = r.context['ages']
+        self.assertEqual((ages['renseignees'], ages['incoherentes'], ages['moyenne_f']), (1, 1, 20))     # 2025 - 2005
+        nat = r.context['origine']['nationalites']
+        self.assertEqual(([(l.libelle, l.total) for l in nat['lignes']], nat['taux']), ([('Guinéenne', 2)], 66.7))
+        self.assertEqual(r.context['redoublants']['nb'], 1)
+        evo = {l.libelle: l for l in r.context['evolution']}
+        self.assertEqual((evo['2025-2026'].total, evo['2025-2026'].extra['nouveaux']), (3, 3))      # tous en Licence 1
+        self.assertContains(r, 'Statistiques des inscriptions')
+        # Chef de programme : ses programmes seulement
+        self.connecter('info')
+        self.assertEqual(self.client.get(url).context['niveaux'][1].total, 2)
+        # Export Excel : une feuille par statistique
+        r = self.client.get(url, {'export': 'xlsx'})
+        wb = openpyxl.load_workbook(io.BytesIO(r.content))
+        self.assertIn('Par niveau', wb.sheetnames)
+        self.assertIn('Soutenances', wb.sheetnames)
+
+    # ---------------------------------------------------------------- soutenances
+
+    def _fiche(self, matricule, **extra):
+        return {'matricule': matricule, 'filiere': self.info.pk, 'session': self.session.pk,
+                'promotion': self.p18.pk, **extra}
+
+    def test_soutenances(self):
+        from .models import Note, Resultat, Soutenance, SoutenanceHistorique
+        s1, algo, anglais = self._preparer_notes()
+        e0 = Etudiant.objects.get(matricule='M0')
+        Note.objects.create(etudiant=e0, matiere=algo, moyenne=7, moyenne_deposee=True)
+        Note.objects.create(etudiant=e0, matiere=anglais, moyenne=7, moyenne_deposee=True)
+        creer = reverse('soutenance_creer')
+        self.connecter('dep')                                         # autre service : pas d'accès
+        self.assertEqual(self.client.get(reverse('soutenances')).status_code, 403)
+        self.connecter('info')
+        r = self.client.post(creer, self._fiche('M2', filiere=self.gc.pk, note='8'))
+        self.assertContains(r, 'Sélectionnez un choix valide')       # Génie civil : pas son programme
+        r = self.client.post(creer, self._fiche('M0', note='9'), follow=True)
+        self.assertRedirects(r, reverse('soutenances'))
+        self.assertContains(r, 'Ingénieur et Master')                 # cycle Licence : simple avertissement
+        s = Soutenance.objects.get()
+        self.assertEqual((s.cycle, s.filiere, s.session, s.promotion, s.note_finale, s.verrouillee),
+                         ('Licence', self.info, self.session, self.p18, 9, False))
+        c = Resultat.objects.get(etudiant=e0, niveau=Resultat.CYCLE)
+        self.assertEqual((c.moyenne, c.soutenance, c.moyenne_generale), (7, 9, 7.26))      # 7×0,87 + 9×0,13
+        self.assertContains(self.client.get(reverse('soutenances')), '7,26')
+        self.assertContains(self.client.post(creer, self._fiche('M0', note='5')), 'déjà une soutenance')
+        # Note de session : la meilleure est retenue, avec la mention « Session »
+        modifier = reverse('soutenance_modifier', args=[s.pk])
+        self.client.post(modifier, self._fiche('M0', note='4', note_session='6,5'))
+        s.refresh_from_db()
+        self.assertEqual((s.note, s.note_session, s.note_finale, s.par_session), (4, 6.5, 6.5, True))
+        self.assertEqual(SoutenanceHistorique.objects.count(), 1)    # modification tracée
+
+        # Verrouillée : le chef de programme ne la change plus ; la scolarité oui, avec un motif
+        Soutenance.objects.filter(pk=s.pk).update(verrouillee=True)
+        self.client.post(modifier, self._fiche('M0', note='10', note_session='6,5'))
+        s.refresh_from_db()
+        self.assertEqual(s.note, 4)
+        self.assertEqual(self.client.post(reverse('soutenance_supprimer', args=[s.pk])).status_code, 403)
+        self.connecter('scol')
+        self.assertContains(self.client.post(modifier, self._fiche('M0', note='8', note_session='6,5')),
+                            'indiquez le motif')
+        self.client.post(modifier, self._fiche('M0', note='8', note_session='6,5', motif='PV du jury'))
+        s.refresh_from_db()
+        self.assertEqual((s.note_finale, s.par_session), (8, False))
+        h = SoutenanceHistorique.objects.first()
+        self.assertEqual((h.motif, h.note_verrouillee, h.avant['note'], h.apres['note']), ('PV du jury', True, 4, 8))
+        self.client.post(reverse('soutenance_supprimer', args=[s.pk]))
+        self.assertFalse(Soutenance.objects.exists())
+        self.assertIsNone(Resultat.objects.get(etudiant=e0, niveau=Resultat.CYCLE).moyenne_generale)
+        # Aide à la saisie : dernière inscription de l'étudiant
+        d = self.client.get(reverse('soutenance_etudiant'), {'matricule': 'M1'}).json()
+        self.assertEqual((d['trouve'], d['programme'], d['session']), (True, self.info.pk, self.session.pk))
+
+    def test_projets_notes_et_verrouillage(self):
+        import datetime
+        from .models import ProjetSoutenance, Soutenance
+        self._semestres()
+        self.connecter('info')
+        donnees = {'intitule': 'Projet 1', 'theme': 'Réseau du campus', 'filiere': self.info.pk,
+                   'session': self.session.pk, 'promotion': self.p18.pk, 'statut': 'programmee',
+                   'encadreur': 'Dr Barry', 'chef_departement': 'M. Sow', 'president_jury': 'Pr Diallo',
+                   'date': '2026-07-15', 'heure': '09:00', 'salle': 'Amphi A'}
+        r = self.client.post(reverse('projet_creer'), {**donnees, 'ajouter': 'M0, M9'})
+        self.assertContains(r, 'M9 : matricule inconnu')
+        self.assertFalse(ProjetSoutenance.objects.exists())
+        self.client.post(reverse('projet_creer'), {**donnees, 'ajouter': 'M0 M1'})
+        p = ProjetSoutenance.objects.get()
+        self.assertEqual(sorted(p.membres.values_list('etudiant__matricule', flat=True)), ['M0', 'M1'])
+        self.assertEqual(p.cycle, 'Licence')                          # repris du programme
+        # Même intitulé dans le même programme, session et promotion : refusé
+        self.assertContains(self.client.post(reverse('projet_creer'), {**donnees, 'intitule': 'projet 1'}),
+                            'existe déjà')
+
+        # Grille des notes : enregistrer, puis verrouiller
+        s0, s1 = (Soutenance.objects.get(etudiant__matricule=m) for m in ('M0', 'M1'))
+        grille = (f"{reverse('soutenances_notes')}?session={self.session.pk}&programme={self.info.pk}"
+                  f"&promotion={self.p18.pk}")
+        r = self.client.get(grille)
+        self.assertContains(r, 'Projet 1')
+        self.assertContains(r, 'Même note pour tout le projet')
+        self.assertContains(self.client.post(grille, {f'note_{s0.pk}': '11'}), 'note hors barème')
+        self.client.post(grille, {f'note_{s0.pk}': '8', f'note_{s1.pk}': 'ABS', 'action': 'enregistrer'})
+        s0.refresh_from_db(), s1.refresh_from_db()
+        self.assertEqual((s0.note_finale, s1.note_finale, s0.verrouillee), (8, 0, False))
+        self.client.post(grille, {f'note_{s0.pk}': '8', f'note_{s1.pk}': '0', 'action': 'verrouiller'})
+        s0.refresh_from_db()
+        self.assertTrue(s0.verrouillee)
+        self.assertContains(self.client.get(grille), 'disabled')
+        self.client.post(grille, {f'note_{s0.pk}': '2', 'action': 'enregistrer'})      # chef : ignoré
+        s0.refresh_from_db()
+        self.assertEqual(s0.note, 8)
+        self.assertEqual(self.client.post(grille, {'action': 'deverrouiller'}).status_code, 403)
+        self.connecter('scol')
+        self.assertContains(self.client.post(grille, {f'note_{s0.pk}': '9', f'note_{s1.pk}': '0'}), 'indiquez le motif')
+        self.client.post(grille, {f'note_{s0.pk}': '9', f'note_{s1.pk}': '0', 'motif': 'Erreur de report'})
+        s0.refresh_from_db()
+        self.assertEqual(s0.note, 9)
+
+        # PV de soutenance (PDF) et calendrier : conflit de salle et de jury au même créneau
+        self.connecter('info')
+        r = self.client.get(reverse('projet_pv', args=[p.pk]))
+        self.assertEqual((r.status_code, r['Content-Type'], r.content[:4]), (200, 'application/pdf', b'%PDF'))
+        ProjetSoutenance.objects.create(intitule='Projet 2', filiere=self.info, session=self.session,
+                                        promotion=self.p18, date=datetime.date(2026, 7, 15),
+                                        heure=datetime.time(9, 0), salle='amphi a', president_jury='Pr  Diallo')
+        r = self.client.get(reverse('soutenances_calendrier'), {'session': self.session.pk})
+        self.assertContains(r, 'Salle Amphi A déjà prise')
+        self.assertContains(r, 'Pr Diallo est aussi attendu')
+        r = self.client.get(reverse('soutenances_calendrier'), {'session': self.session.pk, 'format': 'pdf'})
+        self.assertEqual(r.content[:4], b'%PDF')
+        # Retirer un membre : il garde sa soutenance notée (sans projet)
+        self.client.post(reverse('projet_modifier', args=[p.pk]), {**donnees, 'retirer': [s1.pk]})
+        s1.refresh_from_db()
+        self.assertIsNone(s1.projet)
+        self.client.post(reverse('projet_supprimer', args=[p.pk]))
+        self.assertTrue(Soutenance.objects.filter(pk=s0.pk, projet__isnull=True).exists())
+
+    def test_import_des_soutenances(self):
+        from .import_matieres import ImportRefuse
+        from .import_soutenances import importer_soutenances
+        from .models import ProjetSoutenance, Soutenance
+        from .roles import get_profil
+        self._semestres()
+        Service.objects.filter(pk=self.info.pk).update(cycle='Ingénieur')
+        entetes = ['matricule', 'programme', 'session', 'promotion', 'note', 'note_session', 'projet', 'theme',
+                   'encadreur', 'date', 'heure']
+        fichier = lambda *l: fichier_xlsx([entetes, *l])           # noqa: E731
+        lignes = [
+            ['M0', 'Informatique', '2025 - 2026', 'P18', 8, None, 'Projet 1', 'Réseau du campus', 'Dr Barry',
+             '15/07/2026', '9h'],                                                       # 2
+            ['M1', 'INFO', '2025-2026', 'p 18', 'ABS', 6, 'projet 1'],                 # 3 même projet, session
+            ['M0', 'Informatique', '2025-2026', 'P18', 5],                             # 4 doublon
+            ['M9', 'Informatique', '2025-2026', 'P18', 5],                             # 5 matricule inconnu
+            ['M1', 'Inconnu', '2025-2026', 'P18', 5],                                  # 6 programme inconnu
+            ['M1', 'Informatique', '2025-2026', 'P99', 5],                             # 7 promotion inconnue
+            ['M2', 'Génie civil', '2020-2021', 'P18', 7],                              # 8 session inconnue
+            ['M2', 'Génie civil', '2025-2026', 'P18', 12],                             # 9 hors barème
+            ['M2', 'Génie civil', '2025-2026', 'P18', None, None, None, 'Pont en arc'],  # 10 projet individuel
+        ]
+        self.connecter('scol')
+        scol = get_profil(self.client.get(reverse('soutenances_importer')).wsgi_request)
+        r = importer_soutenances(fichier(*lignes), scol, simulation=True)
+        self.assertEqual((r.lignes, r.creees, r.nb_doublons, r.projets_crees), (9, 3, 1, 2))
+        self.assertEqual([n for n, _ in r.erreurs], [5, 6, 7, 8, 9])
+        self.assertTrue(any('Licence' in a for a in r.avertissements))            # Génie civil : cycle Licence
+        self.assertFalse(Soutenance.objects.exists())                                # simulation
+        importer_soutenances(fichier(*lignes), scol)
+        p = ProjetSoutenance.objects.get(intitule='Projet 1')
+        self.assertEqual((p.theme, p.encadreur, p.statut, p.heure.hour, p.membres.count()),
+                         ('Réseau du campus', 'Dr Barry', 'soutenue', 9, 2))
+        s0, s1 = (Soutenance.objects.get(etudiant__matricule=m) for m in ('M0', 'M1'))
+        self.assertEqual((s0.cycle, s0.note_finale, s0.verrouillee), ('Ingénieur', 8, True))   # verrouillée
+        self.assertEqual((s1.note_finale, s1.par_session), (6, True))
+        s2 = Soutenance.objects.get(etudiant__matricule='M2')
+        self.assertEqual((s2.projet.theme, s2.note_finale, s2.verrouillee), ('Pont en arc', None, False))
+
+        # Réimport : la note verrouillée ne change pas, les informations du projet oui
+        r = importer_soutenances(fichier(['M0', 'Informatique', '2025-2026', 'P18', 3, None, 'Projet 1', None,
+                                          'Pr Camara']), scol)
+        self.assertIn('verrouillée', r.avertissements[0])
+        s0.refresh_from_db(), p.refresh_from_db()
+        self.assertEqual((s0.note, p.encadreur, p.theme), (8, 'Pr Camara', 'Réseau du campus'))
+
+        # Chef de programme : une ligne d'un autre programme → tout est refusé
+        self.connecter('info')
+        info = get_profil(self.client.get(reverse('soutenances_importer')).wsgi_request)
+        with self.assertRaisesMessage(ImportRefuse, 'ligne 3'):
+            importer_soutenances(fichier(['M1', 'Informatique', '2025-2026', 'P18', 9],
+                                         ['M2', 'Génie civil', '2025-2026', 'P18', 9]), info)
+        self.assertEqual(self.client.get(reverse('soutenances_modele')).status_code, 200)
+        r = self.client.get(reverse('soutenances'), {'export': 'xlsx'})
+        self.assertEqual(r.status_code, 200)
+
+    def test_liste_des_notes(self):
+        from .models import Note
+        s1, algo, anglais = self._preparer_notes()
+        topo = self._matiere('Topographie', self.gc, s1)
+        e0, e1, e2 = (Etudiant.objects.get(matricule=f'M{k}') for k in range(3))
+        Note.objects.create(etudiant=e0, matiere=algo, moyenne=8, moyenne_deposee=True)
+        Note.objects.create(etudiant=e1, matiere=algo, controle=2, examen=3)                  # 2,6 : non validée
+        Note.objects.create(etudiant=e1, matiere=anglais, examen=4, rattrapage=6)            # 6 en session
+        Note.objects.create(etudiant=e2, matiere=topo, moyenne=7, moyenne_deposee=True)
+        url = reverse('notes_liste')
+        matricules = lambda **p: [n.etudiant.matricule for n in self.client.get(url, p).context['page']]  # noqa: E731
+
+        self.connecter('scol')
+        self.assertEqual(sorted(matricules()), ['M0', 'M1', 'M1', 'M2'])
+        self.assertEqual(matricules(statut='non_validee'), ['M1'])
+        self.assertEqual(matricules(statut='session'), ['M1'])
+        self.assertEqual(matricules(tri='finale', ordre='desc'), ['M0', 'M2', 'M1', 'M1'])
+        self.assertEqual(matricules(q='topo'), ['M2'])
+        r = self.client.get(url)
+        self.assertContains(r, 'Session')
+        self.assertContains(r, reverse('notes_saisie', args=[algo.pk]))
+
+        # Chef de programme : uniquement ses programmes ; export Excel des notes filtrées
+        self.connecter('info')
+        self.assertEqual(sorted(matricules()), ['M0', 'M1', 'M1'])
+        r = self.client.get(url, {'export': 'xlsx', 'statut': 'validee'})
+        ws = openpyxl.load_workbook(io.BytesIO(r.content)).active
+        lignes = list(ws.iter_rows(values_only=True))
+        self.assertEqual(lignes[0][:4], ('Matricule', 'Nom', 'Prénom', 'Matière'))
+        self.assertEqual(sorted((l[0], l[3], l[16], l[18]) for l in lignes[1:]),
+                         [('M0', 'Algorithmique', 8, 'non'), ('M1', 'Anglais', 6, 'oui')])
+        self.connecter('dep')
+        self.assertEqual(self.client.get(url).status_code, 403)
+
+    def test_fichier_xlsx_endommage_repare_automatiquement(self):
+        import zipfile
+        from .import_matieres import importer_matieres
+        from .import_notes import importer_notes
+        from .models import Matiere, Note
+        from .roles import get_profil
+        s1, _ = self._semestres()
+        # Fichier « produit par un autre logiciel » : \x02 dans un intitulé, attribut « biltinId » dans les styles
+        propre = fichier_xlsx([['nom', 'programme', 'licence', 'semestre', 'session'],
+                               ['Probabilité Statistique', 'Informatique', 'Licence 1', 'S1', '2025-2026']]).read()
+        abime = io.BytesIO()
+        with zipfile.ZipFile(io.BytesIO(propre)) as zin, zipfile.ZipFile(abime, 'w') as zout:
+            for info in zin.infolist():
+                brut = zin.read(info.filename)
+                if info.filename == 'xl/sharedStrings.xml':
+                    brut = brut.replace('Probabilité Statistique'.encode(), 'Probabilité\x02Statistique'.encode())
+                if info.filename == 'xl/styles.xml':
+                    brut = brut.replace(b'builtinId=', b'biltinId=')
+                zout.writestr(info, brut)
+        self.connecter('scol')
+        scol = get_profil(self.client.get(reverse('matieres_importer')).wsgi_request)
+        r = importer_matieres(SimpleUploadedFile('abime.xlsx', abime.getvalue()), scol)
+        self.assertEqual((r.creees, r.nb_erreurs), (1, 0))
+        self.assertGreaterEqual(r.reparations, 1)
+        self.assertTrue(Matiere.objects.filter(nom='Probabilité Statistique').exists())
+        # La page signale la réparation
+        r = self.client.post(reverse('matieres_importer'), {'fichier': SimpleUploadedFile('abime.xlsx', abime.getvalue()),
+                                                             'simulation': 'on'})
+        self.assertContains(r, 'réparé automatiquement')
+        # Fichier illisible : message clair, pas d'erreur serveur
+        r = self.client.post(reverse('matieres_importer'), {'fichier': SimpleUploadedFile('faux.xlsx', b'pas un zip')})
+        self.assertContains(r, 'endommagé et n&#x27;a pas pu être lu')
+
+        # Notes : intitulé retrouvé sans tenir compte de la ponctuation (« _ » , « , »)
+        Matiere.objects.filter(nom='Probabilité Statistique').update(nom='Probabilité_Statistique')
+        r = importer_notes(fichier_xlsx([['matricule', 'matiere', 'session', 'moyenne'],
+                                         ['M0', 'Probabilité Statistique', '2025-2026', 7]]), scol)
+        self.assertEqual((r.creees, r.nb_erreurs), (1, 0))
+        self.assertEqual(Note.objects.get(etudiant__matricule='M0').matiere.nom, 'Probabilité_Statistique')

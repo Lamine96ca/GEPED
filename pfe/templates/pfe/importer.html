@@ -1,0 +1,201 @@
+{% extends 'pfe/base.html' %}
+{% load humanize %}
+{% block titre %}Importer une liste{% endblock %}
+{% block titre_page %}Importer une liste d'étudiants{% endblock %}
+{% block sous_titre %}<div class="sous-titre">Fichier Excel (.xlsx) ou CSV · réservé à la scolarité</div>{% endblock %}
+{% block actions %}
+  <a href="{% url 'modele_import' %}" class="btn btn-or"><i class="bi bi-file-earmark-excel"></i> <span class="d-none d-sm-inline">Télécharger le modèle</span></a>
+{% endblock %}
+{% block contenu %}
+<div class="row g-3">
+  <div class="col-lg-5 d-flex flex-column gap-3">
+    <div class="card carte-gped">
+      <div class="card-body">
+        <div class="entete-carte">
+          <span class="icone-carte"><i class="bi bi-cloud-arrow-up"></i></span>
+          <div><h3>Nouvel import</h3><p>Choisissez le fichier et l'inscription à appliquer</p></div>
+        </div>
+        <form method="post" enctype="multipart/form-data" id="form-import">
+          {% csrf_token %}
+          {% if form.non_field_errors %}<div class="alert alert-danger py-2">{{ form.non_field_errors }}</div>{% endif %}
+          <label class="zone-depot d-block mb-3" id="zone-depot">
+            {{ form.fichier }}
+            <i class="bi bi-file-earmark-arrow-up d-block mb-2"></i>
+            <div class="fw-semibold" style="color:var(--encre)" id="nom-fichier">Glissez votre fichier ici</div>
+            <div class="small text-secondary">ou cliquez pour parcourir · .xlsx, .csv</div>
+          </label>
+          {% for err in form.fichier.errors %}<div class="alert alert-danger py-2 small">{{ err }}</div>{% endfor %}
+          <div class="row g-3">
+            {% include 'pfe/_champ.html' with champ=form.cycle col='col-12' %}
+            <div class="col-12">
+              <div class="note-verrou mt-0"><i class="bi bi-table"></i>
+                <span><strong>Une ligne = une inscription.</strong> Le fichier est importé tel quel : la session, la licence, le programme et la promotion sont lus sur chaque ligne.</span>
+              </div>
+            </div>
+            <div class="col-12 d-flex flex-column gap-2">
+              <label class="option-import" for="{{ form.preinscription.id_for_label }}">
+                {{ form.preinscription }}
+                <div><strong>Il s'agit d'une préinscription</strong><span>Cochée : les étudiants sont enregistrés comme préinscrits. Décochée : comme inscrits.</span></div>
+              </label>
+              <label class="option-import" for="{{ form.simulation.id_for_label }}">
+                {{ form.simulation }}
+                <div><strong>Mode simulation</strong><span>Vérifie le fichier sans rien enregistrer. Conseillé pour un premier essai.</span></div>
+              </label>
+            </div>
+            <div class="col-12 d-grid">
+              <button class="btn btn-primary" id="btn-import" style="height:46px">
+                <span class="spinner-border spinner-border-sm d-none"></span>
+                <i class="bi bi-upload"></i> Lancer l'import
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="card carte-gped">
+      <div class="card-body">
+        <div class="entete-carte">
+          <span class="icone-carte"><i class="bi bi-info-lg"></i></span>
+          <div><h3>Comment ça marche</h3><p>Le format attendu du fichier</p></div>
+        </div>
+        <ol class="etapes-import">
+          <li><strong>Une ligne = une inscription.</strong> Un étudiant inscrit sur 3 années a 3 lignes. Les lignes vides sont ignorées.</li>
+          <li>Colonnes et valeurs obligatoires : {% for c in obligatoires %}<code>{{ c }}</code>{% if not forloop.last %}, {% endif %}{% endfor %}.</li>
+          <li><strong>Matricule :</strong> les inscrits ont déjà le leur, il est importé tel quel. Pour une <strong>préinscription</strong>, laissez <code>matricule</code> vide : il est <strong>généré</strong> = 2 derniers chiffres de la session + code du programme + compteur (4 chiffres) + code de la 1<sup>re</sup> lettre du prénom. Un préinscrit est reconnu par son <code>ine</code>, sinon son e-mail, sinon nom, prénom et date de naissance, pour ne pas être créé deux fois.</li>
+          <li>Le <code>programme</code> (nom ou code), la <code>promotion</code> (ex. P20), la <code>session</code> (ex. 2025 - 2026) et la <code>licence</code> (ex. LICENCE 4 ou L4) doivent <strong>exister</strong> dans gePed, sinon la ligne est rejetée.</li>
+          <li><strong>Doublons :</strong> une inscription qui existe déjà (même étudiant, session et licence), dans gePed ou plus haut dans le fichier, est <strong>ignorée</strong> et l'import <strong>continue</strong> avec les autres lignes. La <strong>simulation</strong> affiche la liste des doublons ; à l'import réel (« Lancer l'import »), ils sont simplement ignorés.</li>
+          <li>Un matricule inconnu crée l'étudiant ; un étudiant déjà enregistré <strong>n'est pas modifié</strong>.</li>
+          <li><code>cycle</code> (facultatif) : DUT, Tronc commun, Licence, Ingénieur, Master ou Doctorat. Sinon, le cycle du formulaire s'applique.</li>
+          <li class="pb-0">Sans e-mail, l'adresse <code>matricule@etudiant.gped</code> est générée. Dates au format JJ/MM/AAAA.</li>
+        </ol>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="col-lg-7">
+    {% if rapport %}
+      <div class="card carte-gped">
+        <div class="card-body">
+          <div class="entete-carte flex-wrap">
+            <span class="icone-carte"><i class="bi bi-clipboard-check"></i></span>
+            <div class="me-auto"><h3>Résultat {% if rapport.simulation %}de la simulation{% else %}de l'import{% endif %}</h3><p>{{ rapport.lignes|intcomma }} ligne{{ rapport.lignes|pluralize }} lue{{ rapport.lignes|pluralize }} dans le fichier</p></div>
+            <div class="d-flex gap-2 flex-wrap">
+              {% if rapport.preinscription %}<span class="pill pill-accent">Préinscription</span>{% else %}<span class="pill">Inscription</span>{% endif %}
+              {% if rapport.simulation %}<span class="pill pill-attention">Simulation · rien n'a été enregistré</span>{% else %}<span class="pill pill-succes">Enregistré</span>{% endif %}
+            </div>
+          </div>
+          <div class="row g-3 mb-3">
+            <div class="col-6 col-md-3">
+              <div class="kpi" style="background:var(--fond)"><div class="haut"><span class="tuile tuile-vert"><i class="bi bi-journal-check"></i></span>
+                <div><div class="lib">Inscriptions créées</div><div class="val">{{ rapport.inscriptions_creees|intcomma }}</div></div></div></div>
+            </div>
+            <div class="col-6 col-md-3">
+              <div class="kpi" style="background:var(--fond)"><div class="haut"><span class="tuile tuile-bleu"><i class="bi bi-person-plus"></i></span>
+                <div><div class="lib">Nouveaux étudiants</div><div class="val">{{ rapport.etudiants_crees|intcomma }}</div></div></div></div>
+            </div>
+            <div class="col-6 col-md-3">
+              <div class="kpi" style="background:var(--fond)"><div class="haut"><span class="tuile tuile-bleu"><i class="bi bi-files"></i></span>
+                <div><div class="lib">Doublons ignorés</div><div class="val">{{ rapport.nb_doublons|intcomma }}</div></div></div></div>
+            </div>
+            <div class="col-6 col-md-3">
+              <div class="kpi" style="background:var(--fond)"><div class="haut"><span class="tuile {% if rapport.nb_erreurs %}tuile-orange{% else %}tuile-vert{% endif %}"><i class="bi {% if rapport.nb_erreurs %}bi-exclamation-triangle{% else %}bi-check2-all{% endif %}"></i></span>
+                <div><div class="lib">Lignes rejetées</div><div class="val">{{ rapport.nb_erreurs|intcomma }}</div></div></div></div>
+            </div>
+          </div>
+          {% if rapport.etudiants_existants %}
+            <p class="small text-secondary mb-2"><i class="bi bi-person-check"></i> {{ rapport.etudiants_existants|intcomma }} étudiant{{ rapport.etudiants_existants|pluralize }} déjà enregistré{{ rapport.etudiants_existants|pluralize }} : leur fiche n'est pas modifiée.</p>
+          {% endif %}
+          {% if rapport.matricules_generes %}
+            <details class="mb-3" open>
+              <summary class="small fw-semibold" style="cursor:pointer;color:var(--encre)"><i class="bi bi-upc"></i> {{ rapport.matricules_generes|length|intcomma }} matricule{{ rapport.matricules_generes|length|pluralize }} généré{{ rapport.matricules_generes|length|pluralize }}{% if rapport.simulation %} (aperçu : ils seront attribués à l'import réel){% endif %}</summary>
+              <div class="table-responsive rounded-3 border mt-2" style="max-height: 320px;">
+                <table class="table table-etudiants mb-0">
+                  <thead><tr><th style="width: 5rem;">Ligne</th><th>Étudiant</th><th>Programme</th><th>Matricule</th></tr></thead>
+                  <tbody>
+                  {% for ligne, etudiant, programme, matricule in rapport.matricules_generes|slice:":300" %}
+                    <tr style="cursor:default"><td class="fw-semibold">{{ ligne }}</td><td>{{ etudiant }}</td><td class="text-secondary">{{ programme }}</td><td class="matricule fw-semibold">{{ matricule }}</td></tr>
+                  {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            </details>
+          {% endif %}
+          {% include 'pfe/_reparation_fichier.html' %}
+          {% if rapport.colonnes_ignorees %}
+            <p class="small text-secondary"><i class="bi bi-dash-circle"></i> Colonnes ignorées : {{ rapport.colonnes_ignorees|join:", " }}</p>
+          {% endif %}
+          {% if rapport.simulation and rapport.lignes %}
+            <div class="alert alert-info small py-2"><i class="bi bi-lightbulb"></i> Si le résultat vous convient, décochez « Mode simulation » et relancez l'import avec le même fichier.</div>
+          {% endif %}
+          {% if rapport.erreurs %}
+            <div class="table-responsive rounded-3 border" style="max-height: 420px;">
+              <table class="table table-etudiants mb-0">
+                <thead><tr><th style="width: 5rem;">Ligne</th><th>Problème</th></tr></thead>
+                <tbody>
+                {% for ligne, message in rapport.erreurs|slice:":300" %}
+                  <tr style="cursor:default"><td class="fw-semibold">{{ ligne }}</td><td class="text-danger" style="white-space:normal">{{ message }}</td></tr>
+                {% endfor %}
+                </tbody>
+              </table>
+            </div>
+            {% if rapport.nb_erreurs > 300 %}<p class="small text-secondary mt-2">… et {{ rapport.nb_erreurs|add:"-300" }} autres.</p>{% endif %}
+          {% endif %}
+          {% if rapport.doublons %}
+            {% if rapport.simulation %}
+              <!-- Simulation : on montre les doublons, qui seront ignorés à l'import réel -->
+              <div class="mt-3">
+                <div class="small fw-semibold mb-2" style="color:var(--encre)"><i class="bi bi-files"></i> {{ rapport.nb_doublons|intcomma }} doublon{{ rapport.nb_doublons|pluralize }} : inscription{{ rapport.nb_doublons|pluralize }} déjà existante{{ rapport.nb_doublons|pluralize }}, ignorée{{ rapport.nb_doublons|pluralize }} à l'import réel</div>
+                <div class="table-responsive rounded-3 border" style="max-height: 320px;">
+                  <table class="table table-etudiants mb-0">
+                    <thead><tr><th style="width: 5rem;">Ligne</th><th>Inscription déjà existante</th></tr></thead>
+                    <tbody>
+                    {% for ligne, message in rapport.doublons|slice:":300" %}
+                      <tr style="cursor:default"><td class="fw-semibold">{{ ligne }}</td><td class="text-secondary" style="white-space:normal">{{ message }}</td></tr>
+                    {% endfor %}
+                    </tbody>
+                  </table>
+                </div>
+                {% if rapport.nb_doublons > 300 %}<p class="small text-secondary mt-2">… et {{ rapport.nb_doublons|add:"-300" }} autres.</p>{% endif %}
+              </div>
+            {% else %}
+              <!-- Import réel : les doublons sont simplement ignorés -->
+              <p class="small text-secondary mt-3 mb-0"><i class="bi bi-files"></i> {{ rapport.nb_doublons|intcomma }} doublon{{ rapport.nb_doublons|pluralize }} ignoré{{ rapport.nb_doublons|pluralize }} : inscription{{ rapport.nb_doublons|pluralize }} déjà existante{{ rapport.nb_doublons|pluralize }}, rien n'a été modifié pour {{ rapport.nb_doublons|pluralize:"elle,elles" }}.</p>
+            {% endif %}
+          {% endif %}
+        </div>
+      </div>
+    {% else %}
+      <div class="card carte-gped"><div class="card-body">
+        <div class="etat-vide">
+          <i class="bi bi-table"></i>
+          <div class="fw-semibold mb-1" style="color:var(--encre);font-size:1.1rem">Une ligne = une inscription</div>
+          <p class="mb-0">Préparez le fichier à partir du modèle : les colonnes jaunes sont obligatoires. Lancez d'abord une simulation pour voir les lignes rejetées.</p>
+        </div>
+      </div></div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  (function () {
+    const zone = document.getElementById('zone-depot');
+    const input = zone.querySelector('input[type=file]');
+    const nom = document.getElementById('nom-fichier');
+    input.classList.remove('form-control');
+    input.addEventListener('change', () => {
+      if (input.files.length) { nom.textContent = input.files[0].name; zone.classList.add('rempli'); }
+    });
+    ['dragenter', 'dragover'].forEach((t) => zone.addEventListener(t, () => zone.classList.add('survol')));
+    ['dragleave', 'drop'].forEach((t) => zone.addEventListener(t, () => zone.classList.remove('survol')));
+    document.getElementById('form-import').addEventListener('submit', function () {
+      const b = document.getElementById('btn-import');
+      b.disabled = true;
+      b.querySelector('.spinner-border').classList.remove('d-none');
+      b.querySelector('.bi').classList.add('d-none');
+    });
+  })();
+</script>
+{% endblock %}

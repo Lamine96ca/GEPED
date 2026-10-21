@@ -1,0 +1,6 @@
+{% if rapport.reparations %}
+  <div class="alert alert-warning small py-2 d-flex gap-2 align-items-start">
+    <i class="bi bi-wrench-adjustable mt-1"></i>
+    <span>Fichier légèrement endommagé, <strong>réparé automatiquement</strong> : {{ rapport.reparations }} correction{{ rapport.reparations|pluralize }} (caractère{{ rapport.reparations|pluralize }} invisible{{ rapport.reparations|pluralize }} ou défaut de format). Les données n'ont pas été modifiées ; pensez à corriger votre fichier d'origine.</span>
+  </div>
+{% endif %}

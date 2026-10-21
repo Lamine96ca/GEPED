@@ -1,0 +1,64 @@
+{# Barre de filtres des pages Soutenances. Paramètres : avec_recherche, statuts, session_toutes, programme_requis, avec_projet #}
+<form method="get" class="barre-filtres border-bottom" id="filtres-soutenances">
+  <div class="row g-2 align-items-end">
+    {% if avec_recherche %}
+      <div class="col-12 col-lg-3">
+        <label class="form-label small text-secondary mb-1" for="f-q">Recherche</label>
+        <div class="champ-icone"><i class="bi bi-search"></i>
+          <input type="search" id="f-q" name="q" value="{{ filtres.q }}" class="form-control" placeholder="{{ placeholder|default:'Matricule, nom, projet, thème' }}">
+        </div>
+      </div>
+    {% endif %}
+    <div class="col-6 col-md-3 col-lg-2">
+      <label class="form-label small text-secondary mb-1" for="f-session">Session</label>
+      <select id="f-session" name="session" class="form-select">
+        <option value="">{% if programme_requis %}Choisir…{% else %}Toutes{% endif %}</option>
+        {% for s in sessions %}<option value="{{ s.pk }}" {% if filtres.session == s.pk %}selected{% endif %}>{{ s.annee }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-6 col-md-3 col-lg-3">
+      <label class="form-label small text-secondary mb-1" for="f-programme">Programme</label>
+      <select id="f-programme" name="programme" class="form-select">
+        {% if programmes|length != 1 %}<option value="">{% if programme_requis %}Choisir…{% else %}Tous{% endif %}</option>{% endif %}
+        {% for p in programmes %}<option value="{{ p.pk }}" {% if filtres.programme == p.pk %}selected{% endif %}>{{ p.nom }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-6 col-md-3 col-lg-2">
+      <label class="form-label small text-secondary mb-1" for="f-promotion">Promotion</label>
+      <select id="f-promotion" name="promotion" class="form-select">
+        <option value="">Toutes</option>
+        {% for p in promotions %}<option value="{{ p.pk }}" {% if filtres.promotion == p.pk %}selected{% endif %}>{{ p.nom }}</option>{% endfor %}
+      </select>
+    </div>
+    {% if avec_projet %}
+      <div class="col-6 col-md-3 col-lg-2">
+        <label class="form-label small text-secondary mb-1" for="f-projet">Projet</label>
+        <select id="f-projet" name="projet" class="form-select">
+          <option value="">Tous</option>
+          {% for p in projets_du_filtre %}<option value="{{ p.pk }}" {% if filtres.projet == p.pk %}selected{% endif %}>{{ p.intitule }}</option>{% endfor %}
+        </select>
+      </div>
+    {% endif %}
+    {% if statuts %}
+      <div class="col-6 col-md-3 col-lg-2">
+        <label class="form-label small text-secondary mb-1" for="f-statut">Statut</label>
+        <select id="f-statut" name="statut" class="form-select">
+          <option value="">Tous</option>
+          {% for code, libelle in statuts %}<option value="{{ code }}" {% if filtres.statut == code %}selected{% endif %}>{{ libelle }}</option>{% endfor %}
+        </select>
+      </div>
+    {% endif %}
+  </div>
+</form>
+<script>
+  (function () {
+    var form = document.getElementById('filtres-soutenances');
+    form.querySelectorAll('select').forEach(function (s) {
+      s.addEventListener('change', function () {
+        var projet = document.getElementById('f-projet');
+        if (projet && s !== projet) projet.value = '';
+        form.submit();
+      });
+    });
+  })();
+</script>

@@ -1,0 +1,11 @@
+<div class="{{ col|default:'col-md-6' }}">
+  {% if champ.field.widget.input_type == 'checkbox' %}
+    <div class="form-check mt-md-4">
+      {{ champ }} <label class="form-check-label" for="{{ champ.id_for_label }}">{{ champ.label }}</label>
+    </div>
+  {% else %}
+    <label class="form-label small mb-1" for="{{ champ.id_for_label }}">{{ champ.label }}{% if champ.field.required %} <span class="text-danger">*</span>{% endif %}</label>
+    {{ champ }}
+  {% endif %}
+  {% for err in champ.errors %}<div class="invalid-feedback d-block">{{ err }}</div>{% endfor %}
+</div>

@@ -1,0 +1,154 @@
+{% extends 'pfe/base.html' %}
+{% load static %}
+{% block titre %}{% if mode == 'preinscriptions' %}Préinscriptions{% else %}Étudiants{% endif %}{% endblock %}
+{% block titre_page %}{% if mode == 'preinscriptions' %}Préinscriptions{% else %}Liste des étudiants{% endif %}{% endblock %}
+{% block sous_titre %}<div class="sous-titre" id="sous-titre">Chargement…</div>{% endblock %}
+{% block actions %}
+  <div class="btn-group">
+    <button class="btn btn-or dropdown-toggle" data-bs-toggle="dropdown"><i class="bi bi-download"></i> <span class="d-none d-sm-inline">Exporter</span></button>
+    <ul class="dropdown-menu dropdown-menu-end">
+      <li><a class="dropdown-item" href="#" data-export="xlsx"><i class="bi bi-file-earmark-excel text-success"></i> Excel (.xlsx)</a></li>
+      <li><a class="dropdown-item" href="#" data-export="csv"><i class="bi bi-filetype-csv text-primary"></i> CSV (séparateur ;)</a></li>
+    </ul>
+  </div>
+  {% if profil.est_scolarite %}
+    <a href="{% url 'inscription_creer' %}" class="btn btn-primary"><i class="bi bi-plus-lg"></i> <span class="d-none d-sm-inline">Nouvelle inscription</span></a>
+  {% endif %}
+{% endblock %}
+
+{% block contenu %}
+<div class="card carte-gped liste">
+  <div class="card-header d-flex flex-wrap align-items-center gap-3">
+    <div class="entete-carte mb-0 me-auto">
+      {% if mode == 'preinscriptions' %}
+        <span class="icone-carte"><i class="bi bi-hourglass-split"></i></span>
+        <div><h3>Étudiants préinscrits</h3><p>{% if peut_inscrire %}Cliquez sur « Inscrire » pour finaliser une inscription, ou cochez plusieurs étudiants.{% else %}Étudiants dont l'inscription n'est pas encore finalisée.{% endif %}</p></div>
+      {% else %}
+        <span class="icone-carte"><i class="bi bi-people"></i></span>
+        <div><h3>Rechercher et filtrer</h3><p>Les résultats se mettent à jour automatiquement. Cliquez sur une ligne pour ouvrir la fiche.</p></div>
+      {% endif %}
+    </div>
+    {% if peut_inscrire %}
+      <button type="button" class="btn btn-or-plein" id="inscrire-selection" disabled>
+        <i class="bi bi-check2-all"></i> Inscrire la sélection <span class="badge text-bg-light ms-1" id="nb-selection">0</span>
+      </button>
+    {% endif %}
+  </div>
+  <div class="barre-filtres">
+    <form id="filtres" class="row g-2 align-items-center" autocomplete="off" onsubmit="return false">
+      <div class="col-12 col-lg-4">
+        <div class="recherche">
+          <i class="bi bi-search"></i>
+          <input type="search" name="q" class="form-control form-control-sm" placeholder="Matricule, nom, prénom, téléphone, INE…">
+        </div>
+      </div>
+      <div class="col-6 col-md-3 col-lg-2">
+        <select name="session" class="form-select form-select-sm" title="Session">
+          {% for s in sessions %}<option value="{{ s.id }}" {% if s.id == session_defaut %}selected{% endif %}>{{ s.annee }}{% if s.en_cours %} (en cours){% endif %}</option>{% endfor %}
+          <option value="toutes">Toutes les sessions</option>
+        </select>
+      </div>
+      <div class="col-6 col-md-3 col-lg-2">
+        <select name="programme" class="form-select form-select-sm" title="Programme">
+          <option value="">{% if profil.role == 'programme' %}Mes programmes{% else %}Tous les programmes{% endif %}</option>
+          {% for p in programmes %}<option value="{{ p.id }}">{{ p.nom }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-md-3 col-lg-2">
+        <select name="cycle" class="form-select form-select-sm" title="Cycle">
+          <option value="">Tous les cycles</option>
+          {% for code, libelle in cycles %}<option value="{{ code }}">{{ libelle }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-md-3 col-lg-2">
+        <select name="licence" class="form-select form-select-sm" title="Licence">
+          <option value="">Toutes licences</option>
+          {% for l in licences %}<option value="{{ l.id }}">{{ l.nom }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-md-3 col-lg-2">
+        <select name="semestre" class="form-select form-select-sm" title="Semestre">
+          <option value="">Tous semestres</option>
+          {% for s in semestres %}<option value="{{ s.id }}">{{ s.nom }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-md-3 col-lg-2">
+        <select name="promotion" class="form-select form-select-sm" title="Promotion">
+          <option value="">Toutes promotions</option>
+          {% for p in promotions %}<option value="{{ p.id }}">{{ p.nom }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-md-3 col-lg-2">
+        <select name="sexe" class="form-select form-select-sm" title="Sexe">
+          <option value="">Tous les sexes</option><option value="M">Masculin</option><option value="F">Féminin</option>
+        </select>
+      </div>
+      {% if mode == 'preinscriptions' %}
+        <input type="hidden" name="statut" value="preinscrit" data-fixe>
+      {% else %}
+      <div class="col-6 col-md-3 col-lg-2">
+        <select name="statut" class="form-select form-select-sm" title="Statut">
+          <option value="">Tous statuts</option>
+          <option value="inscrit">Inscrits</option><option value="preinscrit">Préinscrits</option>
+          <option value="passant">Passants</option><option value="redoublant">Redoublants</option>
+        </select>
+      </div>
+      {% endif %}
+      <div class="col-6 col-md-3 col-lg-2">
+        <button type="button" id="reinitialiser" class="btn btn-sm btn-light w-100" title="Réinitialiser les filtres"><i class="bi bi-x-lg"></i> Réinitialiser</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="table-etudiants-wrap">
+    <table class="table table-hover table-etudiants" id="tableau">
+      <thead>
+        <tr>
+          {% if peut_inscrire %}<th style="width:2.5rem"><input type="checkbox" class="form-check-input" id="tout-cocher" title="Tout cocher sur cette page"></th>{% endif %}
+          <th style="width:3.5rem">#</th>
+          <th data-tri="matricule">Matricule <i class="bi bi-arrow-down-up"></i></th>
+          <th data-tri="nom">Étudiant <i class="bi bi-arrow-down-up"></i></th>
+          <th data-tri="sexe">Sexe <i class="bi bi-arrow-down-up"></i></th>
+          <th class="d-none d-xxl-table-cell">Téléphone</th>
+          <th data-tri="cycle" class="d-none d-xl-table-cell">Cycle <i class="bi bi-arrow-down-up"></i></th>
+          <th data-tri="licence">Licence <i class="bi bi-arrow-down-up"></i></th>
+          <th data-tri="semestre" class="d-none d-lg-table-cell">Sem. <i class="bi bi-arrow-down-up"></i></th>
+          <th data-tri="programme">Programme <i class="bi bi-arrow-down-up"></i></th>
+          <th data-tri="promotion" class="d-none d-lg-table-cell">Promo <i class="bi bi-arrow-down-up"></i></th>
+          <th class="text-end"></th>
+        </tr>
+      </thead>
+      <tbody id="corps"><tr><td colspan="11" class="text-center text-secondary py-5"><div class="spinner-border spinner-border-sm text-primary"></div> Chargement…</td></tr></tbody>
+    </table>
+  </div>
+
+  <div class="pied-tableau d-flex flex-wrap gap-2 align-items-center small">
+    <span id="info" class="text-secondary me-auto"></span>
+    <label class="d-flex align-items-center gap-2 text-secondary">Lignes par page
+      <select id="taille" class="form-select form-select-sm" style="width:auto">
+        {% for t in tailles_page %}<option value="{{ t }}" {% if t == 50 %}selected{% endif %}>{{ t }}</option>{% endfor %}
+      </select>
+    </label>
+    <nav><ul class="pagination pagination-sm mb-0" id="pagination"></ul></nav>
+  </div>
+</div>
+{{ profil.est_scolarite|json_script:"est-scolarite" }}
+{{ cycles_libelles|json_script:"cycles" }}
+{% csrf_token %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  window.GPED = {
+    urlDonnees: "{% url 'etudiants_donnees' %}",
+    urlExport: "{% url 'etudiants_export' %}",
+    urlFiche: "{% url 'etudiant_fiche' 0 %}",
+    urlModifier: "{% url 'inscription_modifier' 0 %}",
+    cycles: JSON.parse(document.getElementById('cycles').textContent),
+    estScolarite: JSON.parse(document.getElementById('est-scolarite').textContent),
+    peutInscrire: {% if peut_inscrire %}true{% else %}false{% endif %},
+    urlInscrire: "{% url 'valider_preinscriptions' %}",
+  };
+</script>
+<script src="{% static 'pfe/js/liste_etudiants.js' %}?v={{ version_statique }}"></script>
+{% endblock %}

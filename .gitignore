@@ -1,0 +1,40 @@
+# gePed — fichiers qui ne doivent JAMAIS aller sur Git (même dans un dépôt privé)
+
+# Environnement Python (se réinstalle avec requirements.txt)
+env/
+venv/
+__pycache__/
+*.py[cod]
+
+# Secrets
+config/cle_secrete.txt
+.env
+COMPTES_LOCAUX.txt
+
+# Bases de données et sauvegardes (données personnelles des étudiants)
+db.sqlite3
+db.sqlite3.*
+*.sql
+
+# Fichiers déposés par les utilisateurs : photos, justificatifs
+media/
+prive/
+
+# Signature et cachet de la scolarité (les autres images des attestations sont suivies)
+ressources/attestation/signature_scolarite.png
+
+# Documents de travail et exemples (vraies listes d'étudiants, PDF avec cachet)
+moi/
+exemples/
+
+# Générés
+staticfiles/
+emails_dev/
+
+# Outils et fichiers temporaires
+.claude/
+~$*
+*.tmp
+Thumbs.db
+desktop.ini
+/etudiants_liste.html

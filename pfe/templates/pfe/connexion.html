@@ -1,0 +1,54 @@
+{% extends 'pfe/page_publique.html' %}
+{% block titre %}Connexion{% endblock %}
+
+{% block panneau %}
+  <h2>Bienvenue sur <span>gePed</span>, la gestion pédagogique de votre établissement.</h2>
+  <p class="chapeau">Un seul espace pour la scolarité, les départements et les programmes.</p>
+  <div class="indications">
+    <div class="indication">
+      <i class="bi bi-person-badge"></i>
+      <div><strong>Connectez-vous avec votre identifiant</strong><span>Il vous a été remis par l'administration avec votre mot de passe.</span></div>
+    </div>
+    <div class="indication">
+      <i class="bi bi-shield-lock"></i>
+      <div><strong>Un accès adapté à votre service</strong><span>Chaque département et programme ne voit que ses propres étudiants.</span></div>
+    </div>
+    <div class="indication">
+      <i class="bi bi-key"></i>
+      <div><strong>Mot de passe oublié ?</strong><span>Recevez un lien de réinitialisation sur votre adresse e-mail.</span></div>
+    </div>
+  </div>
+{% endblock %}
+
+{% block carte %}
+  <div class="surtitre">Espace personnel</div>
+  <h1>Connexion</h1>
+  <p class="intro">Saisissez vos identifiants pour accéder à votre espace.</p>
+  {% if form.errors %}
+    <div class="alert alert-danger py-2 d-flex gap-2 align-items-center"><i class="bi bi-exclamation-circle"></i> Identifiant ou mot de passe incorrect.</div>
+  {% endif %}
+  <form method="post">{% csrf_token %}
+    <input type="hidden" name="next" value="{{ next }}">
+    <div class="mb-3">
+      <label class="form-label" for="id_username">Identifiant</label>
+      <div class="champ-icone">
+        <i class="bi bi-person"></i>
+        <input class="form-control" id="id_username" name="username" autofocus required autocomplete="username"
+               placeholder="Votre identifiant" value="{{ form.username.value|default:'' }}">
+      </div>
+    </div>
+    <div class="mb-2">
+      <label class="form-label" for="id_password">Mot de passe</label>
+      <div class="champ-icone">
+        <i class="bi bi-lock"></i>
+        <input class="form-control" type="password" id="id_password" name="password" required
+               autocomplete="current-password" placeholder="Votre mot de passe">
+        <button type="button" class="voir-mdp" data-voir-mdp="id_password" aria-label="Afficher le mot de passe"><i class="bi bi-eye"></i></button>
+      </div>
+    </div>
+    <div class="text-end mb-4">
+      <a href="{% url 'password_reset' %}" class="small lien-or">Mot de passe oublié ?</a>
+    </div>
+    <button class="btn btn-primary w-100">Se connecter <i class="bi bi-arrow-right"></i></button>
+  </form>
+{% endblock %}

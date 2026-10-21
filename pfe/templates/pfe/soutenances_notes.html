@@ -1,0 +1,175 @@
+{% extends 'pfe/base.html' %}
+{% block titre %}Notes de soutenance{% endblock %}
+{% block titre_page %}Saisie des notes de soutenance{% endblock %}
+{% block sous_titre %}<div class="sous-titre">Sur 10 · ABS = 0 · validée à partir de {{ regles.seuil_validation }} · la note de session remplace la note si elle est meilleure (« Session »)</div>{% endblock %}
+{% block contenu %}
+<div class="card carte-gped liste mb-3">
+  {% include 'pfe/_filtres_soutenances.html' with programme_requis=True avec_projet=projets_du_filtre %}
+  {% if not filtres.programme or not filtres.session %}
+    <div class="etat-vide"><i class="bi bi-funnel"></i>Choisissez une session et un programme (et si besoin une promotion ou un projet).</div>
+  {% endif %}
+</div>
+
+{% if filtres.programme and filtres.session %}
+<form method="post" enctype="multipart/form-data" novalidate id="form-notes">
+  {% csrf_token %}
+  {% if erreurs %}<div class="alert alert-danger py-2"><i class="bi bi-exclamation-circle"></i> Certaines notes sont invalides (signalées en rouge) : rien n'a été enregistré.</div>{% endif %}
+  <div class="card carte-gped liste">
+    <div class="card-header d-flex flex-wrap align-items-center gap-3">
+      <div class="entete-carte mb-0 me-auto">
+        <span class="icone-carte"><i class="bi bi-table"></i></span>
+        <div><h3>{{ nb }} soutenance{% if nb > 1 %}s{% endif %}</h3><p>{{ nb_notees }} notée{{ nb_notees|pluralize }} · {{ nb_verrouillees }} verrouillée{{ nb_verrouillees|pluralize }}</p></div>
+      </div>
+      <a href="{% url 'soutenance_creer' %}" class="btn btn-sm btn-light"><i class="bi bi-plus-lg"></i> Ajouter un étudiant</a>
+      <a href="{% url 'projet_creer' %}?programme={{ filtres.programme }}&session={{ filtres.session }}&promotion={{ filtres.promotion|default:'' }}" class="btn btn-sm btn-light"><i class="bi bi-diagram-3"></i> Nouveau projet</a>
+    </div>
+    <div class="table-responsive" style="max-height: calc(100vh - 360px);">
+      <table class="table table-etudiants mb-0 grille-notes">
+        <thead><tr><th style="width:3rem">#</th><th>Étudiant</th><th>Promotion</th><th class="text-center">Note</th><th class="text-center">Note de session</th><th class="text-center">Retenue</th><th>Mention</th></tr></thead>
+        <tbody>
+        {% for g in groupes %}
+          <tr class="ligne-projet" style="cursor:default"><td colspan="7">
+            <div class="d-flex flex-wrap align-items-center gap-2">
+              {% if g.projet %}
+                <i class="bi bi-diagram-3 text-primary"></i> <a href="{% url 'projet_modifier' g.projet.pk %}" class="fw-semibold">{{ g.projet.intitule }}</a>
+                {% if g.projet.theme %}<span class="small text-secondary text-truncate" style="max-width:420px" title="{{ g.projet.theme }}">· {{ g.projet.theme }}</span>{% endif %}
+                <span class="ms-auto d-flex align-items-center gap-1">
+                  <input type="text" inputmode="decimal" class="form-control form-control-sm note-commune" style="width:5rem" placeholder="Note" aria-label="Même note pour tout le projet {{ g.projet.intitule }}">
+                  <button type="button" class="btn btn-sm btn-light appliquer-note" title="Donner cette note à tous les membres modifiables du projet"><i class="bi bi-people"></i> Même note pour tout le projet</button>
+                </span>
+              {% else %}
+                <i class="bi bi-person text-secondary"></i> <span class="fw-semibold text-secondary">Sans projet de soutenance</span>
+              {% endif %}
+            </div>
+          </td></tr>
+          {% for s in g.lignes %}
+            <tr style="cursor:default" data-ligne class="{% if s.verrouillee %}verrouillee{% endif %}">
+              <td class="text-secondary">{{ forloop.counter }}</td>
+              <td style="min-width:200px"><a href="{% url 'soutenance_modifier' s.pk %}?suivant={{ request.get_full_path|urlencode }}" style="color:var(--encre);font-weight:600">{{ s.etudiant.nom }}</a> {{ s.etudiant.prenom }}
+                <div class="matricule text-secondary">{{ s.etudiant.matricule|default:"" }}{% if s.verrouillee %} · <i class="bi bi-lock-fill" title="Note verrouillée"></i> verrouillée{% endif %}</div></td>
+              <td>{{ s.promotion }}</td>
+              {% for c in s.champs %}
+                <td class="text-center">
+                  <input type="text" inputmode="decimal" name="{{ c.nom }}_{{ s.pk }}" value="{{ c.valeur }}" data-champ="{{ c.nom }}"
+                         class="form-control form-control-sm note-champ{% if c.erreur %} is-invalid{% endif %}"
+                         {% if c.erreur %}title="{{ c.erreur }}"{% endif %} {% if not s.modifiable %}disabled{% endif %}
+                         {% if s.verrouillee %}data-verrouillee="1"{% endif %}
+                         aria-label="{% if c.nom == 'note' %}Note{% else %}Note de session{% endif %} de {{ s.etudiant.prenom }} {{ s.etudiant.nom }}">
+                </td>
+              {% endfor %}
+              <td class="text-center"><span class="finale {% if s.note_finale is not None %}{% if s.validee %}ok{% else %}ko{% endif %}{% endif %}" data-finale>{% if s.note_finale is not None %}{{ s.note_finale|floatformat:"-2" }}{% else %}—{% endif %}</span></td>
+              <td class="text-nowrap" data-mention>{{ s.mention }}{% if s.par_session %} <span class="pill pill-accent">Session</span>{% endif %}</td>
+            </tr>
+          {% endfor %}
+        {% empty %}
+          <tr><td colspan="7"><div class="etat-vide"><i class="bi bi-mortarboard"></i>Aucune soutenance pour ces filtres.
+            <div class="mt-2">Créez un <a href="{% url 'projet_creer' %}?programme={{ filtres.programme }}&session={{ filtres.session }}&promotion={{ filtres.promotion|default:'' }}">projet de soutenance</a> avec ses membres, ou <a href="{% url 'soutenance_creer' %}">ajoutez un étudiant</a>.</div></div></td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if groupes %}
+      <div class="pied-tableau">
+        <div class="row g-2 mb-3 {% if not nb_verrouillees or not profil.est_scolarite %}d-none{% endif %}" id="bloc-motif">
+          <div class="col-md-7">
+            <label class="form-label small mb-1" for="motif">Motif (obligatoire si vous modifiez une note verrouillée)</label>
+            <textarea id="motif" name="motif" rows="2" class="form-control{% if erreur_motif %} is-invalid{% endif %}" placeholder="Ex. : erreur de report constatée par le jury, PV n° …">{{ motif }}</textarea>
+            {% if erreur_motif %}<div class="invalid-feedback d-block">{{ erreur_motif }}</div>{% endif %}
+          </div>
+          <div class="col-md-5">
+            <label class="form-label small mb-1" for="justificatif">Justificatif (PV, courrier…)</label>
+            <input type="file" id="justificatif" name="justificatif" class="form-control" accept=".pdf,image/*">
+            <div class="small text-secondary mt-1"><i class="bi bi-lock"></i> Conservé en interne, jamais publié.</div>
+          </div>
+        </div>
+        <div class="d-flex flex-wrap align-items-center gap-2">
+          <button class="btn btn-primary" name="action" value="enregistrer"><i class="bi bi-check-lg"></i> Enregistrer les notes</button>
+          {% if a_verrouiller %}
+            <button class="btn btn-or" name="action" value="verrouiller"
+                    onclick="return confirm('Enregistrer puis verrouiller les {{ a_verrouiller }} note(s) saisie(s) ? Ensuite, seule la scolarité pourra les modifier, avec un motif.');"><i class="bi bi-lock"></i> Verrouiller les notes</button>
+          {% endif %}
+          {% if user.is_superuser and nb_verrouillees %}
+            <button class="btn btn-light" name="action" value="deverrouiller" onclick="return confirm('Déverrouiller les {{ nb_verrouillees }} note(s) verrouillée(s) de cette liste ?');"><i class="bi bi-unlock"></i> Déverrouiller</button>
+          {% endif %}
+          <span class="small text-secondary" id="nb-modifs"></span>
+        </div>
+      </div>
+    {% endif %}
+  </div>
+</form>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+{{ regles|json_script:"regles-notes" }}
+<script>
+  (function () {
+    var form = document.getElementById('form-notes');
+    if (!form) return;
+    var r = JSON.parse(document.getElementById('regles-notes').textContent);
+    function lire(input) {
+      var s = (input.value || '').trim().replace(',', '.').toUpperCase();
+      if (s === '') return null;
+      if (s === 'ABS' || s === 'ABSENT' || s === 'A') return 0;
+      var v = Number(s);
+      return isNaN(v) || v < 0 || v > r.note_max ? NaN : v;
+    }
+    function mention(m) {
+      if (m === null) return '';
+      for (var i = 0; i < r.mentions.length; i++) { if (m >= r.mentions[i][0]) return r.mentions[i][1]; }
+      return '';
+    }
+    function maj(tr) {
+      var v = {};
+      tr.querySelectorAll('.note-champ').forEach(function (i) {
+        v[i.dataset.champ] = lire(i);
+        i.classList.toggle('is-invalid', Number.isNaN(v[i.dataset.champ]));
+      });
+      if (Object.values(v).some(Number.isNaN)) return;
+      var session = v.note_session !== null && (v.note === null || v.note_session > v.note);
+      var finale = session ? v.note_session : v.note;
+      var span = tr.querySelector('[data-finale]');
+      span.textContent = finale === null ? '—' : (Math.round(finale * 100) / 100).toString().replace('.', ',');
+      span.className = 'finale ' + (finale === null ? '' : (finale >= r.seuil_validation ? 'ok' : 'ko'));
+      tr.querySelector('[data-mention]').innerHTML = mention(finale) + (session ? ' <span class="pill pill-accent">Session</span>' : '');
+    }
+    var initial = new Map(), modifs = 0;
+    form.querySelectorAll('.note-champ').forEach(function (i) { initial.set(i, i.value); });
+    function compter() {
+      var n = 0, verrou = false;
+      initial.forEach(function (val, i) { if (i.value !== val) { n++; if (i.dataset.verrouillee) verrou = true; } });
+      var el = document.getElementById('nb-modifs');
+      if (el) el.textContent = n ? n + ' case(s) modifiée(s), pas encore enregistrée(s)' : '';
+      if (verrou) document.getElementById('bloc-motif').classList.remove('d-none');
+      modifs = n;
+    }
+    form.querySelectorAll('[data-ligne]').forEach(function (tr) {
+      tr.addEventListener('input', function () { maj(tr); compter(); });
+    });
+    // Même note pour tout le projet : remplit la note de chaque membre modifiable, jusqu'à la ligne de projet suivante
+    form.querySelectorAll('.appliquer-note').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var entete = b.closest('tr'), valeur = entete.querySelector('.note-commune').value;
+        if (Number.isNaN(lire({value: valeur})) || lire({value: valeur}) === null) { entete.querySelector('.note-commune').classList.add('is-invalid'); return; }
+        entete.querySelector('.note-commune').classList.remove('is-invalid');
+        for (var tr = entete.nextElementSibling; tr && tr.hasAttribute('data-ligne'); tr = tr.nextElementSibling) {
+          var champ = tr.querySelector('[data-champ="note"]');
+          if (champ && !champ.disabled) { champ.value = valeur; maj(tr); }
+        }
+        compter();
+      });
+    });
+    window.addEventListener('beforeunload', function (e) { if (modifs) { e.preventDefault(); e.returnValue = ''; } });
+    form.addEventListener('submit', function () { modifs = 0; });
+    form.querySelectorAll('.note-champ').forEach(function (i) {
+      i.addEventListener('keydown', function (e) {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        var tr = i.closest('tr').nextElementSibling;
+        while (tr && !tr.hasAttribute('data-ligne')) tr = tr.nextElementSibling;
+        var suivant = tr && tr.querySelector('[data-champ="' + i.dataset.champ + '"]');
+        if (suivant) { suivant.focus(); suivant.select(); }
+      });
+    });
+  })();
+</script>
+{% endblock %}

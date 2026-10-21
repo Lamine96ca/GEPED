@@ -1,0 +1,47 @@
+{% extends 'pfe/base.html' %}
+{% block titre %}Calendrier des soutenances{% endblock %}
+{% block titre_page %}Calendrier des soutenances{% endblock %}
+{% block sous_titre %}<div class="sous-titre">{{ nb }} soutenance{{ nb|pluralize }} programmée{{ nb|pluralize }}{% if sans_date %} · {{ sans_date }} projet{{ sans_date|pluralize }} sans date{% endif %}</div>{% endblock %}
+{% block actions %}
+  <a href="?{{ params }}{% if params %}&{% endif %}format=pdf" target="_blank" rel="noopener" class="btn btn-or"><i class="bi bi-file-earmark-pdf"></i> <span class="d-none d-sm-inline">Calendrier à afficher (PDF)</span></a>
+  <a href="{% url 'projet_creer' %}" class="btn btn-primary"><i class="bi bi-plus-lg"></i> <span class="d-none d-sm-inline">Nouveau projet</span></a>
+{% endblock %}
+{% block contenu %}
+{% if nb_conflits %}
+  <div class="alert alert-danger d-flex gap-2 align-items-start"><i class="bi bi-exclamation-triangle-fill mt-1"></i>
+    <div><strong>{{ nb_conflits }} projet{{ nb_conflits|pluralize }} en conflit</strong> : même salle ou même membre du jury au même créneau (signalés en rouge ci-dessous).</div></div>
+{% endif %}
+<div class="card carte-gped liste">
+  {% include 'pfe/_filtres_soutenances.html' %}
+  {% for j in jours %}
+    <div class="jour-calendrier"><i class="bi bi-calendar3 text-primary"></i> {{ j.date|date:"l j F Y" }} <span class="small text-secondary fw-normal">· {{ j.projets|length }} soutenance{{ j.projets|length|pluralize }}</span></div>
+    {% for p in j.projets %}
+      <div class="creneau {% if p.conflits %}en-conflit{% endif %}">
+        <div class="heure">{{ p.heure|time:"H\hi"|default:"—" }}</div>
+        <div class="flex-grow-1" style="min-width:0">
+          <div class="d-flex flex-wrap align-items-center gap-2">
+            <a href="{% url 'projet_modifier' p.pk %}" class="fw-semibold">{{ p.intitule }}</a>
+            {% if p.salle %}<span class="pill"><i class="bi bi-door-open"></i> {{ p.salle }}</span>{% endif %}
+            <span class="pill {% if p.statut == 'soutenue' %}pill-succes{% elif p.statut == 'programmee' %}pill-accent{% else %}pill-attention{% endif %}">{{ p.get_statut_display }}</span>
+            <span class="small text-secondary">{{ p.filiere }} · {{ p.promotion }}</span>
+          </div>
+          {% if p.theme %}<div class="small mt-1">{{ p.theme }}</div>{% endif %}
+          <div class="membres-projet mt-2">{% for s in p.membres.all %}<span class="pill">{{ s.etudiant.nom }} {{ s.etudiant.prenom }}</span>{% empty %}<span class="small text-secondary">Aucun membre</span>{% endfor %}</div>
+          <div class="small text-secondary mt-1">
+            {% if p.encadreur %}<i class="bi bi-person-check"></i> Encadreur : {{ p.encadreur }}{% endif %}
+            {% for q, n in p.jury %}{% if forloop.first %}{% if p.encadreur %} · {% endif %}<i class="bi bi-people"></i> {% endif %}{{ q }} : {{ n }}{% if not forloop.last %} · {% endif %}{% endfor %}
+          </div>
+          {% for c in p.conflits %}<div class="small text-danger fw-semibold mt-1"><i class="bi bi-exclamation-triangle"></i> {{ c }}</div>{% endfor %}
+        </div>
+        <div class="text-nowrap">
+          <a class="btn btn-icone" href="{% url 'projet_pv' p.pk %}" target="_blank" rel="noopener" title="PV de soutenance (PDF)"><i class="bi bi-file-earmark-pdf"></i></a>
+          <a class="btn btn-icone" href="{% url 'projet_modifier' p.pk %}" title="Modifier"><i class="bi bi-pencil"></i></a>
+        </div>
+      </div>
+    {% endfor %}
+  {% empty %}
+    <div class="etat-vide"><i class="bi bi-calendar-x"></i>Aucune soutenance programmée avec ces filtres.
+      <div class="mt-2">Renseignez la date, l'heure et la salle sur les <a href="{% url 'projets_liste' %}">projets de soutenance</a>.</div></div>
+  {% endfor %}
+</div>
+{% endblock %}

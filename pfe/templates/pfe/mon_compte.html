@@ -1,0 +1,157 @@
+{% extends 'pfe/base.html' %}
+{% block titre %}Mon compte{% endblock %}
+{% block titre_page %}Mon compte{% endblock %}
+{% block contenu %}
+
+<!-- Bandeau profil -->
+<div class="bandeau-profil">
+  {% if fiche_photo %}
+    <button type="button" class="avatar-profil avatar-cliquable {% if photo_compte %}a-photo{% endif %}" data-apercu="compte"
+            {% if photo_compte %}style="background-image: url('{{ photo_compte }}')"{% endif %}
+            data-photo-ouvrir data-photo-url="{% url 'mon_compte_photo' %}" data-photo-cible='[data-apercu="compte"]'
+            data-photo-actuelle="{% if photo_compte %}1{% else %}0{% endif %}" data-photo-titre="Ma photo"
+            title="{% if photo_compte %}Changer ma photo{% else %}Ajouter ma photo{% endif %}">
+      {% if personnel %}{{ personnel.prenom|first }}{{ personnel.nom|first }}{% else %}{{ user.username|slice:":2" }}{% endif %}
+      <span class="badge-photo"><i class="bi bi-camera"></i></span>
+    </button>
+  {% else %}
+    <span class="avatar-profil">{% if personnel %}{{ personnel.prenom|first }}{{ personnel.nom|first }}{% else %}{{ user.username|slice:":2" }}{% endif %}</span>
+  {% endif %}
+  <div style="min-width:0">
+    <div class="surtitre">{{ profil.libelle }}</div>
+    <h2>{% if personnel %}{{ personnel.prenom }} {{ personnel.nom }}{% else %}{{ user.get_full_name|default:user.username }}{% endif %}</h2>
+    <span class="puce"><i class="bi bi-person-badge"></i> {{ user.username }}</span>
+    {% if personnel %}<span class="puce"><i class="bi bi-briefcase"></i> {{ personnel.fonc }}</span>{% endif %}
+    <span class="puce"><i class="bi bi-clock-history"></i> Dernière connexion : {{ user.last_login|date:"d/m/Y à H:i"|default:"—" }}</span>
+    {% if fiche_photo %}<div class="small mt-1" style="color:rgba(255,255,255,.75)" data-photo-info>Cliquez sur votre avatar pour ajouter ou changer votre photo.</div>{% endif %}
+  </div>
+</div>
+
+<div class="row g-3">
+  <!-- Informations (lecture seule) -->
+  <div class="col-lg-4">
+    <div class="card carte-gped h-100">
+      <div class="card-body">
+        <div class="entete-carte">
+          <span class="icone-carte"><i class="bi bi-person-vcard"></i></span>
+          <div><h3>Mes informations</h3><p>Gérées par l'administration</p></div>
+        </div>
+        <ul class="infos-compte">
+          <li><i class="bi bi-person"></i><div><div class="lib">Nom complet</div><div class="val">{% if personnel %}{{ personnel.prenom }} {{ personnel.nom }}{% else %}{{ user.get_full_name|default:"—" }}{% endif %}</div></div></li>
+          <li><i class="bi bi-person-badge"></i><div><div class="lib">Identifiant</div><div class="val">{{ user.username }}</div></div></li>
+          {% if personnel %}
+            <li><i class="bi bi-briefcase"></i><div><div class="lib">Fonction</div><div class="val">{{ personnel.fonc }}</div></div></li>
+            <li><i class="bi bi-building"></i><div><div class="lib">Service{{ personnel.service.count|pluralize }}</div><div class="val">{{ personnel.service.all|join:", "|default:"—" }}</div></div></li>
+          {% endif %}
+          <li><i class="bi bi-shield-check"></i><div><div class="lib">Rôle</div><div class="val">{{ profil.libelle }}</div></div></li>
+        </ul>
+        <div class="note-verrou"><i class="bi bi-lock-fill"></i><span>Pour corriger ces informations, contactez l'administration.</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-8 d-flex flex-column gap-3">
+    <!-- Coordonnées -->
+    <div class="card carte-gped">
+      <div class="card-body">
+        <div class="entete-carte">
+          <span class="icone-carte"><i class="bi bi-envelope-at"></i></span>
+          <div><h3>Coordonnées</h3><p>Votre e-mail sert aussi à récupérer votre mot de passe.</p></div>
+        </div>
+        <form method="post" novalidate>
+          {% csrf_token %}
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label" for="{{ form_coord.email.id_for_label }}">E-mail</label>
+              <div class="champ-icone"><i class="bi bi-envelope"></i>{{ form_coord.email }}</div>
+              {% for err in form_coord.email.errors %}<div class="invalid-feedback d-block">{{ err }}</div>{% endfor %}
+            </div>
+            <div class="col-md-6">
+              {% if form_coord.telephone %}
+                <label class="form-label" for="{{ form_coord.telephone.id_for_label }}">Téléphone</label>
+                <div class="champ-icone"><i class="bi bi-telephone"></i>{{ form_coord.telephone }}</div>
+                {% for err in form_coord.telephone.errors %}<div class="invalid-feedback d-block">{{ err }}</div>{% endfor %}
+              {% else %}
+                <div class="note-verrou mt-md-4"><i class="bi bi-info-circle"></i><span>Aucune fiche personnel n'est liée à ce compte : le téléphone n'est pas enregistrable.</span></div>
+              {% endif %}
+            </div>
+            <div class="col-12">
+              <button class="btn btn-primary" name="coordonnees"><i class="bi bi-check-lg"></i> Enregistrer les coordonnées</button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Mot de passe -->
+    <div class="card carte-gped">
+      <div class="card-body">
+        <div class="entete-carte">
+          <span class="icone-carte"><i class="bi bi-key"></i></span>
+          <div><h3>Mot de passe</h3><p>Pour votre sécurité, saisissez d'abord votre mot de passe actuel.</p></div>
+        </div>
+        <form method="post" novalidate autocomplete="off">
+          {% csrf_token %}
+          {% if form_mdp.non_field_errors %}<div class="alert alert-danger py-2">{{ form_mdp.non_field_errors }}</div>{% endif %}
+          <div class="row g-3">
+            {% for champ in form_mdp %}
+              <div class="{% if forloop.first %}col-12{% else %}col-md-6{% endif %}">
+                <label class="form-label" for="{{ champ.id_for_label }}">{{ champ.label }}</label>
+                <div class="champ-icone">
+                  <i class="bi bi-lock"></i>
+                  {{ champ }}
+                  <button type="button" class="voir-mdp" data-voir-mdp="{{ champ.id_for_label }}" aria-label="Afficher le mot de passe"><i class="bi bi-eye"></i></button>
+                </div>
+                {% for err in champ.errors %}<div class="invalid-feedback d-block">{{ err }}</div>{% endfor %}
+              </div>
+            {% endfor %}
+            <div class="col-12">
+              <ul class="regles-mdp" id="regles-mdp">
+                <li data-regle="longueur"><i class="bi bi-circle"></i> 8 caractères minimum</li>
+                <li data-regle="lettre"><i class="bi bi-circle"></i> Pas uniquement des chiffres</li>
+                <li data-regle="identique"><i class="bi bi-circle"></i> Les deux saisies identiques</li>
+              </ul>
+              <button class="btn btn-primary" name="mot_de_passe"><i class="bi bi-shield-lock"></i> Changer le mot de passe</button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% if fiche_photo %}{% include 'pfe/_modal_photo.html' %}{% endif %}
+<script>
+  // Afficher / masquer les mots de passe
+  document.querySelectorAll('[data-voir-mdp]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var champ = document.getElementById(b.dataset.voirMdp);
+      var visible = champ.type === 'text';
+      champ.type = visible ? 'password' : 'text';
+      b.querySelector('i').className = visible ? 'bi bi-eye' : 'bi bi-eye-slash';
+    });
+  });
+
+  // Règles du nouveau mot de passe, cochées au fur et à mesure de la saisie
+  (function () {
+    var n1 = document.getElementById('{{ form_mdp.new_password1.id_for_label }}');
+    var n2 = document.getElementById('{{ form_mdp.new_password2.id_for_label }}');
+    var regles = {
+      longueur: function () { return n1.value.length >= 8; },
+      lettre: function () { return n1.value.length > 0 && !/^\d+$/.test(n1.value); },
+      identique: function () { return n1.value.length > 0 && n1.value === n2.value; }
+    };
+    function verifier() {
+      document.querySelectorAll('#regles-mdp li').forEach(function (li) {
+        var ok = regles[li.dataset.regle]();
+        li.classList.toggle('ok', ok);
+        li.querySelector('i').className = ok ? 'bi bi-check-circle-fill' : 'bi bi-circle';
+      });
+    }
+    n1.addEventListener('input', verifier);
+    n2.addEventListener('input', verifier);
+  })();
+</script>
+{% endblock %}

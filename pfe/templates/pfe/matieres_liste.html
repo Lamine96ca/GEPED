@@ -1,0 +1,211 @@
+{% extends 'pfe/base.html' %}
+{% load humanize %}
+{% block titre %}Matières{% endblock %}
+{% block titre_page %}Matières{% endblock %}
+{% block sous_titre %}<div class="sous-titre">
+  {% if profil.role == 'programme' %}Matières de {{ profil.structure }}{% elif peut_gerer %}Toutes les matières, tous les programmes{% else %}Consultation des matières de tous les programmes{% endif %}
+</div>{% endblock %}
+{% block actions %}
+  {% if peut_gerer %}
+    <a href="{% url 'matieres_importer' %}" class="btn btn-or"><i class="bi bi-upload"></i> <span class="d-none d-sm-inline">Importer</span></a>
+    <a href="{% url 'matiere_creer' %}" class="btn btn-primary"><i class="bi bi-plus-lg"></i> <span class="d-none d-sm-inline">Ajouter une matière</span></a>
+  {% endif %}
+{% endblock %}
+{% block contenu %}
+
+<div class="card carte-gped liste">
+  <!-- Filtres -->
+  <form method="get" class="barre-filtres border-bottom" id="filtres-matieres">
+    {% if tri %}<input type="hidden" name="tri" value="{{ tri }}"><input type="hidden" name="ordre" value="{{ ordre }}">{% endif %}
+    <div class="row g-2 align-items-end">
+      <div class="col-12 col-lg-2">
+        <label class="form-label small text-secondary mb-1" for="q">Recherche</label>
+        <div class="champ-icone"><i class="bi bi-search"></i>
+          <input type="search" id="q" name="q" value="{{ q }}" class="form-control" placeholder="Nom ou code de la matière">
+        </div>
+      </div>
+      <div class="col-6 col-md-3 col-lg-2">
+        <label class="form-label small text-secondary mb-1" for="f-session">Session</label>
+        <select id="f-session" name="session" class="form-select">
+          <option value="">Toutes</option>
+          {% for s in sessions %}<option value="{{ s.pk }}" {% if filtres.session == s.pk %}selected{% endif %}>{{ s.annee }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-md-3 col-lg-2">
+        <label class="form-label small text-secondary mb-1" for="f-programme">Programme</label>
+        <select id="f-programme" name="programme" class="form-select">
+          {% if programmes|length != 1 %}<option value="">Tous</option>{% endif %}
+          {% for p in programmes %}<option value="{{ p.pk }}" {% if filtres.programme == p.pk %}selected{% endif %}>{{ p.nom }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-md-3 col-lg-2">
+        <label class="form-label small text-secondary mb-1" for="f-cycle">Cycle</label>
+        <select id="f-cycle" name="cycle" class="form-select">
+          <option value="">Tous</option>
+          {% for code, nom in cycles %}<option value="{{ code }}" {% if filtres.cycle == code %}selected{% endif %}>{{ nom }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-md-3 col-lg-2">
+        <label class="form-label small text-secondary mb-1" for="f-licence">Licence</label>
+        <select id="f-licence" name="licence" class="form-select">
+          <option value="">Toutes</option>
+          {% for l in licences %}<option value="{{ l.pk }}" {% if filtres.licence == l.pk %}selected{% endif %}>{{ l.nom }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-md-3 col-lg-2">
+        <label class="form-label small text-secondary mb-1" for="f-semestre">Semestre</label>
+        <select id="f-semestre" name="semestre" class="form-select">
+          <option value="">Tous</option>
+          {% for s in semestres %}<option value="{{ s.pk }}" data-licence="{{ s.licence_id }}" {% if filtres.semestre == s.pk %}selected{% endif %}>{{ s.nom }}</option>{% endfor %}
+        </select>
+      </div>
+    </div>
+  </form>
+
+  <!-- Crédits par semestre -->
+  {% if totaux %}
+    <div class="px-4 pt-3">
+      <div class="d-flex flex-wrap gap-2 align-items-center">
+        <button type="button" class="bloc-credits-titre collapsed" data-bs-toggle="collapse" data-bs-target="#detail-credits"
+                aria-expanded="false" aria-controls="detail-credits" title="Afficher ou masquer le détail des crédits par semestre">
+          <i class="bi bi-calculator text-primary"></i> {{ total.nb|intcomma }} matière{{ total.nb|pluralize }} · {{ total.credits|default:0|intcomma }} crédits
+          <span class="lien-description">Crédits par semestre <i class="bi bi-chevron-down chevron"></i></span>
+        </button>
+        {% if avec_descriptions %}
+          <button type="button" class="btn btn-sm btn-light ms-auto" id="tout-deplier" aria-pressed="false">
+            <i class="bi bi-arrows-expand"></i> <span>Déplier les descriptions</span>
+          </button>
+        {% endif %}
+      </div>
+      <div class="collapse" id="detail-credits">
+        <div class="bloc-credits d-flex flex-wrap gap-2 align-items-center">
+          {% for t in totaux|slice:":24" %}
+            <span class="pill" title="{{ t.filiere__nom }} · {{ t.licence__nom }}">{% if not filtres.programme and programmes|length != 1 %}{{ t.filiere__nom|truncatechars:22 }} · {% endif %}{{ t.semestre__nom }} : <strong>{{ t.credits }}</strong> cr. ({{ t.nb }})</span>
+          {% endfor %}
+          {% if totaux|length > 24 %}<span class="small text-secondary">… choisissez un programme pour le détail</span>{% endif %}
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+  <div class="table-responsive mt-3">
+    <table class="table table-etudiants mb-0">
+      <thead><tr>
+        {% for c in colonnes %}
+          <th data-tri="{{ c.cle }}" class="{{ c.classe }}{% if c.actif %} trie{% endif %}"
+              {% if c.actif %}aria-sort="{% if c.ordre == 'asc' %}ascending{% else %}descending{% endif %}"{% endif %}>
+            <a href="?{{ c.url }}" class="lien-tri" title="Trier par {{ c.libelle|lower }}{% if c.actif %} ({% if c.ordre == 'asc' %}décroissant{% else %}croissant{% endif %} au prochain clic){% endif %}">
+              {{ c.libelle }} <i class="bi {% if c.actif %}{% if c.ordre == 'asc' %}bi-sort-up{% else %}bi-sort-down{% endif %}{% else %}bi-arrow-down-up{% endif %}"></i>
+            </a>
+          </th>
+        {% endfor %}
+        {% if peut_gerer %}<th class="text-end"></th>{% endif %}
+      </tr></thead>
+      <tbody>
+      {% for m in page %}
+        <tr style="cursor:default">
+          <td style="white-space:normal;min-width:220px"><b style="color:var(--encre);font-weight:600">{{ m.nom }}</b>
+            {% if m.description %}
+              <div>
+                <button type="button" class="lien-description collapsed" data-bs-toggle="collapse" data-bs-target="#description-{{ m.pk }}"
+                        aria-expanded="false" aria-controls="description-{{ m.pk }}">
+                  <i class="bi bi-text-left"></i> Description <i class="bi bi-chevron-down chevron"></i>
+                </button>
+              </div>
+              <div class="collapse description-matiere" id="description-{{ m.pk }}"><div>{{ m.description|linebreaksbr }}</div></div>
+            {% endif %}
+          </td>
+          <td class="matricule">{{ m.code|default:"—" }}</td>
+          <td class="text-end fw-semibold">{{ m.credit }}</td>
+          <td>{{ m.get_cycle_display|default:"—" }}</td>
+          <td>{{ m.semestre.nom }}</td>
+          <td>{{ m.licence.nom }}</td>
+          <td class="text-truncate" style="max-width:200px" title="{{ m.filiere }}">{{ m.filiere|default:"—" }}</td>
+          <td>{{ m.session.annee }}</td>
+          <td class="d-none d-xl-table-cell">{{ m.promotion|default:"—" }}</td>
+          {% if peut_gerer %}
+            <td class="text-end text-nowrap">
+              <a class="btn btn-icone" href="{% url 'matiere_modifier' m.pk %}" title="Modifier"><i class="bi bi-pencil"></i></a>
+              <form method="post" action="{% url 'matiere_supprimer' m.pk %}" class="d-inline"
+                    onsubmit="return confirm('Supprimer la matière « {{ m.nom|escapejs }} » ?');">
+                {% csrf_token %}
+                <input type="hidden" name="suivant" value="{{ request.get_full_path }}">
+                <button class="btn btn-icone text-danger" title="Supprimer"><i class="bi bi-trash"></i></button>
+              </form>
+            </td>
+          {% endif %}
+        </tr>
+      {% empty %}
+        <tr><td colspan="10"><div class="etat-vide"><i class="bi bi-journal-bookmark"></i>
+          Aucune matière{% if q %} pour « {{ q }} »{% endif %} avec ces filtres.
+          {% if peut_gerer %}<div class="mt-2"><a href="{% url 'matiere_creer' %}">Ajouter une matière</a> ou <a href="{% url 'matieres_importer' %}">importer une liste</a>.</div>{% endif %}
+        </div></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if page.has_other_pages %}
+    <div class="pied-tableau d-flex justify-content-between align-items-center">
+      <span class="small text-secondary">{{ page.start_index }}–{{ page.end_index }} sur {{ page.paginator.count|intcomma }}</span>
+      <ul class="pagination pagination-sm mb-0">
+        {% if page.has_previous %}<li class="page-item"><a class="page-link" href="?{{ params }}&page={{ page.previous_page_number }}"><i class="bi bi-chevron-left"></i></a></li>{% endif %}
+        <li class="page-item active"><span class="page-link">{{ page.number }} / {{ page.paginator.num_pages }}</span></li>
+        {% if page.has_next %}<li class="page-item"><a class="page-link" href="?{{ params }}&page={{ page.next_page_number }}"><i class="bi bi-chevron-right"></i></a></li>{% endif %}
+      </ul>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  // Crédits par semestre : le bloc reste ouvert ou fermé d'une page à l'autre (préférence du navigateur)
+  (function () {
+    var bloc = document.getElementById('detail-credits');
+    if (!bloc) return;
+    var cle = 'gped-matieres-credits';
+    try {
+      if (localStorage.getItem(cle) === '1') {
+        bloc.classList.add('show');
+        var titre = document.querySelector('[data-bs-target="#detail-credits"]');
+        titre.classList.remove('collapsed');
+        titre.setAttribute('aria-expanded', 'true');
+      }
+    } catch (e) {}
+    bloc.addEventListener('shown.bs.collapse', function () { try { localStorage.setItem(cle, '1'); } catch (e) {} });
+    bloc.addEventListener('hidden.bs.collapse', function () { try { localStorage.removeItem(cle); } catch (e) {} });
+  })();
+
+  // Descriptions repliées : tout déplier / tout replier
+  (function () {
+    var bouton = document.getElementById('tout-deplier');
+    if (!bouton) return;
+    var ouvert = false;
+    bouton.addEventListener('click', function () {
+      ouvert = !ouvert;
+      document.querySelectorAll('.description-matiere').forEach(function (el) {
+        var c = bootstrap.Collapse.getOrCreateInstance(el, { toggle: false });
+        ouvert ? c.show() : c.hide();
+      });
+      bouton.setAttribute('aria-pressed', ouvert);
+      bouton.querySelector('span').textContent = ouvert ? 'Replier les descriptions' : 'Déplier les descriptions';
+      bouton.querySelector('.bi').className = ouvert ? 'bi bi-arrows-collapse' : 'bi bi-arrows-expand';
+    });
+  })();
+
+  // Filtres appliqués dès qu'on change une liste ; les semestres suivent la licence choisie
+  (function () {
+    var form = document.getElementById('filtres-matieres');
+    var licence = document.getElementById('f-licence'), semestre = document.getElementById('f-semestre');
+    function filtrerSemestres() {
+      Array.prototype.forEach.call(semestre.options, function (o) {
+        o.hidden = !!(o.value && licence.value && o.dataset.licence !== licence.value);
+      });
+      if (semestre.selectedOptions[0] && semestre.selectedOptions[0].hidden) semestre.value = '';
+    }
+    filtrerSemestres();
+    form.querySelectorAll('select').forEach(function (s) {
+      s.addEventListener('change', function () { if (s === licence) filtrerSemestres(); form.submit(); });
+    });
+  })();
+</script>
+{% endblock %}
