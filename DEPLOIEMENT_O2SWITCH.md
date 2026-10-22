@@ -40,7 +40,10 @@ Tous les réglages se font dans un fichier **`.env`** sur le serveur (modèle : 
 ## 3. Créer la boîte e-mail d'envoi
 
 1. cPanel → **Comptes de messagerie** : créez `no-reply@gbelya-tech.com`.
-2. Ouvrez **Connecter des appareils** pour cette boîte : notez le **serveur SMTP** (souvent `mail.gbelya-tech.com`), le **port 465 (SSL)**, l'identifiant (l'adresse complète) et le mot de passe.
+2. Ouvrez **Connecter des appareils** pour cette boîte, et notez :
+   - le **serveur SMTP** : prenez le **nom du serveur o2switch** indiqué dans les « paramètres SSL/TLS sécurisés », ici `varan.o2switch.net`. N'utilisez pas `mail.gbelya-tech.com` : son certificat SSL n'est pas valable pour ce nom, et gePed refuse alors la connexion (« Hostname mismatch ») ;
+   - le **port 465 (SSL)** ;
+   - l'identifiant (l'adresse complète) et le mot de passe.
 3. cPanel → **Délivrabilité des e-mails** : vérifiez que **SPF** et **DKIM** sont « valides ». Corrigez-les si besoin : c'est ce qui évite que les invitations arrivent dans les indésirables.
 4. Si le domaine `gbelya-tech.com` est géré ailleurs (DNS chez un autre fournisseur), ajoutez-y les enregistrements SPF et DKIM proposés par cPanel.
 
@@ -123,7 +126,7 @@ Les images du cadre des attestations et l'en-tête des relevés sont déjà dans
 2. Connectez-vous avec un compte super utilisateur existant (repris de la base importée), ou créez-en un : `python manage.py createsuperuser`.
 3. Testez l'envoi d'e-mails :
    ```bash
-   python manage.py sendtestemail votre.adresse@exemple.com
+   python manage.py gped_test_email votre.adresse@exemple.com
    ```
 4. Menu **Personnel** : créez un compte de test. Vérifiez que l'invitation arrive, que le lien s'ouvre en `https://…` et que l'activation connecte bien l'utilisateur.
 5. Imprimez une attestation et un relevé : le **QR code** doit ouvrir la page de vérification sur `https://geped.gbelya-tech.com/…`.
@@ -166,7 +169,9 @@ Le script enchaîne :
 | Site sans mise en forme (CSS absent) | lancer `python manage.py collectstatic --noinput`, puis **Restart** ; ne pas modifier `settings.py` |
 | Photos absentes | elles doivent être dans `media/` du dossier du projet (`/home/moncompte/repositories/GEPED/media/…`) |
 | `settings.py` modifié par erreur sur le serveur | `git checkout -- config/settings.py` (tous les réglages du serveur vont dans `.env`) |
-| E-mails non reçus | `python manage.py sendtestemail …` ; identifiants SMTP ; SPF et DKIM dans « Délivrabilité des e-mails » |
+| E-mails non envoyés | `python manage.py gped_test_email votre.adresse@exemple.com` : teste le serveur, le certificat, les identifiants et l'envoi, et dit quoi corriger |
+| « Hostname mismatch » / certificat refusé | `GPED_EMAIL_HOST=varan.o2switch.net` (nom du serveur o2switch), puis **Restart** |
+| E-mails envoyés mais non reçus | dossier des indésirables ; SPF et DKIM dans « Délivrabilité des e-mails » ; « Suivi de la livraison » dans cPanel |
 | L'application ne redémarre pas | Setup Python App → **Restart**, ou `touch tmp/restart.txt` |
 
 ## Bon à savoir
