@@ -118,9 +118,23 @@ def dessiner_bloc_signataire(c, haut_signature, normale='Helvetica', grasse='Hel
     c.drawCentredString(centre, HAUTEUR - haut_signature - 82, _conf('signataire'))
 
 
+def signature_disponible():
+    """
+    L'image « signature et cachet » n'est pas dans Git (elle ne doit pas être publique) : elle est copiée
+    à la main sur le serveur. Tant qu'elle manque, les documents s'impriment avec le nom du signataire
+    et un espace vide pour signer, au lieu d'échouer.
+    """
+    if (_conf('dossier_images') / 'signature_scolarite.png').exists():
+        return True
+    import logging
+    logging.getLogger('pfe').warning("Image de signature absente : %s (document imprimé sans cachet ni signature)",
+                                     _conf('dossier_images') / 'signature_scolarite.png')
+    return False
+
+
 def dessiner_pied(c, url_verification, haut_signature=417.12, cachet_signature=True, polices=None):
     """Signature et cachet (ou leur emplacement vide), QR code de vérification (bas gauche), bas de page."""
-    if cachet_signature:
+    if cachet_signature and signature_disponible():
         c.drawImage(_image('signature_scolarite'), 428.4, HAUTEUR - haut_signature - 95.4, 343.92, 95.4, mask='auto')
     else:
         dessiner_bloc_signataire(c, haut_signature, *(polices or ()))

@@ -87,6 +87,30 @@ class GpedTests(TestCase):
         self.assertEqual(self.client.get(reverse('importer')).status_code, 403)
         self.assertEqual(self.client.get(reverse('etudiants_liste')).status_code, 200)
 
+    def test_attestations_sans_image_de_signature(self):
+        """Serveur où l'image de signature (hors Git) n'a pas encore été copiée : les PDF s'impriment quand même."""
+        import datetime
+        import shutil
+        import tempfile
+        from django.conf import settings
+        from django.test import override_settings
+        from .attestations import pdf_attestation, signature_disponible
+        from .models import Attestation
+        dossier = pathlib_path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, dossier, True)
+        for image in settings.GPED_ATTESTATION['dossier_images'].glob('*.png'):
+            if image.name != 'signature_scolarite.png':
+                shutil.copy(image, dossier / image.name)
+        e = Etudiant.objects.get(matricule='M0')
+        with override_settings(GPED_ATTESTATION={**settings.GPED_ATTESTATION, 'dossier_images': dossier}):
+            self.assertFalse(signature_disponible())
+            for type_ in (Attestation.ORIENTATION, Attestation.INSCRIPTION, Attestation.NIVEAU, Attestation.FIN_ETUDES):
+                a = Attestation(num_ref='0001/ISTM/SC/26', type=type_, etudiant=e, licence=self.licence,
+                                session=self.session, filiere=self.info, cycle='Licence')
+                a.date_delivrance = datetime.date(2026, 10, 22)
+                pdf = pdf_attestation(a, 'https://exemple/v/abc', cachet_signature=True)
+                self.assertEqual(pdf[:4], b'%PDF', type_)
+
     def test_attestation_inscription_titre_numero_et_pdf(self):
         from pfe.attestations import contenu_inscription, titre_inscription
         from .models import Attestation, Semestre

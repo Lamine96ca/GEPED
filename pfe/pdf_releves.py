@@ -19,7 +19,7 @@ from reportlab.lib.utils import ImageReader
 from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.pdfgen.canvas import Canvas
 
-from .attestations import _image, _nom_programme
+from .attestations import _image, _nom_programme, signature_disponible
 
 LARGEUR, HAUTEUR = A4
 G, D = 30, LARGEUR - 30
@@ -160,7 +160,7 @@ def _pied(c, releve, cachet_signature, y_mention, extrait=False):
     conf = settings.GPED_ATTESTATION
     y = max(y_mention, BAS_CADRE + 80)
     x = D - 115
-    if cachet_signature:
+    if cachet_signature and signature_disponible():
         largeur = 225
         hauteur = largeur * 95.4 / 343.92
         c.drawImage(_image('signature_scolarite'), x - largeur / 2, y - hauteur + 10, largeur, hauteur, mask='auto')
