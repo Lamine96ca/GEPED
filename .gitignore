@@ -34,6 +34,11 @@ logs/
 tmp/
 sauvegardes/
 
+# Archives (copies du projet, sauvegardes) : jamais dans Git
+*.zip
+*.rar
+*.7z
+
 # Outils et fichiers temporaires
 .claude/
 ~$*
