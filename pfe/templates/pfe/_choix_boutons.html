@@ -1,0 +1,9 @@
+<div class="{{ col|default:'col-12' }}">
+  <div class="form-label small mb-1">{{ champ.label }}</div>
+  <div class="d-flex flex-wrap gap-2" role="radiogroup" aria-label="{{ champ.label }}">
+    {% for choix in champ %}
+      {{ choix.tag }}<label class="btn choix-bouton" for="{{ choix.id_for_label }}">{{ choix.choice_label }}</label>
+    {% endfor %}
+  </div>
+  {% for err in champ.errors %}<div class="invalid-feedback d-block">{{ err }}</div>{% endfor %}
+</div>

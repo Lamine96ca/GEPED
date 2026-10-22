@@ -46,31 +46,21 @@
 </div>
 
 <ul class="nav nav-pills onglets-stat mb-3 non-imprime" role="tablist">
-  <li class="nav-item"><button class="nav-link active" data-bs-toggle="pill" data-bs-target="#st-repartition" type="button">Niveau et programme</button></li>
-  <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#st-croise" type="button">Programme × niveau</button></li>
+  <li class="nav-item"><button class="nav-link active" data-bs-toggle="pill" data-bs-target="#st-croise" type="button">Programme × niveau</button></li>
   <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#st-evolution" type="button">Évolution</button></li>
   <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#st-promotions" type="button">Promotions</button></li>
   <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#st-feminisation" type="button">Féminisation</button></li>
   <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#st-ages" type="button">Âge</button></li>
   <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#st-origine" type="button">Origine scolaire</button></li>
   <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#st-redoublants" type="button">Redoublants</button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#st-handicap" type="button">Handicap</button></li>
   <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#st-reussite" type="button">Réussite</button></li>
   <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#st-soutenances" type="button">Soutenances</button></li>
 </ul>
 
 <div class="tab-content">
-  <!-- Niveau et programme -->
-  <div class="tab-pane fade show active" id="st-repartition">
-    <div class="row g-3">
-      <div class="col-xl-5"><div class="card carte-gped liste"><div class="card-header"><h3 class="titre-stat">Par niveau</h3></div>
-        {% include 'pfe/_stat_hf.html' with lignes=niveaux.0 total=niveaux.1 titre_colonne='Niveau' %}</div></div>
-      <div class="col-xl-7"><div class="card carte-gped liste"><div class="card-header"><h3 class="titre-stat">Par programme</h3></div>
-        {% include 'pfe/_stat_hf.html' with lignes=programmes.0 total=programmes.1 titre_colonne='Programme' %}</div></div>
-    </div>
-  </div>
-
   <!-- Programme × niveau -->
-  <div class="tab-pane fade" id="st-croise">
+  <div class="tab-pane fade show active" id="st-croise">
     <div class="card carte-gped liste"><div class="card-header"><h3 class="titre-stat">Programme × niveau</h3><p class="small text-secondary mb-0">Dans chaque case : total, puis hommes / femmes</p></div>
       <div class="table-responsive">
         <table class="table table-etudiants table-stat mb-0">
@@ -164,6 +154,23 @@
         {% include 'pfe/_stat_hf.html' with lignes=redoublants.niveaux.0 total=redoublants.niveaux.1 titre_colonne='Niveau' extra='taux' titre_taux='Taux de redoublement' %}</div></div>
       <div class="col-xl-7"><div class="card carte-gped liste"><div class="card-header"><h3 class="titre-stat">Redoublants par programme</h3></div>
         {% include 'pfe/_stat_hf.html' with lignes=redoublants.programmes.0 total=redoublants.programmes.1 titre_colonne='Programme' extra='taux' titre_taux='Taux de redoublement' %}</div></div>
+    </div>
+  </div>
+
+  <!-- Handicap -->
+  <div class="tab-pane fade" id="st-handicap">
+    {% if handicap.nb %}
+      <div class="alert alert-light border small"><i class="bi bi-universal-access"></i> <strong>{{ handicap.nb|intcomma }}</strong> inscrit{{ handicap.nb|pluralize }} en situation de handicap pour ces filtres, soit <strong>{{ handicap.taux }} %</strong> des inscrits ({{ handicap.total.h }} H, {{ handicap.total.f }} F).</div>
+    {% else %}
+      <div class="alert alert-info small"><i class="bi bi-info-circle"></i> Aucun inscrit n'est déclaré en situation de handicap pour ces filtres : cochez la case « Situation de handicap » sur la fiche de l'étudiant (formulaire d'inscription) pour alimenter ces tableaux.</div>
+    {% endif %}
+    <div class="row g-3">
+      <div class="col-xl-5"><div class="card carte-gped liste"><div class="card-header"><h3 class="titre-stat">Par type de handicap</h3></div>
+        {% include 'pfe/_stat_hf.html' with lignes=handicap.types.0 total=handicap.types.1 titre_colonne='Type' %}</div></div>
+      <div class="col-xl-7"><div class="card carte-gped liste"><div class="card-header"><h3 class="titre-stat">Par niveau</h3></div>
+        {% include 'pfe/_stat_hf.html' with lignes=handicap.niveaux.0 total=handicap.niveaux.1 titre_colonne='Niveau' extra='taux' titre_taux='Part des inscrits' %}</div></div>
+      <div class="col-12"><div class="card carte-gped liste"><div class="card-header"><h3 class="titre-stat">Par programme</h3></div>
+        {% include 'pfe/_stat_hf.html' with lignes=handicap.programmes.0 total=handicap.programmes.1 titre_colonne='Programme' extra='taux' titre_taux='Part des inscrits' %}</div></div>
     </div>
   </div>
 

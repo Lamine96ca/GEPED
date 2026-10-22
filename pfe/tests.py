@@ -650,6 +650,18 @@ class GpedTests(TestCase):
         self.assertIn('fiche_inscription_', r['Content-Disposition'])                 # Licence 1 : inscription
         self.assertIn(b'/Subtype /Image', r.content)
         self.assertLess(len(r.content), 120 * 1024)
+        # Bourse et type de formation : cochés sur la fiche (formulaire → fiche de l'étudiant → PDF)
+        from . import fiche_inscription
+        cochees = []
+        original = fiche_inscription._case
+        fiche_inscription._case = lambda c, x, y, libelle, l, cochee=False: (cochees.append(libelle) if cochee else None,
+                                                                             original(c, x, y, libelle, l, cochee))
+        try:
+            Etudiant.objects.filter(pk=insc.etudiant_id).update(boursier='payante', type_formation='initiale')
+            self.client.get(reverse('inscription_fiche_pdf', args=[insc.pk]))
+        finally:
+            fiche_inscription._case = original
+        self.assertEqual(cochees, ['Formation payante', 'Initiale'])
         # Autre niveau : fiche de réinscription
         from .fiche_inscription import titre_fiche
         self.assertEqual(titre_fiche(self.l2), "FICHE DE RÉINSCRIPTION")
@@ -1471,6 +1483,7 @@ class GpedTests(TestCase):
         Etudiant.objects.filter(matricule='M0').update(date_de_naissance=datetime.date(2202, 4, 28),   # incohérente
                                                        nationalite='Guinéenné')
         Inscription.objects.filter(etudiant__matricule='M2').update(redouble=True)
+        Etudiant.objects.filter(matricule='M1').update(handicap=True, type_handicap='visuel')
         url = reverse('statistiques')
         self.connecter('sans_service')
         self.assertEqual(self.client.get(url).status_code, 403)
@@ -1489,14 +1502,27 @@ class GpedTests(TestCase):
         evo = {l.libelle: l for l in r.context['evolution']}
         self.assertEqual((evo['2025-2026'].total, evo['2025-2026'].extra['nouveaux']), (3, 3))      # tous en Licence 1
         self.assertContains(r, 'Statistiques des inscriptions')
+        # Handicap : par type, et part des inscrits du programme ; plus d'onglet « Niveau et programme »
+        ha = r.context['handicap']
+        self.assertEqual((ha['nb'], ha['taux']), (1, 33.3))
+        self.assertEqual([(l.libelle, l.h, l.f) for l in ha['types'][0]], [('Visuel', 0, 1)])
+        self.assertEqual({l.libelle: l.extra['taux'] for l in ha['programmes'][0]}, {'Informatique': 50.0})
+        self.assertEqual(r.context['croise']['total'].total, 3)
+        self.assertNotContains(r, 'Niveau et programme')
+        # Fiche de l'étudiant : la situation de handicap n'est montrée qu'à la scolarité
+        fiche = reverse('etudiant_fiche', args=[Inscription.objects.get(etudiant__matricule='M1').pk])
+        self.assertContains(self.client.get(fiche), 'Visuel')
         # Chef de programme : ses programmes seulement
         self.connecter('info')
         self.assertEqual(self.client.get(url).context['niveaux'][1].total, 2)
+        self.assertNotContains(self.client.get(fiche), 'Situation de handicap')
         # Export Excel : une feuille par statistique
         r = self.client.get(url, {'export': 'xlsx'})
         wb = openpyxl.load_workbook(io.BytesIO(r.content))
         self.assertIn('Par niveau', wb.sheetnames)
         self.assertIn('Soutenances', wb.sheetnames)
+        self.assertIn('Handicap par type', wb.sheetnames)
+        self.assertIn('Programme x niveau', wb.sheetnames)
 
     # ---------------------------------------------------------------- soutenances
 

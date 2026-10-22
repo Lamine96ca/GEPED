@@ -20,6 +20,7 @@ from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.pdfgen.canvas import Canvas
 
 from .attestations import _image, _nom_programme, signature_disponible
+from .entete import dessiner_entete
 
 LARGEUR, HAUTEUR = A4
 G, D = 30, LARGEUR - 30
@@ -61,21 +62,8 @@ def _texte(c, x, y, texte, police, taille, largeur=None, align='g'):
 def _entete(c, releve, contenu, url_verification):
     conf = settings.GPED_ATTESTATION
     c.drawImage(_ressource('filigrane.jpg'), 0, 0, LARGEUR, HAUTEUR)
-    largeur_bandeau = D - G
-    hauteur_bandeau = largeur_bandeau * 905 / 4020
-    c.drawImage(_ressource('entete.jpg'), G, HAUTEUR - 14 - hauteur_bandeau, largeur_bandeau, hauteur_bandeau)
-    y = HAUTEUR - 14 - hauteur_bandeau + 4              # l'image du bandeau a déjà une marge blanche en bas
+    y = dessiner_entete(c, LARGEUR, HAUTEUR, G, D)          # le logo du filigrane commence sous l'en-tête
     compact = releve.type == 'E'                         # extrait : plus de place pour les tableaux
-    c.setFillColorRGB(0, 0, 0)
-    _texte(c, LARGEUR / 2, y, 'SERVICE SCOLARITÉ', 'Helvetica-Bold', 12, align='c')
-    y -= 16
-    c.setFont('Helvetica-Bold', 8.5)
-    c.drawString(G, y, conf['boite_postale'])
-    c.drawCentredString(LARGEUR / 2, y, f"Email : {conf['email']}")
-    c.drawRightString(D, y, f"Tél : {conf['telephone']}")
-    c.setStrokeColorRGB(*BLEU)
-    c.setLineWidth(1.6)
-    c.line(G, y - 4, D, y - 4)
     y -= 15
     c.setFont('Helvetica-Bold', 9)
     c.drawString(G, y, f"N° Réf : {releve.num_ref}")

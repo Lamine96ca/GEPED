@@ -38,6 +38,9 @@ class EtudiantForm(BootstrapMixin, forms.ModelForm):
             'date_de_naissance': forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'),
             # Caché : rempli par la fenêtre photo (prise de vue / chargement + recadrage + compression)
             'photo': forms.FileInput(attrs={'accept': 'image/*', 'class': 'visually-hidden'}),
+            # Boutons à cocher (une seule option), repris cochés sur la fiche d'inscription
+            'boursier': forms.RadioSelect(attrs={'class': 'btn-check'}),
+            'type_formation': forms.RadioSelect(attrs={'class': 'btn-check'}),
         }
 
     def __init__(self, *args, **kwargs):
@@ -48,6 +51,16 @@ class EtudiantForm(BootstrapMixin, forms.ModelForm):
         self._photo_initiale = self.instance.photo.name if self.instance.photo else None
         self._photo_compressee = None
         self.fields['photo'].error_messages['invalid_image'] = MESSAGE_ILLISIBLE
+        self.fields['type_handicap'].choices = [('', '— Choisir —')] + Etudiant.TYPE_HANDICAP_CHOICES
+        self.fields['boursier'].choices = Etudiant.BOURSIER_CHOICES                    # sans l'option vide « --- »
+        self.fields['type_formation'].choices = Etudiant.TYPE_FORMATION_CHOICES
+        self.fields['amenagements'].widget.attrs['placeholder'] = "Ex. tiers-temps aux examens, salle au rez-de-chaussée"
+
+    def clean(self):
+        donnees = super().clean()
+        if not donnees.get('handicap'):          # « Non » : le type et les aménagements n'ont plus de sens
+            donnees['type_handicap'], donnees['amenagements'] = '', ''
+        return donnees
 
     def clean_photo(self):
         photo = self.cleaned_data.get('photo')

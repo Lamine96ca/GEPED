@@ -122,6 +122,8 @@
           <li><i class="bi bi-geo-alt"></i><div><div class="lib">Lieu de naissance</div><div class="val">{{ etudiant.lieu_de_naissance|default:"—" }}</div></div></li>
           <li><i class="bi bi-person"></i><div><div class="lib">Père</div><div class="val">{{ etudiant.pere|default:"—" }}</div></div></li>
           <li><i class="bi bi-person"></i><div><div class="lib">Mère</div><div class="val">{{ etudiant.mere|default:"—" }}</div></div></li>
+          <li><i class="bi bi-cash-coin"></i><div><div class="lib">Bourse</div><div class="val">{{ etudiant.get_boursier_display|default:"—" }}</div></div></li>
+          <li><i class="bi bi-mortarboard"></i><div><div class="lib">Type de formation</div><div class="val">{{ etudiant.get_type_formation_display|default:"—" }}</div></div></li>
         </ul>
       </div>
     </div>
@@ -159,6 +161,25 @@
         </ul>
       </div>
     </div>
+
+    {% if profil.est_scolarite %}
+    <!-- Situation de handicap (scolarité seulement) -->
+    <div class="card carte-gped">
+      <div class="card-body">
+        <div class="entete-carte">
+          <span class="icone-carte"><i class="bi bi-universal-access"></i></span>
+          <div><h3>Situation de handicap</h3><p>Visible par la scolarité seulement</p></div>
+        </div>
+        <ul class="infos-compte grille trois">
+          <li><i class="bi bi-universal-access"></i><div><div class="lib">En situation de handicap</div><div class="val">{% if etudiant.handicap %}Oui{% else %}Non{% endif %}</div></div></li>
+          {% if etudiant.handicap %}
+          <li><i class="bi bi-tag"></i><div><div class="lib">Type</div><div class="val">{{ etudiant.get_type_handicap_display|default:"—" }}</div></div></li>
+          <li><i class="bi bi-clipboard-check"></i><div><div class="lib">Aménagements nécessaires</div><div class="val">{{ etudiant.amenagements|default:"—" }}</div></div></li>
+          {% endif %}
+        </ul>
+      </div>
+    </div>
+    {% endif %}
   </div>
 </div>
 {% endblock %}

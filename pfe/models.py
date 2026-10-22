@@ -117,7 +117,33 @@ class Etudiant(models.Model):
     
     preinscrit = models.BooleanField(default=0,verbose_name="Préinscrit")
 
-    
+    # Cochés sur la fiche d'inscription (vides : cases laissées à cocher à la main)
+    BOURSIER_CHOICES = [
+        ('boursier', 'Boursier'),
+        ('non_boursier', 'Non boursier'),
+        ('payante', 'Formation payante'),
+    ]
+    TYPE_FORMATION_CHOICES = [
+        ('initiale', 'Initiale'),
+        ('continue', 'Continue'),
+    ]
+    boursier = models.CharField(max_length=20, choices=BOURSIER_CHOICES, blank=True, default='', verbose_name="Bourse")
+    type_formation = models.CharField(max_length=20, choices=TYPE_FORMATION_CHOICES, blank=True, default='',
+                                      verbose_name="Type de formation")
+
+    # Situation de handicap (donnée sensible : affichée à la scolarité seulement, comptée dans les statistiques)
+    TYPE_HANDICAP_CHOICES = [
+        ('moteur', 'Moteur'),
+        ('visuel', 'Visuel'),
+        ('auditif', 'Auditif'),
+        ('psychique', 'Psychique ou cognitif'),
+        ('autre', 'Autre'),
+    ]
+    handicap = models.BooleanField(default=False, verbose_name="Situation de handicap")
+    type_handicap = models.CharField(max_length=20, choices=TYPE_HANDICAP_CHOICES, blank=True, default='',
+                                     verbose_name="Type de handicap")
+    amenagements = models.CharField(max_length=255, blank=True, default='', verbose_name="Aménagements nécessaires")
+
 
     def __str__(self):
         return self.matricule or f"{self.prenom} {self.nom}"

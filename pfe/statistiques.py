@@ -27,7 +27,7 @@ CHAMPS = {                                # attribut de la ligne → champ de l'
     'promotion': 'promotion__nom', 'redouble': 'redouble', 'sexe': 'etudiant__sexe',
     'naissance': 'etudiant__date_de_naissance', 'nationalite': 'etudiant__nationalite',
     'option': 'etudiant__option_de_bac', 'centre': 'etudiant__centre_de_bac', 'ecole': 'etudiant__ecole_origine',
-    'bac': 'etudiant__moyenne_au_bac',
+    'bac': 'etudiant__moyenne_au_bac', 'handicap': 'etudiant__handicap', 'type_handicap': 'etudiant__type_handicap',
 }
 
 
@@ -86,6 +86,19 @@ def croise(lignes_insc):
         lignes.append({'programme': prog, 'cellules': cellules, 'total': _total([c for c in cellules if c])})
     totaux = [_total([l['cellules'][i] for l in lignes if l['cellules'][i]]) for i in range(len(niveaux))]
     return {'niveaux': niveaux, 'lignes': lignes, 'totaux': totaux, 'total': _total(totaux)}
+
+
+def _avec_taux(lignes_insc, selection, attr):
+    """Lignes H/F de `selection` groupées par `attr`, avec le taux (%) parmi tous les inscrits du groupe."""
+    effectifs = defaultdict(int)
+    for r in lignes_insc:
+        v = getattr(r, attr)
+        effectifs[v if v not in (None, '') else NON_RENSEIGNE] += 1
+    lignes, somme = repartition(selection, attr)
+    for l in lignes:
+        l.extra['taux'] = pct(l.total, effectifs.get(l.libelle, 0))
+    somme.extra['taux'] = pct(somme.total, len(lignes_insc))
+    return lignes, somme
 
 
 def evolution(lignes_insc):
@@ -195,18 +208,25 @@ def origine(lignes_insc):
 def redoublants(lignes_insc):
     """Redoublants par niveau et par programme (H/F) et taux de redoublement."""
     redoub = [r for r in lignes_insc if r.redouble]
+    return {'niveaux': _avec_taux(lignes_insc, redoub, 'niveau'),
+            'programmes': _avec_taux(lignes_insc, redoub, 'programme'), 'nb': len(redoub)}
 
-    def tableau(attr):
-        effectifs = defaultdict(int)
-        for r in lignes_insc:
-            v = getattr(r, attr)
-            effectifs[v if v not in (None, '') else NON_RENSEIGNE] += 1
-        lignes, somme = repartition(redoub, attr)
-        for l in lignes:
-            l.extra['taux'] = pct(l.total, effectifs.get(l.libelle, 0))
-        somme.extra['taux'] = pct(somme.total, len(lignes_insc))
-        return lignes, somme
-    return {'niveaux': tableau('niveau'), 'programmes': tableau('programme'), 'nb': len(redoub)}
+
+def handicap(lignes_insc):
+    """Inscrits en situation de handicap : par type, par niveau et par programme (H/F, part des inscrits)."""
+    from .models import Etudiant
+    types = dict(Etudiant.TYPE_HANDICAP_CHOICES)
+    concernes = [r for r in lignes_insc if r.handicap]
+    par_type = defaultdict(lambda: [0, 0])
+    for r in concernes:
+        par_type[types.get(r.type_handicap, 'Type non précisé')][_f(r)] += 1
+    ordre = list(types.values()) + ['Type non précisé']
+    lignes_type = [Ligne(k, *par_type[k]) for k in ordre if k in par_type]
+    total = _total(lignes_type)
+    total.extra['taux'] = pct(total.total, len(lignes_insc))
+    return {'nb': len(concernes), 'taux': pct(len(concernes), len(lignes_insc)), 'total': total,
+            'types': (lignes_type, total), 'niveaux': _avec_taux(lignes_insc, concernes, 'niveau'),
+            'programmes': _avec_taux(lignes_insc, concernes, 'programme')}
 
 
 def reussite(resultats):
@@ -268,6 +288,7 @@ def calculer(base, session_id, resultats, qs_soutenances):
         'promotions': repartition(lignes_insc, 'promotion'), 'croise': croise(lignes_insc),
         'evolution': evolution(toutes), 'feminisation': feminisation(par_programme[0]),
         'ages': ages(lignes_insc), 'origine': origine(lignes_insc), 'redoublants': redoublants(lignes_insc),
+        'handicap': handicap(lignes_insc),
         'reussite': reussite(resultats), 'soutenances': soutenances(qs_soutenances),
     }
 
@@ -325,6 +346,14 @@ def classeur(s, filtres_texte):
     for titre, cle_ in (('Redoublants par niveau', 'niveaux'), ('Redoublants par programme', 'programmes')):
         lignes, total = s['redoublants'][cle_]
         feuille(titre, ['', 'Hommes', 'Femmes', 'Total', '% femmes', 'Taux de redoublement (%)'],
+                [hf(l) + [l.extra['taux']] for l in lignes] + [hf(total) + [total.extra['taux']]])
+    ha = s['handicap']
+    lignes, total = ha['types']
+    feuille('Handicap par type', ['Type'] + HF, [hf(l) for l in lignes] + [hf(total), [],
+                                                  ['Part des inscrits (%)', ha['taux']]])
+    for titre, cle_ in (('Handicap par niveau', 'niveaux'), ('Handicap par programme', 'programmes')):
+        lignes, total = ha[cle_]
+        feuille(titre, ['', 'Hommes', 'Femmes', 'Total', '% femmes', 'Part des inscrits (%)'],
                 [hf(l) + [l.extra['taux']] for l in lignes] + [hf(total) + [total.extra['taux']]])
     for titre, cle_ in (('Réussite par programme', 'programmes'), ('Réussite par niveau', 'niveaux')):
         lignes, total = s['reussite'][cle_]

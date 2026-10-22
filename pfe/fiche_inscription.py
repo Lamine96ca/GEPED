@@ -5,7 +5,8 @@ Reprend le modèle « FICHE INSCRIPTION.pdf » de la scolarité, en version lég
 pas d'image de fond) : en-tête de l'établissement, cadre de la photo à gauche du titre (photo de
 l'étudiant si elle existe, sinon cadre vide à coller), puis les rubriques sur des lignes.
 Titre : « FICHE D'INSCRIPTION » en première année (L1, 1ère Année…), sinon « FICHE DE RÉINSCRIPTION ».
-Les cases Boursier / Non boursier / Formation payante et Initiale / Continue sont à cocher à la main.
+Les cases Boursier / Non boursier / Formation payante et Initiale / Continue sont cochées d'après la
+fiche de l'étudiant ; sans réponse, elles restent vides, à cocher à la main.
 """
 import io
 
@@ -16,6 +17,7 @@ from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.pdfgen.canvas import Canvas
 
 from .attestations import est_premiere_annee
+from .entete import dessiner_entete
 from .photos import a_une_photo
 
 LARGEUR, HAUTEUR = A4                       # 595 x 842 pt
@@ -65,12 +67,25 @@ def _champ(c, x, y, libelle, valeur, fin):
     _texte_ajuste(c, debut + 4, y + 1, str(valeur or ''), fin - debut - 8)
 
 
-def _case(c, x, y, libelle, largeur_libelle):
+def _case(c, x, y, libelle, largeur_libelle, cochee=False):
     c.setFont('Helvetica-BoldOblique', 9)
     c.drawString(x, y, libelle)
     c.setLineWidth(1)
     c.setStrokeColorRGB(0, 0, 0)
-    c.rect(x + largeur_libelle, y - 3, 13, 13)
+    x0 = x + largeur_libelle
+    c.rect(x0, y - 3, 13, 13)
+    if cochee:                                   # coche (✓) tracée : aucune police spéciale nécessaire
+        c.setLineWidth(1.8)
+        c.setLineCap(1)
+        c.setLineJoin(1)
+        chemin = c.beginPath()
+        chemin.moveTo(x0 + 2.6, y + 3.2)
+        chemin.lineTo(x0 + 5.4, y + 0.2)
+        chemin.lineTo(x0 + 10.6, y + 7.6)
+        c.drawPath(chemin, stroke=1, fill=0)
+        c.setLineWidth(1)
+        c.setLineCap(0)
+        c.setLineJoin(0)
 
 
 def pdf_fiche_inscription(inscription):
@@ -81,23 +96,14 @@ def pdf_fiche_inscription(inscription):
     c.setTitle(f"{titre.title()} – {e.prenom} {e.nom}")
     c.setAuthor('gePed – IST de Mamou')
 
-    # En-tête : SCOLARITÉ et cadre de l'établissement
-    c.setFont('Times-BoldItalic', 20)
-    c.drawCentredString(LARGEUR / 2, HAUTEUR - 50, 'SCOLARITÉ')
-    haut, bas = HAUTEUR - 60, HAUTEUR - 150
+    # En-tête : le même que sur les relevés de notes
+    bas = dessiner_entete(c, LARGEUR, HAUTEUR, G, D) - 4
     c.setLineWidth(0.8)
     c.setStrokeColorRGB(0.35, 0.35, 0.35)
-    c.rect(G, bas, D - G, haut - bas)
-    c.setFont('Times-Bold', 18)
-    c.drawCentredString(LARGEUR / 2, haut - 26, 'INSTITUT SUPÉRIEUR')
-    c.drawCentredString(LARGEUR / 2, haut - 47, 'DE TECHNOLOGIE DE MAMOU')
-    c.setFont('Times-Bold', 9.5)
-    c.drawCentredString(LARGEUR / 2, haut - 66, f"{conf['boite_postale']} · Tél : {conf['telephone']}")
-    c.drawCentredString(LARGEUR / 2, haut - 79, f"Email : {conf['email']}")
 
     # Photo à gauche (90 × 120 pt, format 3:4 ≈ 3,2 × 4,2 cm) et titre à côté
     larg_photo, haut_photo = 90, 120
-    p_haut = bas - 16
+    p_haut = bas - 18
     p_bas = p_haut - haut_photo
     c.rect(G, p_bas, larg_photo, haut_photo)
     photo = _photo_allegee(e)
@@ -144,15 +150,15 @@ def pdf_fiche_inscription(inscription):
             x = milieu
         y -= pas
 
-    # Cases à cocher à la main
-    _case(c, G, y, 'Boursier', 70)
-    _case(c, G + 175, y, 'Non boursier', 70)
-    _case(c, G + 350, y, 'Formation payante', 105)
+    # Cases : cochées d'après la fiche de l'étudiant, sinon laissées à cocher à la main
+    _case(c, G, y, 'Boursier', 70, e.boursier == 'boursier')
+    _case(c, G + 175, y, 'Non boursier', 70, e.boursier == 'non_boursier')
+    _case(c, G + 350, y, 'Formation payante', 105, e.boursier == 'payante')
     y -= pas
     c.setFont('Helvetica-BoldOblique', 9)
     c.drawString(G, y, 'Type de formation :')
-    _case(c, G + 175, y, 'Initiale', 70)
-    _case(c, G + 350, y, 'Continue', 105)
+    _case(c, G + 175, y, 'Initiale', 70, e.type_formation == 'initiale')
+    _case(c, G + 350, y, 'Continue', 105, e.type_formation == 'continue')
     y -= pas
 
     for ligne in [

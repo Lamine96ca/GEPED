@@ -11,6 +11,7 @@ Les positions reprennent le modèle « ATTESTATION INSCRIPTION.pdf » de l'IST d
 import io
 import re
 import unicodedata
+from functools import lru_cache
 
 from django.conf import settings
 from reportlab.lib.enums import TA_JUSTIFY
@@ -81,10 +82,31 @@ def dessiner_qr(c, url, x, haut, taille):
     c.drawCentredString(x + taille / 2, HAUTEUR - haut - taille - 18, "l'authenticité du document")
 
 
-def dessiner_fond(c):
+@lru_cache(maxsize=1)
+def _logo_filigrane():
+    """Logo pâle du filigrane, recadré (l'image d'origine est une page entière, logo au milieu)."""
+    from PIL import Image
+    with Image.open(_conf('dossier_images') / 'filigrane.png') as img:
+        img = img.convert('RGB')
+    zone = Image.eval(img.convert('L'), lambda v: 255 if v < 250 else 0).getbbox() or (0, 0, *img.size)
+    flux = io.BytesIO()
+    img.crop(zone).save(flux, 'PNG', optimize=True)
+    return flux.getvalue()
+
+
+def dessiner_filigrane(c, haut, bas=548):
+    """Filigrane réduit pour tenir entre `haut` et `bas` (pt depuis le haut) : sous l'en-tête, jamais masqué."""
+    img = ImageReader(io.BytesIO(_logo_filigrane()))
+    l, h = img.getSize()
+    hauteur = bas - haut
+    largeur = hauteur * l / h
+    c.drawImage(img, (LARGEUR - largeur) / 2, HAUTEUR - bas, largeur, hauteur)
+
+
+def dessiner_fond(c, haut_filigrane=196):
     """Filigrane, bordures bleues et carrés des coins : identiques sur toutes les attestations."""
-    # Filigrane (logo pâle sur toute la page), puis bordures bleues
-    c.drawImage(_image('filigrane'), 0, 0, LARGEUR, HAUTEUR, mask='auto')
+    # Filigrane (logo pâle, sous l'en-tête), puis bordures bleues
+    dessiner_filigrane(c, haut_filigrane)
     for nom, (x0, y0, x1, y1) in {
         'bord_haut': (38.76, 29.04, 788.88, 52.32), 'bord_bas': (34.32, 542.52, 798.0, 566.52),
         'bord_gauche': (28.32, 35.88, 47.76, 540.84), 'bord_droit': (788.76, 35.88, 810.48, 543.84),
@@ -143,27 +165,19 @@ def dessiner_pied(c, url_verification, haut_signature=417.12, cachet_signature=T
     _centre(c, 'Cette attestation ne doit contenir ni rature, ni surcharge', 534.1, 'Times-BoldItalic', 10)
 
 
+def dessiner_entete_paysage(c, largeur_bandeau=520, haut=48):
+    """En-tête des relevés, à l'échelle de la page paysage, entre les bordures. Renvoie le haut du trait."""
+    from .entete import dessiner_entete
+    y = dessiner_entete(c, LARGEUR, HAUTEUR, MARGE_G, 784.44, haut=haut, largeur_bandeau=largeur_bandeau,
+                        taille_service=15, taille_coordonnees=11, ecart=17)
+    return HAUTEUR - (y - 4)
+
+
 def dessiner_cadre(c, attestation, url_verification=None):
     """Cadre des attestations d'orientation, d'inscription et de niveau (QR de vérification compris)."""
     dessiner_fond(c)
-    c.drawImage(_image('logo'), 66.72, HAUTEUR - 166.32, 64.08, 60.0, mask='auto')
-
-    # En-tête officiel
-    _centre(c, 'REPUBLIQUE DE GUINEE', 49.5, 'Helvetica-Bold', 12)
-    _centre(c, 'Travail-Justice-Solidarité', 62.1, 'Helvetica-Oblique', 10)
-    _centre(c, "MINISTERE DE L'ENSEIGNEMENT SUPERIEUR ET DE LA RECHERCHE SCIENTIFIQUE", 79.2, 'Helvetica', 15, 560)
-    _centre(c, "DIRECTION NATIONALE DE L'ENSEIGNEMENT SUPERIEUR PUBLIC", 97.2, 'Helvetica', 15, 460)
-    _centre(c, 'INSTITUT SUPERIEUR DE TECHNOLOGIE DE MAMOU', 115.8, 'Helvetica-Bold', 17, 460)
-    _centre(c, 'SERVICE SCOLARITE', 148.4, 'Times-Bold', 18)
-
-    # Coordonnées + trait
-    c.setFont('Times-Bold', 12)
-    y = _y(176.1, 12)
-    c.drawString(MARGE_G, y, _conf('boite_postale'))
-    c.drawCentredString(LARGEUR / 2, y, f"Email : {_conf('email')}")
-    c.drawRightString(MARGE_D, y, f"Tél : {_conf('telephone')}")
-    c.setLineWidth(0.6)
-    c.line(52.44, HAUTEUR - 189.48, 784.44, HAUTEUR - 189.48)
+    # En-tête officiel : le même que sur les relevés (bandeau, service, coordonnées, trait)
+    dessiner_entete_paysage(c)
 
     # N° de référence et date
     c.setFont('Times-Roman', 12)
@@ -394,36 +408,14 @@ def pdf_fin_etudes(attestation, url_verification=None, cachet_signature=False):
     c = Canvas(flux, pagesize=(LARGEUR, HAUTEUR))
     c.setTitle(f"{titre.title()} – {attestation.num_ref}")
     c.setAuthor('gePed – IST de Mamou')
-    dessiner_fond(c)
+    dessiner_fond(c, haut_filigrane=232)
 
-    # En-tête
-    _centre(c, 'REPUBLIQUE DE GUINEE', 47.5, grasse, 17)
-    morceaux = [('Travail', (1, 0, 0)), ('-', (0.18, 0.18, 0.18)), ('Justice', (1, 0.6, 0)),
-                ('-', (0.18, 0.18, 0.18)), ('Solidarité', (0.2, 0.6, 0.4))]
-    largeur = sum(stringWidth(t, grasse, 14) for t, _ in morceaux)
-    x = (LARGEUR - largeur) / 2
-    for t, couleur in morceaux:
-        c.setFillColorRGB(*couleur)
-        c.setFont(grasse, 14)
-        c.drawString(x, _y(62.2, 14), t)
-        x += stringWidth(t, grasse, 14)
-    c.setFillColorRGB(0, 0, 0)
-    _centre(c, "MINISTERE DE L'ENSEIGNEMENT SUPERIEUR ET DE LA RECHERCHE SCIENTIFIQUE", 80.2, normale, 17, 640)
-    c.setFillColorRGB(*BLEU_INSTITUT)
-    _centre(c, 'INSTITUT SUPERIEUR DE TECHNOLOGIE DE MAMOU', 97.7, grasse, 29, 720)
-    c.setFillColorRGB(0, 0, 0)
-    c.drawImage(_image('logo'), 394.44, HAUTEUR - 188.52, 63.48, 60.6, mask='auto')
-    _centre(c, 'SERVICE SCOLARITE', 187.3, grasse, 19)
+    # En-tête des relevés, en plus grand (bandeau plus large : document solennel)
+    dessiner_entete_paysage(c, largeur_bandeau=675)
 
-    # Coordonnées, trait, date, cartouche de référence
+    # Date, cartouche de référence
     c.setFont(grasse, 12)
-    y = _y(210.4, 12)
-    c.drawString(MARGE_G, y, _conf('boite_postale'))
-    c.drawCentredString(LARGEUR / 2, y, f"Email : {_conf('email')}")
-    c.drawRightString(MARGE_D, y, f"Tél : {_conf('telephone')}")
-    c.setLineWidth(0.6)
-    c.line(53.5, HAUTEUR - 223.9, 792.5, HAUTEUR - 223.9)
-    c.drawRightString(MARGE_D, _y(225.3, 12), f"{_conf('ville')}, le {date_longue(attestation.date_delivrance)}")
+    c.drawRightString(MARGE_D, _y(227, 12), f"{_conf('ville')}, le {date_longue(attestation.date_delivrance)}")
     ref = f"REF: {attestation.num_ref}"
     c.setFillColorRGB(*BLEU_INSTITUT)
     c.rect(53.5, HAUTEUR - 250.3, max(155.4, stringWidth(ref, normale, 14) + 8), 22.8, stroke=0, fill=1)

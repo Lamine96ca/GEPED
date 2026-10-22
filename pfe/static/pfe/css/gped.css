@@ -646,6 +646,12 @@ code { color: var(--encre); background: var(--survol); padding: .05rem .3rem; bo
 .option-import { display: flex; gap: .8rem; align-items: flex-start; padding: .9rem 1rem; border-radius: 12px; background: var(--fond); border: 1px solid transparent; cursor: pointer; }
 .option-import:has(input:checked) { background: var(--or-doux); border-color: #f5d77a; }
 .option-import .form-check-input { margin-top: .2rem; flex-shrink: 0; }
+/* Choix à un seul bouton (bourse, type de formation) : l'option retenue ressort comme les cases cochées */
+.choix-bouton { border-radius: 10px; background: var(--fond); border: 1px solid transparent; color: var(--encre); font-weight: 500; padding: .45rem .85rem; }
+.choix-bouton:hover { border-color: #f5d77a; color: var(--encre); background: var(--fond); }
+.btn-check:checked + .choix-bouton { background: var(--or-doux); border-color: #f5d77a; color: var(--encre); font-weight: 600; }
+.btn-check:checked + .choix-bouton::before { content: "\2713\00a0"; }
+.btn-check:focus-visible + .choix-bouton { box-shadow: 0 0 0 .2rem rgba(245, 215, 122, .5); }
 .option-import strong { display: block; color: var(--encre); }
 .option-import span { color: var(--muet); font-size: .875rem; }
 .etapes-import { list-style: none; padding: 0; margin: 0; counter-reset: e; }

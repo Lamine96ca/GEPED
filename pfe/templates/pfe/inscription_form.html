@@ -97,6 +97,29 @@
           </div>
         </div>
       </div>
+
+      <div class="card carte-gped">
+        <div class="card-body">
+          <div class="entete-carte">
+            <span class="icone-carte"><i class="bi bi-universal-access"></i></span>
+            <div><h3>Situation de handicap</h3><p>Facultatif · visible par la scolarité seulement</p></div>
+          </div>
+          <div class="row g-3">
+            <div class="col-12">
+              <label class="option-import" for="{{ form_etu.handicap.id_for_label }}">
+                {{ form_etu.handicap }}
+                <div><strong>L'étudiant est en situation de handicap</strong><span>Pour prévoir les aménagements (examens, salles, accès).</span></div>
+              </label>
+            </div>
+            <div class="col-12" data-handicap-details>
+              <div class="row g-3">
+                {% include 'pfe/_champ.html' with champ=form_etu.type_handicap col='col-md-4' %}
+                {% include 'pfe/_champ.html' with champ=form_etu.amenagements col='col-md-8' %}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div class="col-xl-4">
@@ -113,6 +136,8 @@
             {% include 'pfe/_champ.html' with champ=form_insc.semestre col='col-12' %}
             {% include 'pfe/_champ.html' with champ=form_insc.filiere col='col-12' %}
             {% include 'pfe/_champ.html' with champ=form_insc.promotion col='col-12' %}
+            {% include 'pfe/_choix_boutons.html' with champ=form_etu.boursier %}
+            {% include 'pfe/_choix_boutons.html' with champ=form_etu.type_formation %}
             <div class="col-12 d-flex flex-column gap-2">
               <label class="option-import" for="{{ form_insc.redouble.id_for_label }}">
                 {{ form_insc.redouble }}
@@ -139,4 +164,15 @@
 {% endblock %}
 {% block scripts %}
 {% include 'pfe/_modal_photo.html' %}
+<script>
+  (function () {
+    // Type et aménagements : affichés seulement si « en situation de handicap » est coché
+    var caseHandicap = document.getElementById('{{ form_etu.handicap.id_for_label }}');
+    var details = document.querySelector('[data-handicap-details]');
+    if (!caseHandicap || !details) return;
+    function maj() { details.hidden = !caseHandicap.checked; }
+    caseHandicap.addEventListener('change', maj);
+    maj();
+  })();
+</script>
 {% endblock %}
