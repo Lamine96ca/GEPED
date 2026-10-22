@@ -1,7 +1,7 @@
 {% load static %}
 {# Fenêtre photo commune : prise de vue (téléphone ou webcam), chargement, recadrage 3:4, compression ≤ 350 Ko.  #}
 {# S'ouvre depuis tout élément [data-photo-ouvrir] (voir static/pfe/js/photo.js).                               #}
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.css">
+<link rel="stylesheet" href="{% static 'pfe/vendor/cropperjs/cropper.min.css' %}?v={{ version_statique }}">
 <div class="modal fade" id="modal-photo" tabindex="-1" aria-labelledby="modal-photo-titre" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered modal-photo">
     <div class="modal-content">
@@ -64,5 +64,5 @@
   <input type="file" accept="image/*" capture="user" class="visually-hidden" tabindex="-1" data-photo-input-camera>
   <input type="file" accept="image/*" class="visually-hidden" tabindex="-1" data-photo-input-fichier>
 </div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js"></script>
+<script src="{% static 'pfe/vendor/cropperjs/cropper.min.js' %}?v={{ version_statique }}"></script>
 <script src="{% static 'pfe/js/photo.js' %}?v={{ version_statique }}"></script>

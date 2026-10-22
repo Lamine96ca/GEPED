@@ -532,6 +532,22 @@ code { color: var(--encre); background: var(--survol); padding: .05rem .3rem; bo
 .onglets-stat .nav-link { border: 1px solid var(--bord); background: var(--surface); color: var(--encre); font-size: .85rem; padding: .35rem .8rem; }
 .onglets-stat .nav-link.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 
+/* Connexion faible (static/pfe/js/gped-reseau.js) : barre de chargement, « connexion lente », hors connexion */
+.gped-barre { position: fixed; top: 0; left: 0; right: 0; height: 3px; z-index: 2000; pointer-events: none; opacity: 0; transition: opacity .2s; }
+.gped-barre span { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--or), #f5d77a); box-shadow: 0 0 8px rgba(251, 189, 8, .6); }
+.gped-barre.active { opacity: 1; }
+.gped-barre.active span { animation: gped-avance 12s cubic-bezier(.1, .7, .3, 1) forwards; }
+@keyframes gped-avance { 0% { width: 0; } 20% { width: 45%; } 60% { width: 75%; } 100% { width: 92%; } }
+.gped-lenteur { position: fixed; left: 50%; bottom: 1.25rem; transform: translate(-50%, 1rem); z-index: 2000; opacity: 0; pointer-events: none;
+                background: var(--encre); color: #fff; padding: .55rem 1rem; border-radius: 999px; font-size: .875rem; box-shadow: 0 6px 20px rgba(0,0,0,.2);
+                transition: opacity .25s, transform .25s; display: flex; align-items: center; gap: .5rem; }
+.gped-lenteur.visible { opacity: 1; transform: translate(-50%, 0); }
+.gped-hors-ligne { position: fixed; top: 0; left: 0; right: 0; z-index: 2001; display: none; padding: .55rem 1rem; text-align: center;
+                   font-size: .9rem; font-weight: 600; background: #b91c1c; color: #fff; }
+.gped-hors-ligne.visible { display: block; }
+.gped-hors-ligne.retour { background: #15803d; }
+@media (prefers-reduced-motion: reduce) { .gped-barre.active span { animation: none; width: 70%; } }
+
 /* Impression (statistiques…) : sans menu ni filtres, tous les onglets à la suite */
 @media print {
   .gped-entete, .gped-sidebar, .non-imprime, .titre-page .ms-auto { display: none !important; }

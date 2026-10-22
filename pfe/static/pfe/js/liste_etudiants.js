@@ -166,25 +166,38 @@
   // ---------------------------------------------------------- chargement
   function charger() {
     if (requeteEnCours) requeteEnCours.abort();     // annule la requête précédente
-    requeteEnCours = new AbortController();
+    const requete = requeteEnCours = new AbortController();
     const p = parametres(true);
     history.replaceState(null, '', '?' + p.toString());
     tableau.classList.add('chargement');
     afficherTri();
+    // Connexion faible : message au bout de 8 s, abandon au bout de 45 s (avec « Réessayer »)
+    let expiree = false;
+    const lente = setTimeout(() => window.gpedReseau && window.gpedReseau.lente(true), 8000);
+    const expiration = setTimeout(() => { expiree = true; requete.abort(); }, 45000);
 
     fetch(cfg.urlDonnees + '?' + p.toString(), {
-      signal: requeteEnCours.signal,
+      signal: requete.signal,
       headers: { 'X-Requested-With': 'XMLHttpRequest' },
     })
-      .then((r) => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then((r) => { if (!r.ok) throw new Error('erreur ' + r.status + ' du serveur'); return r.json(); })
       .then(afficher)
       .catch((err) => {
-        if (err.name === 'AbortError') return;
-        corps.innerHTML = '<tr><td colspan="' + nbColonnes + '" class="text-center text-danger py-5">' +
-          'Erreur de chargement (' + e(err.message) + '). Réessayez.</td></tr>';
+        if (err.name === 'AbortError' && !expiree) return;          // remplacée par une requête plus récente
+        const cause = !navigator.onLine ? "Pas de connexion Internet."
+          : expiree ? "Le serveur met trop de temps à répondre (connexion lente)."
+          : 'Le chargement a échoué (' + e(err.message) + ').';
+        corps.innerHTML = '<tr><td colspan="' + nbColonnes + '" class="text-center py-5">' +
+          '<div class="text-danger mb-2"><i class="bi bi-wifi-off"></i> ' + cause + '</div>' +
+          '<button type="button" class="btn btn-sm btn-primary" data-reessayer><i class="bi bi-arrow-clockwise"></i> Réessayer</button></td></tr>';
       })
-      .finally(() => tableau.classList.remove('chargement'));
+      .finally(() => {
+        clearTimeout(lente); clearTimeout(expiration);
+        if (window.gpedReseau) window.gpedReseau.lente(false);
+        if (requeteEnCours === requete) tableau.classList.remove('chargement');
+      });
   }
+  corps.addEventListener('click', (ev) => { if (ev.target.closest('[data-reessayer]')) charger(); });
 
   function rechargerDepuisPage1() { etat.page = 1; charger(); }
 
