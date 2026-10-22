@@ -215,6 +215,9 @@ STORAGES = {
     'staticfiles': {'BACKEND': 'whitenoise.storage.CompressedStaticFilesStorage'},
 }
 WHITENOISE_MAX_AGE = 7 * 24 * 3600          # les URL portent ?v=<empreinte> : un changement est vu tout de suite
+# Les fichiers sont aussi trouvés directement dans pfe/static : le CSS s'affiche même si « collectstatic »
+# n'a pas été relancé après une mise à jour (les fichiers rassemblés, compressés, restent prioritaires).
+WHITENOISE_USE_FINDERS = True
 
 # Grandes grilles de saisie (notes : 5 champs × plusieurs centaines d'étudiants)
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 20000
