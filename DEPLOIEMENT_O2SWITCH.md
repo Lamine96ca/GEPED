@@ -91,8 +91,9 @@ python -c "from django.core.management.utils import get_random_secret_key as g; 
 Collez la clé affichée dans `GPED_SECRET_KEY`. Renseignez ensuite :
 - la base : `GPED_DB_*` ;
 - les e-mails : `GPED_EMAIL_*` ;
-- le domaine : `GPED_ALLOWED_HOSTS` et `GPED_URL_PUBLIQUE` ;
-- les dossiers publics : `GPED_STATIC_ROOT=/home/moncompte/geped.gbelya-tech.com/static` et `GPED_MEDIA_ROOT=/home/moncompte/geped.gbelya-tech.com/media`.
+- le domaine : `GPED_ALLOWED_HOSTS` et `GPED_URL_PUBLIQUE`.
+
+Les fichiers CSS, JS et images sont servis par gePed lui-même (WhiteNoise), et les photos des étudiants aussi, aux seuls utilisateurs connectés. **Aucun dossier à créer dans le dossier public du domaine.**
 
 Puis :
 
@@ -100,8 +101,6 @@ Puis :
 python manage.py migrate
 python manage.py collectstatic --noinput
 python manage.py check --deploy
-mkdir -p /home/moncompte/geped.gbelya-tech.com/media
-cp deploiement/media.htaccess /home/moncompte/geped.gbelya-tech.com/media/.htaccess
 ```
 
 `check --deploy` ne doit afficher **aucune erreur**. Un avertissement sur HSTS est normal tant que `GPED_HSTS_SECONDES=0`.
@@ -113,7 +112,7 @@ Avec le **Gestionnaire de fichiers** de cPanel (ou FTP), envoyez :
 | Depuis le PC | Vers le serveur |
 |---|---|
 | `ressources/attestation/signature_scolarite.png` (signature et cachet) | `/home/moncompte/repositories/GEPED/ressources/attestation/` |
-| `media/etudiant/photo/…` (photos des étudiants) | `/home/moncompte/geped.gbelya-tech.com/media/etudiant/photo/` |
+| `media/etudiant/photo/…` (photos des étudiants) | `/home/moncompte/repositories/GEPED/media/etudiant/photo/` |
 | `prive/…` (justificatifs, s'il y en a) | `/home/moncompte/repositories/GEPED/prive/` |
 
 Les images du cadre des attestations et l'en-tête des relevés sont déjà dans Git.
@@ -164,8 +163,9 @@ Le script enchaîne :
 | Page « erreur 500 » | `logs/gped.log` dans le dossier du projet ; les `GPED_ADMINS` reçoivent aussi l'erreur par e-mail |
 | « Bad Request (400) » | le domaine manque dans `GPED_ALLOWED_HOSTS` |
 | « Forbidden : CSRF » à la connexion | `GPED_URL_PUBLIQUE` doit être exactement l'adresse du site, en `https://` |
-| Site sans mise en forme | `collectstatic` non lancé, ou `GPED_STATIC_ROOT` hors du dossier public du domaine |
-| Photos absentes | dossier `media/` du domaine, et `GPED_MEDIA_ROOT` |
+| Site sans mise en forme (CSS absent) | lancer `python manage.py collectstatic --noinput`, puis **Restart** ; ne pas modifier `settings.py` |
+| Photos absentes | elles doivent être dans `media/` du dossier du projet (`/home/moncompte/repositories/GEPED/media/…`) |
+| `settings.py` modifié par erreur sur le serveur | `git checkout -- config/settings.py` (tous les réglages du serveur vont dans `.env`) |
 | E-mails non reçus | `python manage.py sendtestemail …` ; identifiants SMTP ; SPF et DKIM dans « Délivrabilité des e-mails » |
 | L'application ne redémarre pas | Setup Python App → **Restart**, ou `touch tmp/restart.txt` |
 

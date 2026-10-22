@@ -10,7 +10,8 @@ cd "$(dirname "$0")/.."
 
 lire() { grep -E "^$1=" .env | head -n 1 | cut -d= -f2- | sed -e 's/^["'\'']//' -e 's/["'\'']$//'; }
 BASE=$(lire GPED_DB_NAME); UTILISATEUR=$(lire GPED_DB_USER); MOT_DE_PASSE=$(lire GPED_DB_PASSWORD)
-MEDIA=$(lire GPED_MEDIA_ROOT)
+MEDIA=$(lire GPED_MEDIA_ROOT || true)
+MEDIA=${MEDIA:-$(pwd)/media}                 # par défaut : media/ dans le dossier du projet
 DOSSIER="$HOME/sauvegardes_geped"
 mkdir -p "$DOSSIER"
 chmod 700 "$DOSSIER"

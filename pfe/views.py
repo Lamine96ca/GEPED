@@ -2,6 +2,7 @@ import csv
 import datetime
 import io
 import re
+from pathlib import Path
 
 from django.contrib import messages
 from django.contrib.auth import update_session_auth_hash
@@ -307,6 +308,32 @@ def etudiant_fiche(request, pk):
 
 
 # ------------------------------------------------------------------ photos
+
+@login_required
+def media_protege(request, chemin):
+    """
+    Fichiers déposés (photos des étudiants et du personnel) : jamais publics. Visibles par le personnel
+    ayant un rôle gePed ; un compte sans rôle (étudiant) ne voit que SA propre photo.
+    """
+    import mimetypes
+    from django.http import FileResponse
+    from django.utils._os import safe_join
+    try:
+        fichier = Path(safe_join(settings.MEDIA_ROOT, chemin))
+    except Exception:                                   # « ../ » ou chemin absolu : refusé
+        raise Http404()
+    if not fichier.is_file():
+        raise Http404()
+    if not get_profil(request).a_acces:
+        fiche = _fiche_du_compte(request.user)
+        if fiche is None or not fiche.photo or fiche.photo.name != chemin:
+            raise PermissionDenied("Ce fichier n'est pas accessible avec votre compte.")
+    reponse = FileResponse(open(fichier, 'rb'), content_type=mimetypes.guess_type(fichier.name)[0]
+                           or 'application/octet-stream')
+    reponse['X-Content-Type-Options'] = 'nosniff'
+    reponse['Cache-Control'] = 'private, max-age=86400'
+    return reponse
+
 
 def _peut_changer_photo(request, etudiant):
     """La scolarité, ou l'étudiant lui-même (compte lié à sa fiche)."""

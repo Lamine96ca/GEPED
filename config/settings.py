@@ -101,6 +101,8 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    # CSS, JS et images servis par gePed lui-même (aucun réglage Apache nécessaire chez l'hébergeur)
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -202,10 +204,17 @@ USE_TZ = True
 
 STATIC_URL = '/static/'
 MEDIA_URL = '/media/'
-# Chez o2switch, ces deux dossiers sont placés DANS le dossier public du domaine (ex. ~/geped.istmamou.org/static
-# et …/media) : Apache les sert directement, sans passer par Django (plus rapide). En local : dans le projet.
+# Fichiers statiques (CSS, JS, images) : rassemblés par « collectstatic » dans staticfiles/ et servis par
+# WhiteNoise (compressés, mis en cache). Photos des étudiants (media/) : servies par gePed aux SEULS
+# utilisateurs connectés (pfe/views.py, media_protege). Les deux dossiers restent dans le projet,
+# hors du dossier public du domaine : rien à configurer côté Apache.
 STATIC_ROOT = Path(os.environ.get('GPED_STATIC_ROOT') or BASE_DIR / 'staticfiles')
 MEDIA_ROOT = Path(os.environ.get('GPED_MEDIA_ROOT') or BASE_DIR / 'media')
+STORAGES = {
+    'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+    'staticfiles': {'BACKEND': 'whitenoise.storage.CompressedStaticFilesStorage'},
+}
+WHITENOISE_MAX_AGE = 7 * 24 * 3600          # les URL portent ?v=<empreinte> : un changement est vu tout de suite
 
 # Grandes grilles de saisie (notes : 5 champs × plusieurs centaines d'étudiants)
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 20000

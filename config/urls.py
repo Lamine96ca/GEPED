@@ -1,10 +1,9 @@
-from django.conf import settings
-from django.conf.urls.static import static
 from django.contrib import admin
 from django.contrib.auth import views as auth_views
-from django.urls import include, path
+from django.urls import include, path, re_path
 
 from pfe.forms import MotDePasseOublieForm, NouveauMotDePasseForm
+from pfe.views import media_protege
 
 urlpatterns = [
     path('django-admin/', admin.site.urls),
@@ -28,7 +27,6 @@ urlpatterns = [
         template_name='pfe/mdp_termine.html'), name='password_reset_complete'),
 
     path('', include('pfe.urls')),
+    # Photos des étudiants (media/) : réservées aux utilisateurs connectés, en développement comme en production
+    re_path(r'^media/(?P<chemin>.+)$', media_protege, name='media'),
 ]
-
-if settings.DEBUG:
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
