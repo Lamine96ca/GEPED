@@ -10,6 +10,11 @@ __pycache__/
 config/cle_secrete.txt
 .env
 COMPTES_LOCAUX.txt
+O2SWITCH-CONFIG.txt
+*CONFIG*.txt
+*identifiant*
+*mot*de*passe*
+*password*
 
 # Bases de données et sauvegardes (données personnelles des étudiants)
 db.sqlite3

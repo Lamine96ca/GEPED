@@ -11,7 +11,7 @@ Exemples avec le domaine `geped.gbelya-tech.com` et l'identifiant cPanel `moncom
 | Base de données | **Bases de données MySQL** + phpMyAdmin |
 | HTTPS | **AutoSSL** (Let's Encrypt, gratuit et automatique) |
 | E-mails (invitations, mot de passe oublié) | **Comptes de messagerie** (SMTP du domaine) |
-| Code | **Git Version Control** (depuis le dépôt privé GitHub) |
+| Code | **Git** dans le dossier de l'application (dépôt privé GitHub, clé de déploiement) |
 | Commandes | **Terminal** (ou SSH) |
 | Sauvegardes et maintenance | **Tâches Cron** + JetBackup d'o2switch |
 
@@ -41,42 +41,54 @@ Tous les réglages se font dans un fichier **`.env`** sur le serveur (modèle : 
 
 1. cPanel → **Comptes de messagerie** : créez `no-reply@gbelya-tech.com`.
 2. Ouvrez **Connecter des appareils** pour cette boîte, et notez :
-   - le **serveur SMTP** : prenez le **nom du serveur o2switch** indiqué dans les « paramètres SSL/TLS sécurisés », ici `varan.o2switch.net`. N'utilisez pas `mail.gbelya-tech.com` : son certificat SSL n'est pas valable pour ce nom, et gePed refuse alors la connexion (« Hostname mismatch ») ;
+   - le **serveur SMTP** : prenez le **nom du serveur o2switch** indiqué dans les « paramètres SSL/TLS sécurisés », par exemple `varan.o2switch.net` (il dépend du serveur où est votre compte). N'utilisez pas `mail.gbelya-tech.com` : son certificat SSL n'est pas valable pour ce nom, et gePed refuse alors la connexion (« Hostname mismatch ») ;
    - le **port 465 (SSL)** ;
    - l'identifiant (l'adresse complète) et le mot de passe.
 3. cPanel → **Délivrabilité des e-mails** : vérifiez que **SPF** et **DKIM** sont « valides ». Corrigez-les si besoin : c'est ce qui évite que les invitations arrivent dans les indésirables.
 4. Si le domaine `gbelya-tech.com` est géré ailleurs (DNS chez un autre fournisseur), ajoutez-y les enregistrements SPF et DKIM proposés par cPanel.
 
-## 4. Récupérer le code
+## 4. Créer l'application Python
 
-Le dépôt GitHub est privé : le serveur a besoin d'une **clé de déploiement**, en lecture seule.
-
-1. cPanel → **Accès SSH** → **Gérer les clés SSH** : générez une clé (par exemple `geped_github`), puis affichez la clé **publique**.
-2. GitHub → dépôt `GEPED` → **Settings → Deploy keys → Add deploy key** : collez la clé publique, **sans** cocher « Allow write access ».
-3. cPanel → **Git Version Control** → **Créer** :
-   - URL de clonage : `git@github.com:Lamine96ca/GEPED.git` ;
-   - chemin : `/home/moncompte/repositories/GEPED` (proposé par cPanel). C'est la racine de l'application, **hors** du dossier public.
-
-## 5. Créer l'application Python
+> **Règle d'or :** le dossier de l'application Python et le dossier du code Git sont **le même**, ici `pfe2`. Sinon, les mises à jour (`git pull`) arrivent dans un dossier que le site n'utilise pas.
 
 cPanel → **Setup Python App** → **Create Application** :
 
 | Champ | Valeur |
 |---|---|
-| Python version | la plus récente proposée (**3.10 au minimum**) |
-| Application root | `repositories/GEPED` (le dossier où Git a cloné le code) |
+| Python version | **3.11** (3.10 au minimum) |
+| Application root | `pfe2` |
 | Application URL | `geped.gbelya-tech.com` |
 | Application startup file | `passenger_wsgi.py` |
 | Application Entry point | `application` |
 
-Cliquez sur **Create**. En haut de la page, cPanel affiche une commande `source /home/moncompte/virtualenv/repositories/GEPED/3.x/bin/activate && cd /home/moncompte/repositories/GEPED` : copiez-la.
+Cliquez sur **Create**. En haut de la page, cPanel affiche la commande d'activation : `source /home/moncompte/virtualenv/pfe2/3.11/bin/activate && cd /home/moncompte/pfe2`. Copiez-la : elle sert à chaque ouverture du Terminal.
+
+## 5. Récupérer le code dans `pfe2`
+
+Le dépôt GitHub est privé : le serveur a besoin d'une **clé de déploiement**, en lecture seule.
+
+1. cPanel → **Terminal** : créez la clé du serveur (une seule fois par compte), puis affichez sa partie publique :
+   ```bash
+   ssh-keygen -t ed25519 -N "" -f ~/.ssh/id_ed25519 -C "geped@o2switch"
+   cat ~/.ssh/id_ed25519.pub
+   ```
+2. GitHub → dépôt `GEPED` → **Settings → Deploy keys → Add deploy key** : collez cette ligne, **sans** cocher « Allow write access ».
+3. Toujours dans le Terminal, placez le code **dans `pfe2`** (cPanel y a mis un `passenger_wsgi.py` de démonstration : il est remplacé par celui de gePed) :
+   ```bash
+   cd ~/pfe2
+   git init -b main
+   git remote add origin git@github.com:Lamine96ca/GEPED.git
+   git fetch origin
+   git checkout -f -B main --track origin/main
+   ```
+   À la première connexion, répondez `yes` à la question sur l'empreinte de github.com.
 
 ## 6. Installer et configurer (Terminal)
 
 cPanel → **Terminal** :
 
 ```bash
-source /home/moncompte/virtualenv/repositories/GEPED/3.x/bin/activate && cd /home/moncompte/repositories/GEPED
+source /home/moncompte/virtualenv/pfe2/3.11/bin/activate && cd /home/moncompte/pfe2
 pip install --upgrade pip
 pip install -r requirements.txt
 ```
@@ -114,9 +126,9 @@ Avec le **Gestionnaire de fichiers** de cPanel (ou FTP), envoyez :
 
 | Depuis le PC | Vers le serveur |
 |---|---|
-| `ressources/attestation/signature_scolarite.png` (signature et cachet) | `/home/moncompte/repositories/GEPED/ressources/attestation/` |
-| `media/etudiant/photo/…` (photos des étudiants) | `/home/moncompte/repositories/GEPED/media/etudiant/photo/` |
-| `prive/…` (justificatifs, s'il y en a) | `/home/moncompte/repositories/GEPED/prive/` |
+| `ressources/attestation/signature_scolarite.png` (signature et cachet) | `/home/moncompte/pfe2/ressources/attestation/` |
+| `media/etudiant/photo/…` (photos des étudiants) | `/home/moncompte/pfe2/media/etudiant/photo/` |
+| `prive/…` (justificatifs, s'il y en a) | `/home/moncompte/pfe2/prive/` |
 
 Les images du cadre des attestations et l'en-tête des relevés sont déjà dans Git.
 
@@ -136,8 +148,8 @@ Les images du cadre des attestations et l'en-tête des relevés sont déjà dans
 
 | Quand | Commande |
 |---|---|
-| Chaque nuit à 2 h | `bash /home/moncompte/repositories/GEPED/deploiement/sauvegarde_base.sh >/dev/null 2>&1` |
-| Chaque dimanche à 3 h | `cd /home/moncompte/repositories/GEPED && /home/moncompte/virtualenv/repositories/GEPED/3.x/bin/python manage.py clearsessions` |
+| Chaque nuit à 2 h | `bash /home/moncompte/pfe2/deploiement/sauvegarde_base.sh >/dev/null 2>&1` |
+| Chaque dimanche à 3 h | `cd /home/moncompte/pfe2 && /home/moncompte/virtualenv/pfe2/3.11/bin/python manage.py clearsessions` |
 
 Les sauvegardes (base et photos) vont dans `~/sauvegardes_geped`, hors du dossier public. Les 30 dernières sont gardées. o2switch fait aussi ses propres sauvegardes (cPanel → **JetBackup**).
 
@@ -146,7 +158,7 @@ Les sauvegardes (base et photos) vont dans `~/sauvegardes_geped`, hors du dossie
 Sur le PC : `git push` (ou demandez-le à Claude). Ensuite, dans le Terminal du serveur :
 
 ```bash
-source /home/moncompte/virtualenv/repositories/GEPED/3.x/bin/activate && cd /home/moncompte/repositories/GEPED
+source /home/moncompte/virtualenv/pfe2/3.11/bin/activate && cd /home/moncompte/pfe2
 bash deploiement/mise_a_jour.sh
 ```
 
@@ -167,7 +179,7 @@ Le script enchaîne :
 | « Bad Request (400) » | le domaine manque dans `GPED_ALLOWED_HOSTS` |
 | « Forbidden : CSRF » à la connexion | `GPED_URL_PUBLIQUE` doit être exactement l'adresse du site, en `https://` |
 | Site sans mise en forme (CSS absent) | lancer `python manage.py collectstatic --noinput`, puis **Restart** ; ne pas modifier `settings.py` |
-| Photos absentes | elles doivent être dans `media/` du dossier du projet (`/home/moncompte/repositories/GEPED/media/…`) |
+| Photos absentes | elles doivent être dans `media/` du dossier du projet (`/home/moncompte/pfe2/media/…`) |
 | `settings.py` modifié par erreur sur le serveur | `git checkout -- config/settings.py` (tous les réglages du serveur vont dans `.env`) |
 | E-mails non envoyés | `python manage.py gped_test_email votre.adresse@exemple.com` : teste le serveur, le certificat, les identifiants et l'envoi, et dit quoi corriger |
 | « Hostname mismatch » / certificat refusé | `GPED_EMAIL_HOST=varan.o2switch.net` (nom du serveur o2switch), puis **Restart** |
