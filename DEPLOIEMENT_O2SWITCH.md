@@ -1,7 +1,7 @@
 # Héberger gePed chez o2switch
 
 Guide pas à pas pour mettre gePed en ligne sur un hébergement **o2switch** (cPanel), puis le mettre à jour.
-Exemples avec le domaine `geped.gbelya-tech.com` et l'identifiant cPanel `moncompte` : remplacez-les par les vôtres.
+Exemples avec le domaine `geped-ist.org` et l'identifiant cPanel `moncompte` : remplacez-les par les vôtres.
 
 ## Ce que gePed utilise chez o2switch
 
@@ -21,8 +21,8 @@ Tous les réglages se font dans un fichier **`.env`** sur le serveur (modèle : 
 
 ## 1. Préparer le domaine et le HTTPS
 
-1. cPanel → **Domaines** : créez le sous-domaine `geped.gbelya-tech.com`. Notez son **dossier racine**, par exemple `/home/moncompte/geped.gbelya-tech.com`. C'est le dossier public, servi par Apache.
-2. cPanel → **SSL/TLS Status** : lancez **AutoSSL** pour ce domaine, et attendez que le cadenas soit vert.
+1. cPanel → **Domaines** : vérifiez que `geped-ist.org` est bien rattaché au compte. Son DNS doit pointer vers le serveur du compte (ici `foudre.o2switch.net`). Le dossier public du domaine n'a pas à être modifié : c'est Setup Python App qui relie le domaine à gePed.
+2. cPanel → **SSL/TLS Status** : lancez **AutoSSL** pour `geped-ist.org` **et** `www.geped-ist.org`, et attendez que le cadenas soit vert.
 
 ## 2. Créer la base MySQL
 
@@ -39,13 +39,13 @@ Tous les réglages se font dans un fichier **`.env`** sur le serveur (modèle : 
 
 ## 3. Créer la boîte e-mail d'envoi
 
-1. cPanel → **Comptes de messagerie** : créez `no-reply@gbelya-tech.com`.
+1. cPanel → **Comptes de messagerie** : créez `no-reply@geped-ist.org`.
 2. Ouvrez **Connecter des appareils** pour cette boîte, et notez :
-   - le **serveur SMTP** : prenez le **nom du serveur o2switch** indiqué dans les « paramètres SSL/TLS sécurisés », par exemple `varan.o2switch.net` (il dépend du serveur où est votre compte). N'utilisez pas `mail.gbelya-tech.com` : son certificat SSL n'est pas valable pour ce nom, et gePed refuse alors la connexion (« Hostname mismatch ») ;
+   - le **serveur SMTP** : prenez le **nom du serveur o2switch** indiqué dans les « paramètres SSL/TLS sécurisés », par exemple `foudre.o2switch.net` (il dépend du serveur où est votre compte). N'utilisez pas `mail.geped-ist.org` : son certificat SSL n'est pas valable pour ce nom, et gePed refuse alors la connexion (« Hostname mismatch ») ;
    - le **port 465 (SSL)** ;
    - l'identifiant (l'adresse complète) et le mot de passe.
 3. cPanel → **Délivrabilité des e-mails** : vérifiez que **SPF** et **DKIM** sont « valides ». Corrigez-les si besoin : c'est ce qui évite que les invitations arrivent dans les indésirables.
-4. Si le domaine `gbelya-tech.com` est géré ailleurs (DNS chez un autre fournisseur), ajoutez-y les enregistrements SPF et DKIM proposés par cPanel.
+4. Si le domaine `geped-ist.org` est géré ailleurs (DNS chez un autre fournisseur), ajoutez-y les enregistrements SPF et DKIM proposés par cPanel.
 
 ## 4. Créer l'application Python
 
@@ -57,7 +57,7 @@ cPanel → **Setup Python App** → **Create Application** :
 |---|---|
 | Python version | **3.11** (3.10 au minimum) |
 | Application root | `pfe2` |
-| Application URL | `geped.gbelya-tech.com` |
+| Application URL | `geped-ist.org` |
 | Application startup file | `passenger_wsgi.py` |
 | Application Entry point | `application` |
 
@@ -134,14 +134,14 @@ Les images du cadre des attestations et l'en-tête des relevés sont déjà dans
 
 ## 8. Démarrer et vérifier
 
-1. **Setup Python App** → **Restart**, puis ouvrez `https://geped.gbelya-tech.com`.
+1. **Setup Python App** → **Restart**, puis ouvrez `https://geped-ist.org`.
 2. Connectez-vous avec un compte super utilisateur existant (repris de la base importée), ou créez-en un : `python manage.py createsuperuser`.
 3. Testez l'envoi d'e-mails :
    ```bash
    python manage.py gped_test_email votre.adresse@exemple.com
    ```
 4. Menu **Personnel** : créez un compte de test. Vérifiez que l'invitation arrive, que le lien s'ouvre en `https://…` et que l'activation connecte bien l'utilisateur.
-5. Imprimez une attestation et un relevé : le **QR code** doit ouvrir la page de vérification sur `https://geped.gbelya-tech.com/…`.
+5. Imprimez une attestation et un relevé : le **QR code** doit ouvrir la page de vérification sur `https://geped-ist.org/…`.
 6. Une fois que tout fonctionne en HTTPS, passez `GPED_HSTS_SECONDES=31536000` dans `.env`, puis redémarrez.
 
 ## 9. Tâches automatiques (cPanel → Tâches Cron)
@@ -182,7 +182,7 @@ Le script enchaîne :
 | Photos absentes | elles doivent être dans `media/` du dossier du projet (`/home/moncompte/pfe2/media/…`) |
 | `settings.py` modifié par erreur sur le serveur | `git checkout -- config/settings.py` (tous les réglages du serveur vont dans `.env`) |
 | E-mails non envoyés | `python manage.py gped_test_email votre.adresse@exemple.com` : teste le serveur, le certificat, les identifiants et l'envoi, et dit quoi corriger |
-| « Hostname mismatch » / certificat refusé | `GPED_EMAIL_HOST=varan.o2switch.net` (nom du serveur o2switch), puis **Restart** |
+| « Hostname mismatch » / certificat refusé | `GPED_EMAIL_HOST=foudre.o2switch.net` (nom du serveur o2switch), puis **Restart** |
 | E-mails envoyés mais non reçus | dossier des indésirables ; SPF et DKIM dans « Délivrabilité des e-mails » ; « Suivi de la livraison » dans cPanel |
 | L'application ne redémarre pas | Setup Python App → **Restart**, ou `touch tmp/restart.txt` |
 
