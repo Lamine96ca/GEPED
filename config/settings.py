@@ -202,14 +202,15 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
+# CSS, JS et images : rassemblés par « collectstatic » dans staticfiles/ et servis par WhiteNoise.
+# Photos des étudiants (media/) : servies par gePed aux SEULS utilisateurs connectés (pfe/views.py,
+# media_protege). Les deux dossiers sont dans le projet : rien à configurer chez l'hébergeur.
 STATIC_URL = '/static/'
+STATIC_ROOT = BASE_DIR / "staticfiles"
+
 MEDIA_URL = '/media/'
-# Fichiers statiques (CSS, JS, images) : rassemblés par « collectstatic » dans staticfiles/ et servis par
-# WhiteNoise (compressés, mis en cache). Photos des étudiants (media/) : servies par gePed aux SEULS
-# utilisateurs connectés (pfe/views.py, media_protege). Les deux dossiers restent dans le projet,
-# hors du dossier public du domaine : rien à configurer côté Apache.
-STATIC_ROOT = Path(os.environ.get('GPED_STATIC_ROOT') or BASE_DIR / 'staticfiles')
-MEDIA_ROOT = Path(os.environ.get('GPED_MEDIA_ROOT') or BASE_DIR / 'media')
+MEDIA_ROOT = BASE_DIR / "media"
+
 STORAGES = {
     'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
     'staticfiles': {'BACKEND': 'whitenoise.storage.CompressedStaticFilesStorage'},
