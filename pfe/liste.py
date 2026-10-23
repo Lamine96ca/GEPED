@@ -105,10 +105,8 @@ def filtrer(profil, params):
     """
     qs = inscriptions_visibles(profil)
 
+    # Aucune session choisie (ou « toutes ») : toutes les sessions ; sinon, la session choisie
     session_id = _entier(params.get('session'))
-    if session_id is None and params.get('session') != 'toutes':
-        session = session_par_defaut()
-        session_id = session.id if session else None
     if session_id:
         qs = qs.filter(session_id=session_id)
 

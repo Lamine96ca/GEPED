@@ -124,10 +124,8 @@ def _options_filtres(profil):
 
 def _page_liste(request, mode):
     profil = get_profil(request)
-    session = liste.session_par_defaut()
     return render(request, 'pfe/etudiants_liste.html', {
         **_options_filtres(profil),
-        'session_defaut': session.id if session else '',
         'tailles_page': TAILLES_PAGE,
         'mode': mode,
         'peut_inscrire': mode == 'preinscriptions' and profil.est_scolarite,

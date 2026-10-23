@@ -131,7 +131,7 @@
     majSelection();
     // Met en évidence les filtres utilisés
     for (const el of form.elements) {
-      if (el.tagName === 'SELECT' && el.name !== 'session') el.classList.toggle('filtre-actif', !!el.value);
+      if (el.tagName === 'SELECT') el.classList.toggle('filtre-actif', !!el.value);
     }
     etat.page = d.page;
     afficherPagination(d.page, d.pages);
@@ -211,8 +211,7 @@
   document.getElementById('reinitialiser').addEventListener('click', () => {
     for (const el of form.elements) {
       if (el.hasAttribute('data-fixe')) continue;
-      if (el.name === 'session') el.selectedIndex = 0;
-      else if (el.name) el.value = '';
+      if (el.name) el.value = '';                 // session comprise : « Toutes les sessions »
     }
     rechargerDepuisPage1();
   });

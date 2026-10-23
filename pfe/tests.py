@@ -759,6 +759,17 @@ class GpedTests(TestCase):
         self.assertIn(';Master;', contenu)
         r = self.client.get(reverse('etudiants_export'), {'format': 'csv'})
         self.assertNotIn('M1;', b''.join(r.streaming_content).decode('utf-8-sig'))
+        # Session : aucune par défaut (toutes) ; dès qu'une session est choisie, la liste s'y limite
+        Inscription.objects.create(etudiant=Etudiant.objects.get(matricule='M0'), session=self.s2425,
+                                   licence=self.l2, filiere=self.info)
+        self.assertEqual(self.donnees()['total'], 3)
+        self.assertEqual(self.donnees(session=self.session.pk)['total'], 2)
+        self.assertEqual(self.donnees(session=self.s2425.pk)['total'], 1)
+        self.assertEqual(self.donnees(session='toutes')['total'], 3)          # ancien lien
+        html = self.client.get(reverse('etudiants_liste')).content.decode()
+        filtre_session = html.split('name="session"', 1)[1].split('</select>', 1)[0]
+        self.assertNotIn('selected', filtre_session)
+        self.assertIn('<option value="">Toutes les sessions</option>', filtre_session)
 
     def test_mon_compte_coordonnees_seulement(self):
         self.connecter('info')

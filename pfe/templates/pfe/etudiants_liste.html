@@ -44,8 +44,8 @@
       </div>
       <div class="col-6 col-md-3 col-lg-2">
         <select name="session" class="form-select form-select-sm" title="Session">
-          {% for s in sessions %}<option value="{{ s.id }}" {% if s.id == session_defaut %}selected{% endif %}>{{ s.annee }}{% if s.en_cours %} (en cours){% endif %}</option>{% endfor %}
-          <option value="toutes">Toutes les sessions</option>
+          <option value="">Toutes les sessions</option>
+          {% for s in sessions %}<option value="{{ s.id }}">{{ s.annee }}{% if s.en_cours %} (en cours){% endif %}</option>{% endfor %}
         </select>
       </div>
       <div class="col-6 col-md-3 col-lg-2">
