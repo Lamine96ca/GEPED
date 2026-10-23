@@ -751,9 +751,14 @@ class GpedTests(TestCase):
         self.assertEqual(self.donnees(cycle='Master')['total'], 1)
         self.assertEqual(self.donnees(statut='preinscrit')['total'], 1)
         self.assertEqual(self.donnees(statut='inscrit')['total'], 2)
+        # Liste des étudiants : jamais les préinscrits (ils ont leur page), export compris
+        self.assertEqual(self.donnees()['total'], 2)
+        self.assertEqual(self.donnees(statut='redoublant')['total'] + self.donnees(statut='passant')['total'], 2)
         r = self.client.get(reverse('etudiants_export'), {'format': 'csv', 'cycle': 'Master'})
         contenu = b''.join(r.streaming_content).decode('utf-8-sig')
         self.assertIn(';Master;', contenu)
+        r = self.client.get(reverse('etudiants_export'), {'format': 'csv'})
+        self.assertNotIn('M1;', b''.join(r.streaming_content).decode('utf-8-sig'))
 
     def test_mon_compte_coordonnees_seulement(self):
         self.connecter('info')

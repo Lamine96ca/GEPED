@@ -127,6 +127,9 @@ def filtrer(profil, params):
     statut = params.get('statut')
     if statut in STATUTS:
         qs = qs.filter(**STATUTS[statut])
+    # Liste des étudiants (et son export) : inscrits seulement ; les préinscrits ont leur page « Préinscriptions »
+    if statut != 'preinscrit' and params.get('preinscrit') != '1':
+        qs = qs.filter(etudiant__preinscrit=False)
     if params.get('cycle') in CYCLE_LIBELLES:
         qs = qs.filter(cycle=params['cycle'])
 
