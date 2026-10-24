@@ -9,7 +9,6 @@ Les positions reprennent le modèle « ATTESTATION INSCRIPTION.pdf » de l'IST d
 (coordonnées en points, mesurées depuis le HAUT de la page puis converties).
 """
 import io
-import re
 import unicodedata
 from functools import lru_cache
 
@@ -251,17 +250,9 @@ def titre_inscription(licence):
     return "ATTESTATION D'INSCRIPTION" if est_premiere_annee(licence) else "ATTESTATION DE REINSCRIPTION"
 
 
-def annee_d_etudes(licence):
-    """« LICENCE 2 » -> « 2ème Année » ; « 1ère Année » reste tel quel."""
-    nom = licence.nom.strip()
-    if 'ANNEE' in _cle(nom):
-        return nom
-    chiffre = re.search(r'\d+', nom)
-    if not chiffre:
-        return nom
-    n = int(chiffre.group())
-    rang = '1ère' if n == 1 else f'{n}ème'
-    return f"{rang} Année de Master" if _cle(nom).startswith('M') else f"{rang} Année"
+def niveau_reel(licence):
+    """Niveau tel qu'il est enregistré : « LICENCE 4 », « 1ère Année », « M1 »… (jamais converti)."""
+    return ' '.join((licence.nom or '').split())
 
 
 def _semestres(licence):
@@ -285,7 +276,8 @@ def contenu_inscription(attestation):
     """Titre et paragraphes de l'attestation d'inscription / de réinscription."""
     e, lic = attestation.etudiant, attestation.licence
     semestres = _semestres(lic)
-    niveau = f"aux <b>{semestres}</b> ({annee_d_etudes(lic)})" if semestres else f"en <b>{annee_d_etudes(lic)}</b>"
+    niveau = (f"aux <b>{semestres}</b> ({_echap(niveau_reel(lic))})" if semestres
+              else f"en <b>{_echap(niveau_reel(lic))}</b>")
     programme = (f" du Département <b>{_echap(_nom_programme(attestation.filiere))}</b>"
                  if attestation.filiere else '')
     texte = (
@@ -327,8 +319,8 @@ def contenu_niveau(attestation):
     """Cours suivis (semestres de la licence) dans une année universitaire."""
     e, lic = attestation.etudiant, attestation.licence
     semestres = _semestres(lic)
-    suivi = (f"des {semestres.replace('Semestres ', 'Semestres <b>').replace('Semestre ', 'Semestre <b>')}</b>"
-             if semestres else f"de la <b>{annee_d_etudes(lic)}</b>")
+    suivi = (f"des {semestres.replace('Semestres ', 'Semestres <b>').replace('Semestre ', 'Semestre <b>')}</b> "
+             f"({_echap(niveau_reel(lic))})" if semestres else f"de la <b>{_echap(niveau_reel(lic))}</b>")
     departement = (f", du Département : <b>{_echap(_nom_programme(attestation.filiere))}</b> "
                    f"de {_echap(_conf('etablissement'))}" if attestation.filiere else '')
     texte = (
@@ -522,7 +514,7 @@ def infos_publiques(attestation):
     else:
         if attestation.licence:
             semestres = _semestres(attestation.licence)
-            niveau = annee_d_etudes(attestation.licence)
+            niveau = niveau_reel(attestation.licence)
             infos.append(('Niveau', f"{semestres} ({niveau})" if semestres else niveau))
         if attestation.filiere:
             infos.append(('Département', _nom_programme(attestation.filiere)))

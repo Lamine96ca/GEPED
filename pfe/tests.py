@@ -175,9 +175,13 @@ class GpedTests(TestCase):
         # Contenu : semestres et année, programme, session
         titre, (texte, _) = contenu_inscription(a1)
         self.assertEqual(titre, 'ATTESTATION DE REINSCRIPTION')
-        for attendu in ('<b>Semestres S3 et S4</b> (2ème Année)', 'Matricule : <b>M0</b>',
+        for attendu in ('<b>Semestres S3 et S4</b> (Licence 2)', 'Matricule : <b>M0</b>',
                         'Département <b>Informatique</b>', '<b>2024-2025</b>'):
             self.assertIn(attendu, texte)
+        # Niveau réel, tel qu'enregistré (jamais converti en « 4ème Année »)
+        from .attestations import niveau_reel
+        self.assertEqual(niveau_reel(Licence(nom='LICENCE 4')), 'LICENCE 4')
+        self.assertEqual(niveau_reel(Licence(nom=' 1ère  Année ')), '1ère Année')
 
         # Réservé à la scolarité ; liste et recherche
         r = self.client.get(reverse('attestations'), {'etudiant': 'M0'})
@@ -245,7 +249,7 @@ class GpedTests(TestCase):
         titre, (texte, _) = contenu_niveau(a)
         self.assertEqual(titre, 'ATTESTATION DE NIVEAU')
         for attendu in ('Je soussigné, atteste', '<b>P N0</b>', 'Matricule : <b>M0</b>', 'Département : <b>Informatique</b>',
-                        'cours théoriques et pratiques des Semestres <b>S3 et S4</b>', '<b>2024-2025</b>'):
+                        'cours théoriques et pratiques des Semestres <b>S3 et S4</b> (Licence 2)', '<b>2024-2025</b>'):
             self.assertIn(attendu, texte)
         self.assertEqual(self.client.get(reverse('attestation_pdf', args=[a.pk])).content[:4], b'%PDF')
 
@@ -254,7 +258,7 @@ class GpedTests(TestCase):
         self.client.logout()
         r = self.client.get(reverse('verifier_document', args=[a.code_verification]))
         self.assertContains(r, 'ATTESTATION DE NIVEAU')
-        self.assertContains(r, 'Semestres S3 et S4 (2ème Année)')
+        self.assertContains(r, 'Semestres S3 et S4 (Licence 2)')
 
     def test_attestation_fin_etudes_avec_cycle(self):
         from pfe.attestations import contenu_fin_etudes, placer_texte, titre_document
