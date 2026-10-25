@@ -19,7 +19,7 @@ from reportlab.lib.utils import ImageReader
 from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.pdfgen.canvas import Canvas
 
-from .attestations import _image, _nom_programme, signature_disponible
+from .attestations import _image, _nom_departement, _nom_programme, signature_disponible
 from .entete import dessiner_entete
 
 LARGEUR, HAUTEUR = A4
@@ -82,7 +82,7 @@ def _entete(c, releve, contenu, url_verification):
     lignes = [('Prénoms et Nom :', f"{e.prenom.upper()} {e.nom.upper()}"), ('Matricule :', e.matricule or '—')]
     if e.ine:
         lignes.append(('INE :', e.ine))
-    lignes += [('Département :', programme), ('Programme :', programme)]
+    lignes += [('Département :', _nom_departement(releve.filiere)), ('Programme :', programme)]
     if contenu.get('session'):
         lignes.append(('Année universitaire :', contenu['session']))
     y -= 26 if compact else 30

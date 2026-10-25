@@ -8,9 +8,20 @@ admin.site.site_title = "gePed"
 
 @admin.register(Service)
 class ServiceAdmin(admin.ModelAdmin):
-    list_display = ('nom', 'code', 'programme')
-    list_filter = ('programme',)
+    list_display = ('nom', 'code', 'programme', 'departement')
+    list_filter = ('programme', ('departement', admin.RelatedOnlyFieldListFilter))
     search_fields = ('nom', 'code')
+    ordering = ('-programme', 'nom')
+    autocomplete_fields = ('departement',)
+    list_select_related = ('departement',)
+
+    def get_form(self, request, obj=None, **kwargs):
+        form = super().get_form(request, obj, **kwargs)
+        champ = form.base_fields.get('departement')
+        if champ:
+            champ.help_text = ("Département du programme : un autre service, ou le programme lui-même s'il est aussi "
+                               "département (ex. Génie Informatique). Vide : le programme sert de département.")
+        return form
 
 
 @admin.register(Personnel)

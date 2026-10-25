@@ -65,7 +65,7 @@
           <li><strong>Matricule :</strong> les inscrits ont déjà le leur, il est importé tel quel. Pour une <strong>préinscription</strong>, laissez <code>matricule</code> vide : il est <strong>généré</strong> = 2 derniers chiffres de la session + code du programme + compteur (4 chiffres) + code de la 1<sup>re</sup> lettre du prénom. Un préinscrit est reconnu par son <code>ine</code>, sinon son e-mail, sinon nom, prénom et date de naissance, pour ne pas être créé deux fois.</li>
           <li>Le <code>programme</code> (nom ou code), la <code>promotion</code> (ex. P20), la <code>session</code> (ex. 2025 - 2026) et la <code>licence</code> (ex. LICENCE 4 ou L4) doivent <strong>exister</strong> dans gePed, sinon la ligne est rejetée.</li>
           <li><strong>Doublons :</strong> une inscription qui existe déjà (même étudiant, session et licence), dans gePed ou plus haut dans le fichier, est <strong>ignorée</strong> et l'import <strong>continue</strong> avec les autres lignes. La <strong>simulation</strong> affiche la liste des doublons ; à l'import réel (« Lancer l'import »), ils sont simplement ignorés.</li>
-          <li>Un matricule inconnu crée l'étudiant ; un étudiant déjà enregistré <strong>n'est pas modifié</strong>.</li>
+          <li>Un matricule inconnu crée l'étudiant ; un étudiant déjà enregistré <strong>n'est pas modifié</strong>. <strong>Préinscription :</strong> un <code>ine</code> déjà enregistré met la fiche de l'étudiant <strong>à jour</strong> (cases remplies du fichier), sans toucher à son <strong>matricule</strong> ni à son statut.</li>
           <li><code>cycle</code> (facultatif) : DUT, Tronc commun, Licence, Ingénieur, Master ou Doctorat. Sinon, le cycle du formulaire s'applique.</li>
           <li class="pb-0">Sans e-mail, l'adresse <code>matricule@etudiant.gped</code> est générée. Dates au format JJ/MM/AAAA.</li>
         </ol>
@@ -105,7 +105,11 @@
             </div>
           </div>
           {% if rapport.etudiants_existants %}
+            {% if rapport.preinscription %}
+            <p class="small text-secondary mb-2"><i class="bi bi-person-check"></i> {{ rapport.etudiants_existants|intcomma }} étudiant{{ rapport.etudiants_existants|pluralize }} déjà enregistré{{ rapport.etudiants_existants|pluralize }} : {{ rapport.etudiants_mis_a_jour|intcomma }} fiche{{ rapport.etudiants_mis_a_jour|pluralize }} mise{{ rapport.etudiants_mis_a_jour|pluralize }} à jour d'après l'INE{% if rapport.simulation %} (simulation){% endif %}, matricule et statut conservés.</p>
+            {% else %}
             <p class="small text-secondary mb-2"><i class="bi bi-person-check"></i> {{ rapport.etudiants_existants|intcomma }} étudiant{{ rapport.etudiants_existants|pluralize }} déjà enregistré{{ rapport.etudiants_existants|pluralize }} : leur fiche n'est pas modifiée.</p>
+            {% endif %}
           {% endif %}
           {% if rapport.matricules_generes %}
             <details class="mb-3" open>

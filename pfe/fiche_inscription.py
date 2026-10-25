@@ -127,11 +127,12 @@ def pdf_fiche_inscription(inscription):
     tel = ' / '.join(x for x in (f"Tél étudiant : {e.telephone}" if e.telephone else '',
                                  f"Tél parent : {e.contact_de_tuteur}" if e.contact_de_tuteur else '') if x)
     programme = inscription.filiere.nom if inscription.filiere else ''
+    departement = inscription.filiere.departement_effectif.nom if inscription.filiere else ''
     niveau = inscription.licence.nom + (f" · {inscription.semestre.nom}" if inscription.semestre else '')
     y = bas - 82
     pas = 24
     lignes = [
-        [('Département :', programme, D)],
+        [('Département :', departement, D)],
         [('PROGRAMME :', programme, D)],
         [('Année :', inscription.session.annee, milieu - 12), ('Niveau :', niveau, D)],
         [('Matricule :', e.matricule, milieu - 12), ('Promotion :', inscription.promotion or '', D)],

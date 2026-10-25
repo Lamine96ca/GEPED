@@ -539,6 +539,33 @@ class GpedTests(TestCase):
         self.assertEqual((r.etudiants_crees, r.inscriptions_creees, r.matricules_generes), (0, 1, []))
         self.assertEqual(Etudiant.objects.filter(nom='DIALLO').count(), 1)
         self.assertEqual(awa.etudiant_inscription.count(), 2)
+        awa.refresh_from_db()
+        self.assertEqual(awa.email, 'autre@t.local')                       # fiche mise à jour
+
+    def test_import_preinscription_ine_connu_met_a_jour_sans_toucher_au_matricule(self):
+        # Étudiant déjà inscrit (matricule M0), fiche en partie remplie ; son INE revient en préinscription
+        Etudiant.objects.filter(matricule='M0').update(ine='INE000', telephone='600', adresse='Mamou', preinscrit=False)
+        Etudiant.objects.create(matricule='X9', prenom='Autre', nom='ETU', email='pris@t.local')
+        entete = 'matricule;prenom;nom;ine;email;telephone;adresse;ville;programme;promotion;session;licence\n'
+        # Autre matricule dans le fichier, même INE ; adresse vide ; e-mail d'un autre étudiant
+        csv = entete + 'NOUVEAU1;P;N0;ine000;pris@t.local;622 00 00 00;;Labé;Informatique;P20;2024-2025;Licence 2\n'
+        r = importer_etudiants(SimpleUploadedFile('p.csv', csv.encode('utf-8')), preinscription=True)
+        self.assertEqual((r.etudiants_crees, r.etudiants_existants, r.etudiants_mis_a_jour, r.inscriptions_creees),
+                         (0, 1, 1, 1))
+        self.assertFalse(Etudiant.objects.filter(matricule='NOUVEAU1').exists())
+        e = Etudiant.objects.get(ine='INE000')
+        self.assertEqual((e.matricule, e.telephone, e.ville, e.adresse, e.email, e.preinscrit),
+                         ('M0', '622 00 00 00', 'Labé', 'Mamou', 'e0@t.local', False))   # statut inchangé
+        self.assertEqual(e.etudiant_inscription.count(), 2)
+        # Simulation : rien n'est modifié
+        csv = entete + ';P;N0;INE000;;699;;;Informatique;P20;2023-2024;Licence 1\n'
+        r = importer_etudiants(SimpleUploadedFile('p.csv', csv.encode('utf-8')), simulation=True, preinscription=True)
+        self.assertEqual(r.etudiants_mis_a_jour, 1)
+        self.assertEqual(Etudiant.objects.get(matricule='M0').telephone, '622 00 00 00')
+        # Import « inscription » : l'INE ne sert pas, la fiche n'est pas modifiée (comportement inchangé)
+        csv = entete + 'M0;P;N0;INE000;;611;;;Informatique;P20;2023-2024;Licence 1\n'
+        importer_etudiants(SimpleUploadedFile('p.csv', csv.encode('utf-8')))
+        self.assertEqual(Etudiant.objects.get(matricule='M0').telephone, '622 00 00 00')
 
     def test_import_colonnes_obligatoires(self):
         csv = 'matricule;prenom;nom;promotion\nC1;Ana;BAH;P20\n'.encode('utf-8')
@@ -1600,6 +1627,46 @@ class GpedTests(TestCase):
         # Aide à la saisie : dernière inscription de l'étudiant
         d = self.client.get(reverse('soutenance_etudiant'), {'matricule': 'M1'}).json()
         self.assertEqual((d['trouve'], d['programme'], d['session']), (True, self.info.pk, self.session.pk))
+
+    def test_departement_du_programme(self):
+        """Champ `departement` du Service : département d'un programme, sinon le programme lui-même."""
+        from .attestation_soutenance import _paragraphe
+        from .attestations import _nom_departement, contenu_inscription
+        from .fiche_inscription import pdf_fiche_inscription
+        from .models import Attestation
+        # Informatique : département ET programme ; Systèmes embarqués : programme du département Informatique
+        Service.objects.filter(pk=self.info.pk).update(departement=self.info)
+        se = Service.objects.create(nom='Systèmes embarqués', code='SE', programme=True, departement_id=self.info.pk)
+        self.info.refresh_from_db()
+        self.assertEqual((_nom_departement(self.info), _nom_departement(se), _nom_departement(self.gc)),
+                         ('Informatique', 'Informatique', 'Génie Civil'))       # Génie civil : pas de département
+        self.assertEqual([p.nom for p in self.info.programmes_rattaches.order_by('nom')],
+                         ['Informatique', 'Systèmes embarqués'])
+        # Fiche d'inscription : « Département : » = le département du programme
+        insc = Inscription.objects.get(etudiant__matricule='M0')
+        Inscription.objects.filter(pk=insc.pk).update(filiere=se)
+        insc.refresh_from_db()
+        from . import fiche_inscription
+        lus = []
+        original = fiche_inscription._champ
+        fiche_inscription._champ = lambda c, x, y, libelle, valeur, fin: (lus.append((libelle, valeur)),
+                                                                          original(c, x, y, libelle, valeur, fin))
+        try:
+            pdf_fiche_inscription(insc)
+        finally:
+            fiche_inscription._champ = original
+        self.assertIn(('Département :', 'Informatique'), lus)
+        self.assertIn(('PROGRAMME :', 'Systèmes embarqués'), lus)
+        # Attestation de soutenance : département, puis le programme s'il est différent
+        a = Attestation(type=Attestation.SOUTENANCE, etudiant=insc.etudiant, filiere=se, session=self.session)
+        texte = _paragraphe(insc.etudiant, None, a)
+        self.assertIn('du département <b>Informatique</b>, programme <b>Systèmes Embarqués</b>', texte)
+        a.filiere = self.info
+        self.assertNotIn('programme <b>', _paragraphe(insc.etudiant, None, a))
+        # Attestation d'inscription : le programme seulement (pas le département)
+        a = Attestation(type=Attestation.INSCRIPTION, etudiant=insc.etudiant, filiere=se, session=self.session,
+                        licence=self.licence)
+        self.assertIn('Département <b>Systèmes Embarqués</b>', contenu_inscription(a)[1][0])
 
     def test_attestation_de_soutenance(self):
         import datetime

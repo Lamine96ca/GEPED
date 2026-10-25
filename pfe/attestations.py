@@ -268,6 +268,11 @@ def _nom_programme(filiere):
     return (filiere.description or '').strip() or filiere.nom.title()
 
 
+def _nom_departement(filiere):
+    """Département du programme (champ `departement` du Service) ; à défaut, le programme lui-même."""
+    return _nom_programme(filiere.departement_effectif)
+
+
 def _echap(v):
     return str(v).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
 
@@ -502,7 +507,8 @@ def infos_publiques(attestation):
         from .notes import mention
         s = soutenance_de(attestation)
         if attestation.filiere:
-            infos.append(('Département', _nom_programme(attestation.filiere)))
+            infos.append(('Département', _nom_departement(attestation.filiere)))      # imprimé sur l'attestation
+            infos.append(('Programme', _nom_programme(attestation.filiere)))
         if attestation.cycle:
             infos.append(('Cycle', libelle_cycle(attestation.cycle, 'texte') or attestation.cycle))
         if attestation.session:

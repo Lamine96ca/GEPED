@@ -14,7 +14,9 @@ les lignes telles quelles, sans rien déduire. Il vérifie seulement :
 Un étudiant peut donc apparaître sur plusieurs lignes (une par année). Un matricule inconnu
 crée l'étudiant (avec les informations de sa première ligne) ; un étudiant déjà en base
 n'est pas modifié (seul son statut préinscrit est retiré si l'import n'est pas une
-préinscription). Tout passe par bulk_create.
+préinscription). Exception : en PRÉINSCRIPTION, un étudiant retrouvé par son INE voit sa
+fiche mise à jour avec sa première ligne (valeurs renseignées seulement), sans que son
+MATRICULE ni son statut ne changent. Tout passe par bulk_create / bulk_update.
 
 Matricules : les INSCRITS ont déjà le leur, importé tel quel (colonne obligatoire). Pour une
 PRÉINSCRIPTION, le matricule n'est pas demandé : il est généré à partir de la session, du
@@ -238,6 +240,7 @@ class RapportImport:
         self.lignes = 0
         self.etudiants_crees = 0
         self.etudiants_existants = 0
+        self.etudiants_mis_a_jour = 0   # préinscription : fiches retrouvées par l'INE, mises à jour (matricule conservé)
         self.inscriptions_creees = 0
         self.erreurs = []           # [(numéro de ligne, message)] : lignes rejetées
         self.doublons = []          # [(numéro de ligne, message)] : inscriptions déjà présentes, ignorées
@@ -351,6 +354,45 @@ def _cle_etudiant(data):
     return None
 
 
+# Préinscription d'un étudiant déjà en base (même INE) : sa fiche est mise à jour, son matricule jamais
+CHAMPS_NON_MIS_A_JOUR = {'matricule'}
+
+
+def _mettre_a_jour_existants(valides, existants):
+    """
+    Met à jour la fiche des étudiants déjà en base avec leur PREMIÈRE ligne du fichier :
+    seules les valeurs renseignées sont reprises (une case vide n'efface rien), le matricule
+    n'est jamais modifié et l'e-mail seulement s'il n'est pas déjà celui d'un autre étudiant.
+    Le statut (inscrit / préinscrit) ne change pas. Renvoie le nombre de fiches modifiées.
+    """
+    premieres = {}                      # pk -> (étudiant, données de sa première ligne)
+    for _, data, _, k in valides:
+        if k in existants:
+            premieres.setdefault(existants[k].pk, (existants[k], data))
+    emails = list({d['email'] for _, d in premieres.values() if d.get('email')})
+    proprietaires = {}                  # e-mail -> pk de l'étudiant qui l'utilise
+    for i in range(0, len(emails), 500):
+        for pk, email in Etudiant.objects.filter(email__in=emails[i:i + 500]).values_list('pk', 'email'):
+            proprietaires[email.lower()] = pk
+    modifies, champs_modifies = [], set()
+    for e, data in premieres.values():
+        champs = []
+        for champ, valeur in data.items():
+            if champ in CHAMPS_NON_MIS_A_JOUR or valeur in (None, ''):
+                continue
+            if champ == 'email' and proprietaires.setdefault(valeur, e.pk) != e.pk:
+                continue                # e-mail déjà pris par un autre étudiant : on garde l'ancien
+            if getattr(e, champ) != valeur:
+                setattr(e, champ, valeur)
+                champs.append(champ)
+        if champs:
+            modifies.append(e)
+            champs_modifies.update(champs)
+    if modifies:
+        Etudiant.objects.bulk_update(modifies, sorted(champs_modifies), batch_size=500)
+    return len(modifies)
+
+
 def importer_etudiants(fichier, simulation=False, cycle=None, preinscription=False):
     """
     Une ligne du fichier = une inscription (matricule, session, licence, programme, promotion).
@@ -430,27 +472,41 @@ def importer_etudiants(fichier, simulation=False, cycle=None, preinscription=Fal
 
     # 2) Écriture en base ---------------------------------------------------
     with transaction.atomic():
-        # Étudiants déjà en base, retrouvés par la même clé que dans le fichier
-        cles = {k for _, _, _, k in valides}
+        # Étudiants déjà en base, retrouvés par la même clé que dans le fichier. Préinscription :
+        # l'INE passe en premier (un INE connu = cet étudiant, même si le fichier donne un matricule)
+        candidats = {}                 # clé de la ligne -> identifiants à essayer, dans l'ordre
+        for _, data, _, k in valides:
+            if k not in candidats:
+                ine = ('ine', data['ine']) if preinscription and data.get('ine') else None
+                candidats[k] = [ine, k] if ine and ine != k else [k]
+        cles = {c for liste_cles in candidats.values() for c in liste_cles}
         matricules = [k[1] for k in cles if k[0] == 'matricule']
         ines = [k[1] for k in cles if k[0] == 'ine']
         emails = [k[1] for k in cles if k[0] == 'email']
         dates = list({k[3] for k in cles if k[0] == 'personne'})
-        existants = {}                 # clé étudiant -> Etudiant
+        trouves = {}                   # identifiant -> Etudiant
         for i in range(0, len(matricules), 500):
             for e in Etudiant.objects.filter(matricule__in=matricules[i:i + 500]):
-                existants[('matricule', e.matricule)] = e
+                trouves[('matricule', e.matricule)] = e
         for i in range(0, len(ines), 500):
             for e in Etudiant.objects.filter(ine__in=ines[i:i + 500]):
-                existants[('ine', e.ine)] = e
+                trouves[('ine', e.ine)] = e
         for i in range(0, len(emails), 500):
             for e in Etudiant.objects.filter(email__in=emails[i:i + 500]):
-                existants[('email', e.email.lower())] = e
+                trouves[('email', e.email.lower())] = e
         for i in range(0, len(dates), 500):
             for e in Etudiant.objects.filter(date_de_naissance__in=dates[i:i + 500]):
                 k = ('personne', cle(e.nom), cle(e.prenom), e.date_de_naissance)
                 if k in cles:
-                    existants[k] = e
+                    trouves[k] = e
+        existants = {}                 # clé étudiant -> Etudiant
+        par_ine = set()                # clés des lignes dont l'étudiant a été retrouvé par son INE
+        for k, liste_cles in candidats.items():
+            c = next((c for c in liste_cles if c in trouves), None)
+            if c is not None:
+                existants[k] = trouves[c]
+                if c[0] == 'ine':
+                    par_ine.add(k)
         rapport.etudiants_existants = len({e.pk for e in existants.values()})
 
         # Nouveaux étudiants : informations de leur première ligne ; matricule généré pour un
@@ -512,12 +568,18 @@ def importer_etudiants(fichier, simulation=False, cycle=None, preinscription=Fal
                                                  f"déjà inscrit(e) dans gePed"))
                 continue
             a_creer.append(Inscription(etudiant_id=etu_id, **insc))
+            deja.add((etu_id, insc['session'].pk, insc['licence'].pk))   # même étudiant sur deux lignes
         Inscription.objects.bulk_create(a_creer, batch_size=500)
         rapport.inscriptions_creees = len(a_creer)
         rapport.erreurs.sort()
         rapport.doublons.sort()
 
-        # Seule modification d'un étudiant existant : import « inscription » = il n'est plus préinscrit
+        # Préinscription : un étudiant retrouvé par son INE voit sa fiche mise à jour, matricule conservé
+        if preinscription and par_ine:
+            rapport.etudiants_mis_a_jour = _mettre_a_jour_existants(
+                valides, {k: e for k, e in existants.items() if k in par_ine})
+
+        # Import « inscription » : seule modification d'un étudiant existant, il n'est plus préinscrit
         if not preinscription and existants:
             pks = [e.pk for e in existants.values() if e.preinscrit]
             Etudiant.objects.filter(pk__in=pks).update(preinscrit=False)

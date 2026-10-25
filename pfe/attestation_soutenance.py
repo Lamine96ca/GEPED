@@ -22,7 +22,8 @@ from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.pdfgen.canvas import Canvas
 from reportlab.platypus import Frame, Paragraph
 
-from .attestations import HAUTEUR, LARGEUR, _image, _nom_programme, _polices_fin_etudes, date_longue, libelle_cycle
+from .attestations import (HAUTEUR, LARGEUR, _image, _nom_departement, _nom_programme, _polices_fin_etudes, date_longue,
+                           libelle_cycle)
 
 NUIT = (0.055, 0.165, 0.278)          # #0e2a47
 OR = (0.769, 0.616, 0.235)            # #c49d3c
@@ -134,12 +135,17 @@ def _paragraphe(e, s, attestation):
     civilite = 'Mme' if madame else 'M.'
     nom = f"{escape(e.prenom.upper())} {escape(e.nom.upper())}"
     ine = f", INE <b>{escape(e.ine)}</b>" if e.ine else ''
-    programme = escape(_nom_programme(attestation.filiere)) if attestation.filiere else ''
+    # Département du programme (champ `departement`) ; le programme est précisé s'il est différent
+    departement, programme = '', ''
+    if attestation.filiere:
+        departement = escape(_nom_departement(attestation.filiere))
+        if attestation.filiere.departement_effectif.pk != attestation.filiere.pk:
+            programme = f", programme <b>{escape(_nom_programme(attestation.filiere))}</b>"
     cycle = libelle_cycle(attestation.cycle, 'texte') or attestation.cycle or ''
     promotion = f", promotion <b>{escape(str(s.promotion))}</b>" if s and s.promotion_id else ''
     date = f" le <b>{date_longue(s.projet.date)}</b>," if s and s.projet and s.projet.date else ''
     return (f"Les soussignés attestent que {civilite} <b>{nom}</b>, matricule <b>{escape(e.matricule or '—')}</b>{ine}, "
-            f"{'étudiante' if madame else 'étudiant'} du département <b>{programme}</b>{promotion}, "
+            f"{'étudiante' if madame else 'étudiant'} du département <b>{departement}</b>{programme}{promotion}, "
             f"a présenté et soutenu avec succès{date} devant le jury, son mémoire de fin de "
             f"{escape(cycle) if cycle else 'cycle'} à l'Institut Supérieur de Technologie de Mamou, au titre de "
             f"l'année universitaire <b>{escape(str(attestation.session or ''))}</b>.")

@@ -23,9 +23,18 @@ class Service(models.Model):
     code = models.CharField(max_length=5,default='0000')
     image = models.ImageField(upload_to="filiere/images", default="filiere/images/default.jpg", verbose_name="Image de la service")
     cycle = models.CharField(max_length=20, choices=CYCLE_CHOICES, verbose_name="Cycle", blank=True, null=True)
+    # Département du programme (un autre Service, ou lui-même : Génie Informatique est à la fois
+    # département et programme). Vide : le programme sert de département.
+    departement = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, db_column='departement',
+                                    related_name='programmes_rattaches', verbose_name="Département")
 
     def __str__(self):
         return self.nom
+
+    @property
+    def departement_effectif(self):
+        """Le département du programme ; à défaut, le programme lui-même."""
+        return self.departement or self
 #PERSONNEL
 class Personnel(models.Model):
     prenom = models.CharField(max_length=100, verbose_name="Prénom")
