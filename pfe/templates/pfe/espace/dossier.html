@@ -15,7 +15,7 @@
       <div class="me-auto" style="min-width:0">
         <div class="small text-secondary">{% if reinscription %}Réinscription{% else %}Inscription{% endif %} · {{ session }}</div>
         <h1 class="h4 mb-1" style="color:var(--encre)">{{ etudiant.prenom }} {{ etudiant.nom }}</h1>
-        <div class="small text-secondary" data-photo-info>Touchez la photo pour la prendre ou la changer (format identité, compressée automatiquement).</div>
+        <div class="small text-secondary" data-photo-info>{% if photo_en_attente %}<i class="bi bi-hourglass-split"></i> Nouvelle photo envoyée, en attente de validation par la scolarité. Touchez-la pour la changer.{% elif photo_url %}Votre photo actuelle. Touchez-la pour la changer (format identité, compressée automatiquement).{% else %}Touchez le cadre pour prendre ou ajouter votre photo (format identité, compressée automatiquement).{% endif %}</div>
         {{ form.photo }}
         {% for err in form.photo.errors %}<div class="invalid-feedback d-block">{{ err }}</div>{% endfor %}
       </div>

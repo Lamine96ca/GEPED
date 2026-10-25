@@ -1386,6 +1386,22 @@ class GpedTests(TestCase):
         p.refresh_from_db()
         self.assertEqual((p.telephone, p.preinscrit), ('600', True))      # rien d'appliqué avant validation
         self.assertTrue(PieceDossier.objects.get(etudiant=p, type='acte_naissance').par_etudiant)
+        # Photo : l'étudiant (sans compte) voit celle qu'il a envoyée, en attente de validation
+        from PIL import Image
+        img = io.BytesIO()
+        Image.new('RGB', (900, 1200), (180, 150, 120)).save(img, 'JPEG')
+        self.client.post(reverse('espace_dossier'), {'telephone': '622 11 22 33', 'email': 'awa.bah@exemple.com',
+                                                     'tuteur': 'Mariam CAMARA',
+                                                     'photo': SimpleUploadedFile('moi.jpg', img.getvalue(), 'image/jpeg')})
+        r = self.client.get(reverse('espace_dossier'))
+        self.assertContains(r, reverse('espace_photo'))
+        self.assertContains(r, 'en attente de validation par la scolarité')
+        r = self.client.get(reverse('espace_photo'))
+        self.assertEqual((r.status_code, r['Content-Type']), (200, 'image/jpeg'))
+        self.assertTrue(b''.join(r.streaming_content).startswith(bytes([0xFF, 0xD8])))   # JPEG compressé
+        # Hors de l'espace (autre navigateur) : photo inaccessible
+        from django.test import Client
+        self.assertEqual(Client().get(reverse('espace_photo')).status_code, 404)
         # « Inscrire » (page Préinscription) applique la demande
         self.connecter('scol')
         self.client.post(reverse('valider_preinscriptions'), {'ids': [insc.pk]})

@@ -9,6 +9,7 @@ from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.shortcuts import redirect, render
+from django.urls import reverse
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_POST
 
@@ -141,7 +142,11 @@ def espace_dossier(request):
     deposees = {p.type: p for p in etudiant.pieces.filter(type__in=PIECES[type_demande], par_etudiant=True)}
     return render(request, 'pfe/espace/dossier.html', {
         'session': session, 'etudiant': etudiant, 'insc': insc, 'form': form, 'demande': demande,
-        'reinscription': reinscription, 'photo_url': url_photo(etudiant),
+        'reinscription': reinscription,
+        # Photo visible par l'étudiant : la nouvelle en attente, sinon l'actuelle (servie par espace_photo)
+        'photo_url': (f"{reverse('espace_photo')}?v={int(demande.date_maj.timestamp()) if demande else 0}"
+                      if (demande and demande.photo) or url_photo(etudiant) else None),
+        'photo_en_attente': bool(demande and demande.photo),
         'departement': _nom_departement(insc.filiere) if insc.filiere else '',
         'programme': _nom_programme(insc.filiere) if insc.filiere else '',
         'pieces': [(t, dict(PieceDossier.TYPES)[t], deposees.get(t), erreurs_pieces.get(t)) for t in PIECES[type_demande]],
@@ -159,6 +164,33 @@ def espace_confirmation(request):
     if demande is None:
         return redirect('espace_dossier')
     return render(request, 'pfe/espace/confirmation.html', {'demande': demande, 'session': session})
+
+
+@never_cache
+def espace_photo(request):
+    """
+    Photo de l'étudiant identifié (les photos ne sont servies qu'aux comptes connectés : l'espace
+    n'a pas de compte). La nouvelle photo en attente de validation s'il en a envoyé une, sinon l'actuelle.
+    """
+    from django.http import FileResponse, Http404
+    from .models import stockage_prive
+    from .photos import a_une_photo
+    a = espace.acces(request)
+    if a is None:
+        raise Http404
+    demande = (DemandeEtudiant.objects.filter(etudiant_id=a['etudiant'], session=espace.session_cible(), type=a['type'])
+               .exclude(photo='').first())
+    if demande:
+        fichier = stockage_prive().open(demande.photo.name, 'rb')
+    else:
+        etudiant = Etudiant.objects.get(pk=a['etudiant'])
+        if not a_une_photo(etudiant):
+            raise Http404
+        fichier = etudiant.photo.open('rb')
+    reponse = FileResponse(fichier, content_type='image/jpeg')
+    reponse['Cache-Control'] = 'private, no-store'
+    reponse['X-Content-Type-Options'] = 'nosniff'
+    return reponse
 
 
 @require_POST
