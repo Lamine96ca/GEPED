@@ -295,6 +295,8 @@ def etudiant_fiche(request, pk):
     historique = inscriptions_visibles(get_profil(request)).filter(
         etudiant=inscription.etudiant).select_related('session', 'licence', 'semestre', 'filiere', 'promotion'
                                                        ).order_by('-session__annee')
+    from .models import PieceDossier
+    profil = get_profil(request)
     return render(request, 'pfe/etudiant_fiche.html', {
         'inscription': inscription,
         'etudiant': inscription.etudiant,
@@ -302,7 +304,72 @@ def etudiant_fiche(request, pk):
         'actif': 'etudiants',
         'photo_url': url_photo(inscription.etudiant),
         'peut_changer_photo': _peut_changer_photo(request, inscription.etudiant),
+        # Dossier (pièces) : scolarité seulement (documents personnels)
+        'pieces': (inscription.etudiant.pieces.select_related('session', 'utilisateur')
+                   if profil.est_scolarite else None),
+        'types_pieces': PieceDossier.TYPES,
     })
+
+
+# ------------------------------------------------------------------ dossier (pièces)
+
+def _retour_fiche(request, etudiant):
+    suivant = request.POST.get('suivant', '')
+    if suivant.startswith('/') and not suivant.startswith('//'):
+        return redirect(suivant)
+    insc = etudiant.etudiant_inscription.order_by('-session__annee').first()
+    return redirect('etudiant_fiche', pk=insc.pk) if insc else redirect('etudiants_liste')
+
+
+@login_required
+@scolarite_requise
+@require_POST
+def piece_ajouter(request, pk):
+    """Ajoute une pièce au dossier (scan ou fichier), compressée en PDF ; remplace celle du même type."""
+    from . import pieces
+    from .models import PieceDossier
+    etudiant = get_object_or_404(Etudiant, pk=pk)
+    type_piece = request.POST.get('type')
+    if type_piece not in dict(PieceDossier.TYPES):
+        messages.error(request, "Choisissez le type de pièce.")
+        return _retour_fiche(request, etudiant)
+    try:
+        piece = pieces.enregistrer(etudiant, type_piece, request.FILES.getlist('pages'), utilisateur=request.user,
+                                   libelle=(request.POST.get('libelle') or '').strip())
+    except ValidationError as e:
+        messages.error(request, ' '.join(e.messages))
+    else:
+        messages.success(request, f"{piece.get_type_display()} ajouté au dossier ({piece.pages} page"
+                                  f"{'s' if piece.pages > 1 else ''}, {max(1, piece.taille // 1024)} Ko).")
+    return _retour_fiche(request, etudiant)
+
+
+@login_required
+@scolarite_requise
+def piece_voir(request, pk):
+    from django.http import FileResponse
+    from . import pieces
+    from .models import PieceDossier
+    piece = get_object_or_404(PieceDossier.objects.select_related('etudiant'), pk=pk)
+    nom = f"{piece.type}_{piece.etudiant.matricule or piece.etudiant.pk}.pdf"
+    reponse = FileResponse(pieces.ouvrir(piece), content_type='application/pdf', filename=nom)
+    reponse['Content-Disposition'] = f'inline; filename="{nom}"'
+    reponse['X-Content-Type-Options'] = 'nosniff'
+    reponse['Cache-Control'] = 'private, no-store'
+    return reponse
+
+
+@login_required
+@scolarite_requise
+@require_POST
+def piece_supprimer(request, pk):
+    from . import pieces
+    from .models import PieceDossier
+    piece = get_object_or_404(PieceDossier.objects.select_related('etudiant'), pk=pk)
+    etudiant, libelle = piece.etudiant, piece.get_type_display()
+    pieces.supprimer(piece)
+    messages.success(request, f"{libelle} retiré du dossier.")
+    return _retour_fiche(request, etudiant)
 
 
 # ------------------------------------------------------------------ photos

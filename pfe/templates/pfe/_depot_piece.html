@@ -1,0 +1,12 @@
+{# Dépôt d'une pièce : scanner (appareil photo) ou choisir un fichier. Paramètre : nom (nom du champ envoyé). #}
+<div class="depot-piece" data-pieces>
+  <input type="file" name="{{ nom }}" multiple class="form-control visually-hidden" data-pieces-envoi accept="application/pdf,image/*">
+  <div class="d-flex flex-wrap gap-2">
+    <button type="button" class="btn btn-sm btn-light" data-pieces-camera><i class="bi bi-camera"></i> Scanner</button>
+    <button type="button" class="btn btn-sm btn-light" data-pieces-fichier><i class="bi bi-paperclip"></i> Choisir un fichier</button>
+  </div>
+  <input type="file" accept="image/*" capture="environment" hidden data-pieces-entree-camera>
+  <input type="file" accept="application/pdf,image/*" multiple hidden data-pieces-entree-fichier>
+  <div class="pages-piece" data-pieces-liste></div>
+  <div class="small text-secondary mt-1" data-pieces-info>Un PDF (3 Mo au plus) ou les photos des pages (10 au plus) : elles sont compressées automatiquement.</div>
+</div>

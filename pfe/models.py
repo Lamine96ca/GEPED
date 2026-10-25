@@ -403,6 +403,39 @@ class NoteHistorique(models.Model):
         ordering = ['-date']
 
 
+class PieceDossier(models.Model):
+    """
+    Pièce du dossier d'un étudiant (acte de naissance, diplôme et relevé du bac, relevé de notes…),
+    toujours rangée en PDF compressé dans le stockage privé (jamais publiée). Déposée par l'étudiant
+    depuis l'espace d'inscription, ou par la scolarité depuis la fiche.
+    """
+    ACTE_NAISSANCE, DIPLOME_BAC, RELEVE_BAC, RELEVE_NOTES, AUTRE = (
+        'acte_naissance', 'diplome_bac', 'releve_bac', 'releve_notes', 'autre')
+    TYPES = [
+        (ACTE_NAISSANCE, 'Acte de naissance'),
+        (DIPLOME_BAC, 'Diplôme du baccalauréat'),
+        (RELEVE_BAC, 'Relevé de notes du baccalauréat'),
+        (RELEVE_NOTES, "Relevé de notes de la dernière année"),
+        (AUTRE, 'Autre pièce'),
+    ]
+    etudiant = models.ForeignKey(Etudiant, on_delete=models.CASCADE, related_name='pieces', verbose_name='Étudiant')
+    type = models.CharField('Pièce', max_length=20, choices=TYPES)
+    libelle = models.CharField('Précision', max_length=120, blank=True)
+    session = models.ForeignKey(Session, on_delete=models.SET_NULL, null=True, blank=True, verbose_name='Session')
+    fichier = models.FileField('Fichier (PDF)', upload_to='dossiers/%Y', storage=stockage_prive)
+    pages = models.PositiveSmallIntegerField('Pages', default=1)
+    taille = models.PositiveIntegerField('Taille (octets)', default=0)
+    par_etudiant = models.BooleanField("Déposée par l'étudiant", default=False)
+    utilisateur = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, verbose_name='Déposée par')
+    date = models.DateTimeField('Date', auto_now_add=True)
+
+    class Meta:
+        ordering = ['type', '-date']
+
+    def __str__(self):
+        return f"{self.get_type_display()} · {self.etudiant}"
+
+
 class ImportNotes(models.Model):
     """
     Journal des imports de notes : qui, quand, quel fichier, et le PDF de l'enseignant (fiche de notes

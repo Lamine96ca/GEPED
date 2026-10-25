@@ -645,6 +645,18 @@ code { color: var(--encre); background: var(--survol); padding: .05rem .3rem; bo
 .option-service .form-check-input { margin: 0; flex-shrink: 0; }
 .option-import { display: flex; gap: .8rem; align-items: flex-start; padding: .9rem 1rem; border-radius: 12px; background: var(--fond); border: 1px solid transparent; cursor: pointer; }
 .option-import:has(input:checked) { background: var(--or-doux); border-color: #f5d77a; }
+/* Dépôt d'une pièce du dossier : vignettes des pages (scan ou fichier) */
+.depot-piece { padding: .75rem; border: 1px dashed #cfd8e3; border-radius: 12px; background: var(--fond); }
+.depot-piece.a-des-pages { border-style: solid; border-color: #f5d77a; background: var(--or-doux); }
+.pages-piece { display: flex; flex-wrap: wrap; gap: .5rem; }
+.pages-piece:not(:empty) { margin-top: .6rem; }
+.page-piece { position: relative; width: 84px; height: 112px; border-radius: 8px; border: 1px solid #d5dde6; background: #fff center/cover no-repeat; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.page-piece > .bi { font-size: 2rem; color: #c0392b; }
+.page-piece .legende { position: absolute; left: 0; right: 0; bottom: 0; font-size: .62rem; padding: 2px 4px; background: rgba(15, 23, 42, .65); color: #fff; text-align: center; }
+.page-piece .retirer { position: absolute; top: 3px; right: 3px; width: 22px; height: 22px; border: 0; border-radius: 50%; background: rgba(15, 23, 42, .65); color: #fff; font-size: .7rem; line-height: 1; padding: 0; }
+.liste-pieces .piece { display: flex; align-items: center; gap: .75rem; padding: .6rem 0; border-bottom: 1px solid #eef1f5; }
+.liste-pieces .piece:last-child { border-bottom: 0; }
+.liste-pieces .piece > .bi { font-size: 1.4rem; color: #c0392b; }
 .option-import .form-check-input { margin-top: .2rem; flex-shrink: 0; }
 /* Choix à un seul bouton (bourse, type de formation) : l'option retenue ressort comme les cases cochées */
 .choix-bouton { border-radius: 10px; background: var(--fond); border: 1px solid transparent; color: var(--encre); font-weight: 500; padding: .45rem .85rem; }

@@ -1287,6 +1287,58 @@ class GpedTests(TestCase):
         self.connecter('scol')
         self.assertNotContains(self.client.get(url), 'disabled')
 
+    def test_pieces_du_dossier(self):
+        """Scan (photos) ou PDF → un PDF compressé dans le stockage privé ; scolarité seulement."""
+        import shutil, tempfile
+        from django.test import override_settings
+        from PIL import Image
+        from .models import PieceDossier
+        dossier = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, dossier, True)
+        e0 = Etudiant.objects.get(matricule='M0')
+        insc = Inscription.objects.get(etudiant=e0)
+        url = reverse('piece_ajouter', args=[e0.pk])
+
+        def photo(nom='page.jpg', taille=(2400, 3200)):
+            b = io.BytesIO()
+            Image.new('RGB', taille, (240, 240, 235)).save(b, 'JPEG', quality=95)
+            return SimpleUploadedFile(nom, b.getvalue(), 'image/jpeg')
+
+        self.connecter('info')                                         # chef de programme : pas d'accès
+        self.assertEqual(self.client.post(url, {'type': 'acte_naissance'}).status_code, 403)
+        self.assertNotContains(self.client.get(reverse('etudiant_fiche', args=[insc.pk])), 'Dossier de l')
+        self.connecter('scol')
+        with override_settings(BASE_DIR=pathlib_path(dossier)):
+            # Deux photos de pages → un PDF de 2 pages, petit
+            r = self.client.post(url, {'type': 'acte_naissance', 'pages': [photo('p1.jpg'), photo('p2.jpg')]}, follow=True)
+            self.assertContains(r, 'Acte de naissance ajouté au dossier (2 pages')
+            p = PieceDossier.objects.get()
+            self.assertEqual((p.pages, p.par_etudiant, p.utilisateur.username), (2, False, 'scol'))
+            chemin = pathlib_path(dossier) / 'prive' / p.fichier.name
+            self.assertTrue(chemin.read_bytes().startswith(b'%PDF-'))
+            self.assertLess(p.taille, 300 * 1024)
+            # Un nouveau dépôt du même type remplace l'ancien (fichier supprimé)
+            self.client.post(url, {'type': 'acte_naissance', 'pages': [SimpleUploadedFile('acte.pdf', b'%PDF-1.4 acte')]})
+            self.assertEqual(PieceDossier.objects.count(), 1)
+            self.assertFalse(chemin.exists())
+            # Refusés : PDF trop lourd, PDF + photo, fichier qui n'est pas une image
+            r = self.client.post(url, {'type': 'diplome_bac', 'pages': [SimpleUploadedFile('x.pdf', b'%PDF-' + b'0' * (3 * 1024 * 1024))]}, follow=True)
+            self.assertContains(r, 'PDF trop lourd')
+            r = self.client.post(url, {'type': 'diplome_bac', 'pages': [SimpleUploadedFile('x.pdf', b'%PDF-1.4'), photo()]}, follow=True)
+            self.assertContains(r, "s&#x27;envoie seul")
+            r = self.client.post(url, {'type': 'diplome_bac', 'pages': [SimpleUploadedFile('x.txt', b'texte')]}, follow=True)
+            self.assertContains(r, 'seuls les PDF et les images')
+            # Consultation (scolarité) et suppression
+            p = PieceDossier.objects.get()
+            self.assertContains(self.client.get(reverse('etudiant_fiche', args=[insc.pk])), 'Acte de naissance')
+            r = self.client.get(reverse('piece_voir', args=[p.pk]))
+            self.assertEqual((r['Content-Type'], b''.join(r.streaming_content)), ('application/pdf', b'%PDF-1.4 acte'))
+            self.connecter('info')
+            self.assertEqual(self.client.get(reverse('piece_voir', args=[p.pk])).status_code, 403)
+            self.connecter('scol')
+            self.client.post(reverse('piece_supprimer', args=[p.pk]))
+            self.assertFalse(PieceDossier.objects.exists())
+
     def test_personnel_chef_seulement_scolarite_ou_departement(self):
         from .forms import PersonnelForm
         admin = User.objects.create_superuser('admin_chef', 'a@t.local', 'x')

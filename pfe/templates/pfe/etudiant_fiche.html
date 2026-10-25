@@ -1,4 +1,5 @@
 {% extends 'pfe/base.html' %}
+{% load static %}
 {% block titre %}{{ etudiant.prenom }} {{ etudiant.nom }}{% endblock %}
 {% block titre_page %}<a href="{% url 'etudiants_liste' %}" class="text-decoration-none text-secondary me-1" title="Retour à la liste"><i class="bi bi-arrow-left"></i></a> Fiche étudiant{% endblock %}
 {% block contenu %}
@@ -180,9 +181,56 @@
       </div>
     </div>
     {% endif %}
+
+    {% if pieces is not None %}
+    <!-- Dossier de l'étudiant (scolarité seulement) -->
+    <div class="card carte-gped" id="dossier">
+      <div class="card-body">
+        <div class="entete-carte">
+          <span class="icone-carte"><i class="bi bi-folder2-open"></i></span>
+          <div><h3>Dossier de l'étudiant</h3><p>Pièces déposées par l'étudiant ou par la scolarité · PDF compressés, jamais publiés</p></div>
+        </div>
+        <div class="liste-pieces mb-3">
+          {% for p in pieces %}
+            <div class="piece">
+              <i class="bi bi-file-earmark-pdf"></i>
+              <div class="me-auto" style="min-width:0">
+                <div class="fw-semibold" style="color:var(--encre)">{{ p.get_type_display }}{% if p.libelle %} · {{ p.libelle }}{% endif %}{% if p.session %} <span class="text-secondary fw-normal">({{ p.session }})</span>{% endif %}</div>
+                <div class="small text-secondary">{{ p.pages }} page{{ p.pages|pluralize }} · {{ p.taille|filesizeformat }} · {{ p.date|date:"d/m/Y H:i" }} · {% if p.par_etudiant %}déposée par l'étudiant{% else %}{{ p.utilisateur.get_full_name|default:p.utilisateur.username|default:"scolarité" }}{% endif %}</div>
+              </div>
+              <a class="btn btn-sm btn-light" href="{% url 'piece_voir' p.pk %}" target="_blank" rel="noopener"><i class="bi bi-eye"></i> Voir</a>
+              <form method="post" action="{% url 'piece_supprimer' p.pk %}" onsubmit="return confirm('Retirer cette pièce du dossier ?');">
+                {% csrf_token %}<input type="hidden" name="suivant" value="{{ request.get_full_path }}#dossier">
+                <button class="btn btn-sm btn-icone" title="Retirer"><i class="bi bi-trash"></i></button>
+              </form>
+            </div>
+          {% empty %}
+            <div class="small text-secondary"><i class="bi bi-info-circle"></i> Aucune pièce pour l'instant.</div>
+          {% endfor %}
+        </div>
+        <form method="post" action="{% url 'piece_ajouter' etudiant.pk %}" enctype="multipart/form-data" class="row g-2">
+          {% csrf_token %}<input type="hidden" name="suivant" value="{{ request.get_full_path }}#dossier">
+          <div class="col-md-6">
+            <label class="form-label small mb-1" for="type-piece">Pièce</label>
+            <select id="type-piece" name="type" class="form-select" required>
+              {% for code, libelle in types_pieces %}<option value="{{ code }}">{{ libelle }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small mb-1" for="libelle-piece">Précision (facultatif)</label>
+            <input id="libelle-piece" name="libelle" class="form-control" maxlength="120" placeholder="Ex. certificat de nationalité">
+          </div>
+          <div class="col-12">{% include 'pfe/_depot_piece.html' with nom='pages' %}</div>
+          <div class="col-12"><button class="btn btn-primary btn-sm"><i class="bi bi-cloud-arrow-up"></i> Ajouter au dossier</button>
+            <span class="small text-secondary ms-2">Une nouvelle pièce du même type remplace l'ancienne (sauf « Autre pièce »).</span></div>
+        </form>
+      </div>
+    </div>
+    {% endif %}
   </div>
 </div>
 {% endblock %}
 {% block scripts %}
 {% if peut_changer_photo %}{% include 'pfe/_modal_photo.html' %}{% endif %}
+{% if pieces is not None %}<script src="{% static 'pfe/js/gped-pieces.js' %}?v={{ version_statique }}" defer></script>{% endif %}
 {% endblock %}

@@ -9,6 +9,9 @@ urlpatterns = [
     path('etudiants/export/', views.etudiants_export, name='etudiants_export'),
     path('etudiants/<int:pk>/', views.etudiant_fiche, name='etudiant_fiche'),
     path('etudiants/photo/<int:pk>/', views.etudiant_photo, name='etudiant_photo'),     # pk = étudiant
+    path('scolarite/etudiants/<int:pk>/pieces/ajouter/', views.piece_ajouter, name='piece_ajouter'),   # pk = étudiant
+    path('scolarite/pieces/<int:pk>/', views.piece_voir, name='piece_voir'),
+    path('scolarite/pieces/<int:pk>/supprimer/', views.piece_supprimer, name='piece_supprimer'),
     path('mon-compte/photo/', views.mon_compte_photo, name='mon_compte_photo'),
     path('preinscriptions/', views.preinscriptions_liste, name='preinscriptions_liste'),
     path('etudiants/statistiques/', views.statistiques, name='statistiques'),
