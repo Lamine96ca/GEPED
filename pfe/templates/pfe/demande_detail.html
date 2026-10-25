@@ -15,7 +15,14 @@
 <div class="row g-3">
   <div class="col-xl-5 d-flex flex-column gap-3">
     <div class="card carte-gped"><div class="card-body">
-      <div class="entete-carte"><span class="icone-carte"><i class="bi bi-person"></i></span><div><h3>{{ etudiant.prenom }} {{ etudiant.nom }}</h3><p>{{ etudiant.matricule|default:"Sans matricule" }} · INE {{ etudiant.ine|default:"—" }}</p></div></div>
+      <div class="d-flex align-items-center gap-3 mb-3">
+        <div class="photos-demande">
+          {% if photo_url %}<figure><img src="{{ photo_url }}" alt="Photo actuelle de {{ etudiant.prenom }} {{ etudiant.nom }}"><figcaption>Actuelle</figcaption></figure>
+          {% else %}<figure><span class="sans-photo">{{ etudiant.prenom|first }}{{ etudiant.nom|first }}</span><figcaption>Pas de photo</figcaption></figure>{% endif %}
+          {% if demande.photo %}<figure class="proposee"><a href="{% url 'demande_photo' demande.pk %}" target="_blank" rel="noopener"><img src="{% url 'demande_photo' demande.pk %}" alt="Nouvelle photo proposée"></a><figcaption>Proposée</figcaption></figure>{% endif %}
+        </div>
+        <div style="min-width:0"><h3 class="h5 mb-1" style="color:var(--encre)">{{ etudiant.prenom }} {{ etudiant.nom }}</h3><p class="small text-secondary mb-0">{{ etudiant.matricule|default:"Sans matricule" }} · INE {{ etudiant.ine|default:"—" }}</p></div>
+      </div>
       <ul class="infos-compte grille">
         {% if demande.type == 'reinscription' %}
           <li><i class="bi bi-building"></i><div><div class="lib">Département</div><div class="val">{{ departement|default:"—" }}</div></div></li>
@@ -33,12 +40,7 @@
 
     <div class="card carte-gped"><div class="card-body">
       <div class="entete-carte"><span class="icone-carte"><i class="bi bi-pencil-square"></i></span><div><h3>Changements proposés</h3><p>Appliqués à la fiche seulement si vous validez</p></div></div>
-      {% if demande.photo %}
-        <div class="d-flex align-items-center gap-3 mb-3">
-          <img src="{% url 'demande_photo' demande.pk %}" alt="Nouvelle photo proposée" width="90" height="120" style="object-fit:cover;border-radius:10px;border:1px solid #d5dde6">
-          <div class="small text-secondary">Nouvelle photo d'identité proposée.</div>
-        </div>
-      {% endif %}
+      {% if demande.photo %}<div class="small mb-2"><i class="bi bi-camera"></i> Nouvelle <strong>photo</strong> proposée (voir en haut : actuelle / proposée).</div>{% endif %}
       {% if changements %}
         <div class="table-responsive"><table class="table table-sm mb-0">
           <thead><tr><th>Champ</th><th>Actuel</th><th>Proposé</th></tr></thead>

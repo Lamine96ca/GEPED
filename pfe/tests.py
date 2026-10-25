@@ -1443,8 +1443,11 @@ class GpedTests(TestCase):
         self.connecter('info')
         self.assertEqual(self.client.get(reverse('demandes_liste')).status_code, 403)
         self.connecter('scol')
-        self.assertContains(self.client.get(reverse('demandes_liste')), 'SOW')
+        r = self.client.get(reverse('demandes_liste'))
+        self.assertContains(r, 'SOW')
+        self.assertContains(r, '<span class="ini">AS</span>')                   # pas de photo : initiales
         r = self.client.get(reverse('demande_detail', args=[d.pk]))
+        self.assertContains(r, 'class="photos-demande"')                         # photo de l'étudiant
         self.assertContains(r, 'Algorithmique')
         self.assertContains(r, 'class="note-rouge"')
         self.assertContains(r, '622 00 00 01')

@@ -19,6 +19,7 @@ from django.views.decorators.http import require_POST
 from . import espace_etudiant as espace
 from .attestations import _nom_departement, _nom_programme
 from .models import DemandeEtudiant, Etudiant, Matiere, Note, Resultat, Session
+from .photos import url_photo
 from .roles import scolarite_requise
 
 LIBELLES_CONTACTS = {'telephone': 'Téléphone', 'email': 'E-mail', 'adresse': 'Adresse', 'ville': 'Ville / Commune',
@@ -52,8 +53,11 @@ def demandes_liste(request):
     if q:
         demandes = demandes.filter(Q(etudiant__matricule__icontains=q) | Q(etudiant__nom__icontains=q)
                                    | Q(etudiant__prenom__icontains=q) | Q(etudiant__ine__icontains=q))
+    demandes = list(demandes[:300])
+    for d in demandes:                                  # photo actuelle de l'étudiant (vignette)
+        d.photo_url = url_photo(d.etudiant)
     return render(request, 'pfe/demandes_liste.html', {
-        'session': session, 'type_demande': type_demande, 'statut': statut, 'demandes': demandes[:300], 'q': q,
+        'session': session, 'type_demande': type_demande, 'statut': statut, 'demandes': demandes, 'q': q,
         'compteurs': compteurs, 'types': DemandeEtudiant.TYPES, 'statuts': DemandeEtudiant.STATUTS,
         'url_espace': request.build_absolute_uri('/etudiant/'), 'actif': 'demandes',
     })
@@ -126,7 +130,7 @@ def demande_detail(request, pk):
     d = demande.derniere_inscription
     insc_session = e.etudiant_inscription.filter(session=demande.session).select_related('licence', 'filiere').first()
     return render(request, 'pfe/demande_detail.html', {
-        'demande': demande, 'etudiant': e, 'changements': changements,
+        'demande': demande, 'etudiant': e, 'changements': changements, 'photo_url': url_photo(e),
         'derniere': d, 'insc_session': insc_session,
         'departement': _nom_departement(d.filiere) if d and d.filiere else '',
         'programme': _nom_programme(d.filiere) if d and d.filiere else '',

@@ -855,9 +855,39 @@ code { color: var(--encre); background: var(--survol); padding: .05rem .3rem; bo
 .table-notes-empilees td, .table-notes-empilees th { padding-left: 1.25rem; }
 .table-notes-empilees tr.note-rouge > td, .note-rouge { background-color: #fde2e2 !important; }
 .infos-compte .col-span { grid-column: 1 / -1; }
-/* Recadrage d'une page scannée */
-.zone-recadrage { height: min(65vh, 560px); background: #1f2937; border-radius: 10px; overflow: hidden; }
-.zone-recadrage img { display: block; max-width: 100%; }
-@media (max-width: 575.98px) { .zone-recadrage { height: calc(100vh - 210px); border-radius: 0; } }
+/* Recadrage d'une page scannée : fenêtre de taille moyenne (même sur téléphone), marge sombre autour de la
+   photo pour que les poignées ne touchent jamais le bord de l'écran, poignées larges (doigt) */
+.modal-recadrage { max-width: 760px; }
+@media (max-width: 575.98px) { .modal-recadrage { margin: .75rem; } }
+.zone-recadrage { padding: 24px; background: #1f2937; border-radius: 10px; }
+.cadre-recadrage { height: min(52vh, 460px); }
+@media (max-width: 575.98px) { .cadre-recadrage { height: 46vh; } .zone-recadrage { padding: 22px; } }
+.cadre-recadrage img { display: block; max-width: 100%; }
+.zone-recadrage .cropper-view-box { outline: 2px solid rgba(251, 189, 8, .95); }
+.zone-recadrage .cropper-point, .zone-recadrage .cropper-point.point-se { width: 32px; height: 32px; background: transparent; opacity: 1; }
+.zone-recadrage .cropper-point::after { content: ""; position: absolute; left: 50%; top: 50%; width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%; background: #fbbd08; border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, .55); }
+.zone-recadrage .cropper-point.point-se::before { display: none; }
+.zone-recadrage .cropper-point.point-nw { left: -16px; top: -16px; }
+.zone-recadrage .cropper-point.point-ne { right: -16px; top: -16px; }
+.zone-recadrage .cropper-point.point-sw { left: -16px; bottom: -16px; }
+.zone-recadrage .cropper-point.point-se { right: -16px; bottom: -16px; }
+.zone-recadrage .cropper-point.point-n { top: -16px; left: 50%; margin-left: -16px; }
+.zone-recadrage .cropper-point.point-s { bottom: -16px; left: 50%; margin-left: -16px; }
+.zone-recadrage .cropper-point.point-e { right: -16px; top: 50%; margin-top: -16px; }
+.zone-recadrage .cropper-point.point-w { left: -16px; top: 50%; margin-top: -16px; }
+.zone-recadrage .cropper-point.point-n::after, .zone-recadrage .cropper-point.point-s::after,
+.zone-recadrage .cropper-point.point-e::after, .zone-recadrage .cropper-point.point-w::after { width: 12px; height: 12px; margin: -6px 0 0 -6px; }
+.zone-recadrage .cropper-line { opacity: 0; }
+.zone-recadrage .cropper-line.line-n { top: -10px; height: 20px; }
+.zone-recadrage .cropper-line.line-s { bottom: -10px; height: 20px; }
+.zone-recadrage .cropper-line.line-e { right: -10px; width: 20px; }
+.zone-recadrage .cropper-line.line-w { left: -10px; width: 20px; }
 .page-piece.recadrable { cursor: pointer; }
 .page-piece.recadrable::after { content: "\F294"; font-family: bootstrap-icons; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: rgba(15, 23, 42, .65); color: #fff; font-size: .7rem; display: grid; place-items: center; }
+/* Demandes en ligne : photo de l'étudiant (liste et fiche ; actuelle / proposée) */
+.photo-demande { width: 36px; height: 48px; object-fit: cover; border-radius: 8px; border: 1px solid #d5dde6; flex-shrink: 0; }
+.photos-demande { display: flex; gap: .6rem; flex-shrink: 0; }
+.photos-demande figure { margin: 0; text-align: center; }
+.photos-demande img, .photos-demande .sans-photo { width: 84px; height: 112px; object-fit: cover; border-radius: 10px; border: 1px solid #d5dde6; display: grid; place-items: center; background: var(--fond); color: var(--muet); font-weight: 700; font-size: 1.4rem; }
+.photos-demande .proposee img { border: 2px solid #fbbd08; }
+.photos-demande figcaption { font-size: .72rem; color: var(--muet); margin-top: .2rem; }

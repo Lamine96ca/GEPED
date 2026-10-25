@@ -117,7 +117,7 @@
         el.addEventListener('shown.bs.modal', function demarrer() {
           el.removeEventListener('shown.bs.modal', demarrer);
           cropper = new Cropper(image, {
-            viewMode: 1, dragMode: 'move', autoCropArea: 1, responsive: true, background: false,
+            viewMode: 1, dragMode: 'move', autoCropArea: 0.9, responsive: true, background: false,
             toggleDragModeOnDblclick: false, checkOrientation: true
           });
         });

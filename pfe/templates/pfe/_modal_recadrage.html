@@ -4,14 +4,15 @@
 <link rel="stylesheet" href="{% static 'pfe/vendor/cropperjs/cropper.min.css' %}?v={{ version_statique }}">
 <div class="modal fade" id="modal-recadrage" tabindex="-1" aria-labelledby="modal-recadrage-titre" aria-hidden="true"
      data-bs-backdrop="static" data-cropper-src="{% static 'pfe/vendor/cropperjs/cropper.min.js' %}?v={{ version_statique }}">
-  <div class="modal-dialog modal-dialog-centered modal-lg modal-fullscreen-sm-down">
+  <div class="modal-dialog modal-dialog-centered modal-lg modal-recadrage">
     <div class="modal-content">
       <div class="modal-header py-2">
         <h5 class="modal-title" id="modal-recadrage-titre"><i class="bi bi-crop"></i> Recadrer la page <span data-recadrage-numero></span></h5>
       </div>
       <div class="modal-body p-2">
-        <div class="zone-recadrage"><img alt="Page à recadrer" data-recadrage-image></div>
-        <div class="small text-secondary mt-2 px-1"><i class="bi bi-hand-index"></i> Faites glisser les coins du cadre sur les bords du document ; tournez la page si elle est couchée.</div>
+        {# Marge autour de la photo : les poignées ne touchent jamais le bord de l'écran #}
+        <div class="zone-recadrage"><div class="cadre-recadrage"><img alt="Page à recadrer" data-recadrage-image></div></div>
+        <div class="small text-secondary mt-2 px-1"><i class="bi bi-hand-index"></i> Faites glisser les <strong>ronds jaunes</strong> sur les coins du document ; tournez la page si elle est couchée.</div>
       </div>
       <div class="modal-footer flex-wrap gap-2 py-2">
         <div class="btn-group me-auto" role="group" aria-label="Rotation et cadre">

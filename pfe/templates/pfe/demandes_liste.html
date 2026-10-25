@@ -49,7 +49,12 @@
       <tbody>
       {% for d in demandes %}
         <tr onclick="location.href='{% url 'demande_detail' d.pk %}'">
-          <td><b style="color:var(--encre)">{{ d.etudiant.nom }}</b> {{ d.etudiant.prenom }}<div class="matricule text-secondary">{{ d.etudiant.matricule|default:d.etudiant.ine }}</div></td>
+          <td><div class="nom-complet">
+            {% if d.photo %}<img class="photo-demande" src="{% url 'demande_photo' d.pk %}" alt="" title="Nouvelle photo proposée" loading="lazy">
+            {% elif d.photo_url %}<img class="photo-demande" src="{{ d.photo_url }}" alt="" loading="lazy">
+            {% else %}<span class="ini">{{ d.etudiant.prenom|first }}{{ d.etudiant.nom|first }}</span>{% endif %}
+            <span><b style="color:var(--encre)">{{ d.etudiant.nom }}</b> {{ d.etudiant.prenom }}{% if d.photo %} <span class="pill pill-accent" title="Nouvelle photo proposée"><i class="bi bi-camera"></i></span>{% endif %}<div class="matricule text-secondary">{{ d.etudiant.matricule|default:d.etudiant.ine }}</div></span>
+          </div></td>
           <td>{% if d.type == 'reinscription' %}{{ d.derniere_inscription.licence|default:"—" }} <i class="bi bi-arrow-right"></i> <strong>{{ d.licence|default:"—" }}</strong>{% else %}Préinscrit{% endif %}</td>
           <td>{{ d.derniere_inscription.filiere|default:"—" }}</td>
           <td class="text-nowrap">{{ d.date_depot|date:"d/m/Y H:i" }}</td>
