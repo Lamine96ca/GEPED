@@ -1374,6 +1374,8 @@ class GpedTests(TestCase):
         self.assertRedirects(r, reverse('espace_dossier'))
         r = self.client.get(reverse('espace_dossier'))
         self.assertContains(r, 'Awa BAH')
+        self.assertContains(r, 'class="bloc-photo')                             # même bloc photo que la scolarité
+        self.assertContains(r, 'Prendre ou charger une photo')
         self.assertNotContains(r, 'name="licence"')                       # pas de choix de niveau à l'inscription
         # Envoi : coordonnées + acte de naissance (PDF) → demande en attente, fiche inchangée
         r = self.client.post(reverse('espace_dossier'), {
@@ -1409,6 +1411,15 @@ class GpedTests(TestCase):
         d.refresh_from_db()
         self.assertEqual((p.telephone, p.email, p.tuteur, p.preinscrit, d.statut),
                          ('622 11 22 33', 'awa.bah@exemple.com', 'Mariam CAMARA', False, 'validee'))
+        # Inscription en ligne validée : la fiche ne peut plus repasser « Préinscrit » (case bloquée)
+        from django.forms.models import model_to_dict
+        from .forms import EtudiantForm
+        donnees = {k: v for k, v in model_to_dict(p, exclude=['photo', 'utilisateur']).items() if v not in (None, False)}
+        f = EtudiantForm({**donnees, 'preinscrit': 'on'}, instance=p)
+        self.assertTrue(f.fields['preinscrit'].disabled)
+        self.assertTrue(f.is_valid(), f.errors)
+        self.assertFalse(f.cleaned_data['preinscrit'])
+        self.assertContains(self.client.get(reverse('inscription_modifier', args=[insc.pk])), 'Inscription en ligne validée le')
 
     def test_espace_etudiant_essais_limites_et_expiration(self):
         import time

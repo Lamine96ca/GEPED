@@ -47,6 +47,14 @@ class EtudiantForm(BootstrapMixin, forms.ModelForm):
         super().__init__(*args, **kwargs)
         # default=0 sur le modèle : la case serait cochée par défaut
         self.initial['preinscrit'] = bool(self.instance.preinscrit)
+        # Inscription en ligne validée : l'étudiant est inscrit, il ne peut plus repasser « Préinscrit »
+        from .models import DemandeEtudiant
+        self.inscription_en_ligne = (DemandeEtudiant.objects.filter(
+            etudiant_id=self.instance.pk, type=DemandeEtudiant.INSCRIPTION, statut=DemandeEtudiant.VALIDEE)
+            .order_by('-traitee_le').first() if self.instance.pk else None)
+        if self.inscription_en_ligne:
+            self.fields['preinscrit'].disabled = True
+            self.initial['preinscrit'] = False
         self.photo_actuelle = self.instance.photo if a_une_photo(self.instance) else None
         self._photo_initiale = self.instance.photo.name if self.instance.photo else None
         self._photo_compressee = None

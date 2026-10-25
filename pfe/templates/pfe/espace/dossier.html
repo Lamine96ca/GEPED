@@ -5,21 +5,37 @@
 <form method="post" enctype="multipart/form-data" novalidate id="form-dossier">
   {% csrf_token %}
   <section class="verif-carte mb-3">
-    <div class="d-flex flex-wrap align-items-center gap-3 mb-3">
-      <button type="button" class="avatar-profil avatar-cliquable {% if photo_url %}a-photo{% endif %}" data-apercu="espace"
-              {% if photo_url %}style="background-image: url('{{ photo_url }}')"{% endif %}
-              data-photo-ouvrir data-photo-input="{{ form.photo.id_for_label }}" data-photo-cible='[data-apercu="espace"]'
-              data-photo-actuelle="0" data-photo-titre="Votre photo d'identité" title="Ajouter ou changer ma photo">
-        {{ etudiant.prenom|first }}{{ etudiant.nom|first }}<span class="badge-photo"><i class="bi bi-camera"></i></span>
-      </button>
+    <div class="d-flex flex-wrap align-items-start gap-2 mb-3">
       <div class="me-auto" style="min-width:0">
         <div class="small text-secondary">{% if reinscription %}Réinscription{% else %}Inscription{% endif %} · {{ session }}</div>
-        <h1 class="h4 mb-1" style="color:var(--encre)">{{ etudiant.prenom }} {{ etudiant.nom }}</h1>
-        <div class="small text-secondary" data-photo-info>{% if photo_en_attente %}<i class="bi bi-hourglass-split"></i> Nouvelle photo envoyée, en attente de validation par la scolarité. Touchez-la pour la changer.{% elif photo_url %}Votre photo actuelle. Touchez-la pour la changer (format identité, compressée automatiquement).{% else %}Touchez le cadre pour prendre ou ajouter votre photo (format identité, compressée automatiquement).{% endif %}</div>
-        {{ form.photo }}
-        {% for err in form.photo.errors %}<div class="invalid-feedback d-block">{{ err }}</div>{% endfor %}
+        <h1 class="h4 mb-0" style="color:var(--encre)">{{ etudiant.prenom }} {{ etudiant.nom }}</h1>
       </div>
       <span class="small text-secondary"><i class="bi bi-clock"></i> Session ouverte encore {{ expire_minutes }} min</span>
+    </div>
+
+    {# Photo : même bloc que dans le formulaire de la scolarité (format identité, recadrage, compression) #}
+    <div class="bloc-photo mb-3 {% if form.photo.errors %}erreur{% endif %}">
+      <button type="button" class="apercu-photo avatar-cliquable {% if photo_url %}a-photo{% endif %}" data-apercu="espace"
+              {% if photo_url %}style="background-image:url('{{ photo_url }}')"{% endif %}
+              data-photo-ouvrir data-photo-input="{{ form.photo.id_for_label }}" data-photo-cible='[data-apercu="espace"]'
+              data-photo-actuelle="0" data-photo-titre="Votre photo d'identité" aria-label="Prendre ou charger votre photo">
+        <i class="bi bi-person-bounding-box"></i>
+        <span class="badge-photo"><i class="bi bi-camera"></i></span>
+      </button>
+      <div style="min-width:0">
+        <div class="fw-semibold" style="color:var(--encre)">Photo d'identité</div>
+        <div class="small text-secondary">Prise de vue ou chargement · recadrée au format identité et compressée (350 Ko maximum) · prise en compte après validation par la scolarité</div>
+        <div class="d-flex flex-wrap align-items-center gap-2 mt-2">
+          <button type="button" class="btn btn-sm btn-or"
+                  data-photo-ouvrir data-photo-input="{{ form.photo.id_for_label }}" data-photo-cible='[data-apercu="espace"]'
+                  data-photo-actuelle="0" data-photo-titre="Votre photo d'identité">
+            <i class="bi bi-camera"></i> {% if photo_url %}Changer la photo{% else %}Prendre ou charger une photo{% endif %}
+          </button>
+          {{ form.photo }}
+        </div>
+        <div class="small text-secondary mt-1" data-photo-info>{% if photo_en_attente %}<i class="bi bi-hourglass-split"></i> Nouvelle photo envoyée, en attente de validation par la scolarité.{% elif photo_url %}Votre photo actuelle.{% endif %}</div>
+        {% for err in form.photo.errors %}<div class="invalid-feedback d-block">{{ err }}</div>{% endfor %}
+      </div>
     </div>
     {% if demande %}
       <div class="alert {% if demande.statut == 'refusee' %}alert-danger{% else %}alert-info{% endif %} py-2 small">
