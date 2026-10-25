@@ -158,7 +158,14 @@ def valider_preinscriptions(request):
     # Liste Python (pas de sous-requête) : MySQL refuse un UPDATE de pfe_etudiant qui relit pfe_etudiant
     etudiants = list(Inscription.objects.filter(pk__in=ids, etudiant__preinscrit=True)
                      .values_list('etudiant_id', flat=True))
-    n = Etudiant.objects.filter(pk__in=etudiants).update(preinscrit=False)
+    # Demande d'inscription déposée en ligne : ses coordonnées et sa photo sont appliquées en même temps
+    from .espace_etudiant import appliquer
+    from .models import DemandeEtudiant
+    for demande in DemandeEtudiant.objects.filter(etudiant_id__in=etudiants, type=DemandeEtudiant.INSCRIPTION,
+                                                  statut=DemandeEtudiant.EN_ATTENTE).select_related('etudiant'):
+        appliquer(demande, request.user)
+    Etudiant.objects.filter(pk__in=etudiants).update(preinscrit=False)
+    n = len(set(etudiants))
 
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
         return JsonResponse({'inscrits': n})

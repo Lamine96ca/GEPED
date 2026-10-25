@@ -1339,6 +1339,126 @@ class GpedTests(TestCase):
             self.client.post(reverse('piece_supprimer', args=[p.pk]))
             self.assertFalse(PieceDossier.objects.exists())
 
+    def _espace(self):
+        """Espace étudiant : cache local (essais limités) et dossier privé temporaires."""
+        import shutil, tempfile
+        from django.core.cache import cache
+        from django.test import override_settings
+        dossier = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, dossier, True)
+        reglages = override_settings(BASE_DIR=pathlib_path(dossier), CACHES={
+            'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}})
+        reglages.enable()
+        self.addCleanup(reglages.disable)
+        cache.clear()
+        return dossier
+
+    def test_espace_etudiant_inscription_en_ligne(self):
+        from .models import DemandeEtudiant, PieceDossier
+        self._espace()
+        p = Etudiant.objects.create(matricule='2601000135', prenom='Awa', nom='BAH', email='awa@etudiant.gped',
+                                    ine='INEP1', pvbac='123 456', preinscrit=True, telephone='600',
+                                    boursier='boursier', type_formation='initiale')
+        insc = Inscription.objects.create(etudiant=p, session=self.session, licence=self.licence, filiere=self.info)
+        accueil = reverse('espace_accueil')
+        identifiants = {'mode': 'inscription', 'i-ine': 'inep1', 'i-pvbac': '123456'}
+        # Fermé par défaut
+        r = self.client.post(accueil, identifiants)
+        self.assertContains(r, 'inscriptions en ligne</strong> sont fermées')
+        Session.objects.filter(pk=self.session.pk).update(inscriptions_ouvertes=True)
+        # Mauvais PV : refus sans dire quel champ est faux
+        r = self.client.post(accueil, {**identifiants, 'i-pvbac': '999'})
+        self.assertContains(r, 'Aucun dossier ne correspond')
+        # Bon couple (espaces et casse ignorés) → dossier
+        r = self.client.post(accueil, identifiants)
+        self.assertRedirects(r, reverse('espace_dossier'))
+        r = self.client.get(reverse('espace_dossier'))
+        self.assertContains(r, 'Awa BAH')
+        self.assertNotContains(r, 'name="licence"')                       # pas de choix de niveau à l'inscription
+        # Envoi : coordonnées + acte de naissance (PDF) → demande en attente, fiche inchangée
+        r = self.client.post(reverse('espace_dossier'), {
+            'telephone': '622 11 22 33', 'email': 'awa.bah@exemple.com', 'tuteur': 'Mariam CAMARA',
+            'piece_acte_naissance': SimpleUploadedFile('acte.pdf', b'%PDF-1.4 acte')})
+        self.assertRedirects(r, reverse('espace_confirmation'))
+        d = DemandeEtudiant.objects.get()
+        self.assertEqual((d.type, d.statut, d.contacts['telephone']), ('inscription', 'en_attente', '622 11 22 33'))
+        p.refresh_from_db()
+        self.assertEqual((p.telephone, p.preinscrit), ('600', True))      # rien d'appliqué avant validation
+        self.assertTrue(PieceDossier.objects.get(etudiant=p, type='acte_naissance').par_etudiant)
+        # « Inscrire » (page Préinscription) applique la demande
+        self.connecter('scol')
+        self.client.post(reverse('valider_preinscriptions'), {'ids': [insc.pk]})
+        p.refresh_from_db()
+        d.refresh_from_db()
+        self.assertEqual((p.telephone, p.email, p.tuteur, p.preinscrit, d.statut),
+                         ('622 11 22 33', 'awa.bah@exemple.com', 'Mariam CAMARA', False, 'validee'))
+
+    def test_espace_etudiant_essais_limites_et_expiration(self):
+        import time
+        self._espace()
+        Session.objects.filter(pk=self.session.pk).update(inscriptions_ouvertes=True)
+        accueil = reverse('espace_accueil')
+        for _ in range(5):
+            self.client.post(accueil, {'mode': 'inscription', 'i-ine': 'X', 'i-pvbac': 'Y'})
+        r = self.client.post(accueil, {'mode': 'inscription', 'i-ine': 'X', 'i-pvbac': 'Y'})
+        self.assertContains(r, "Trop d&#x27;essais")
+        # Sans identification (ou accès expiré) : retour à l'accueil
+        self.assertRedirects(self.client.get(reverse('espace_dossier')), accueil)
+        s = self.client.session
+        s['espace_etudiant'] = {'etudiant': 1, 'type': 'inscription', 'inscription': 1, 'expire': time.time() - 1}
+        s.save()
+        self.assertRedirects(self.client.get(reverse('espace_dossier')), accueil)
+
+    def test_espace_etudiant_reinscription_et_validation(self):
+        from .models import DemandeEtudiant, Matiere, Note
+        self._espace()
+        s1, _ = self._semestres()
+        Session.objects.filter(pk=self.session.pk).update(reinscriptions_ouvertes=True)
+        e = Etudiant.objects.create(matricule='R1', prenom='Ali', nom='SOW', email='ali@t.local', ine='INER1',
+                                    telephone='611')
+        derniere = Inscription.objects.create(etudiant=e, session=self.s2425, licence=self.licence, filiere=self.info,
+                                              promotion=self.p20, cycle='Licence')
+        algo = Matiere.objects.create(nom='Algorithmique', filiere=self.info, semestre=s1, licence=self.licence,
+                                      session=self.s2425, credit=6)
+        Note.objects.create(etudiant=e, matiere=algo, moyenne=3.5, moyenne_deposee=True)
+        # Préinscrit ou mauvais matricule : refusé
+        r = self.client.post(reverse('espace_accueil'), {'mode': 'reinscription', 'r-ine': 'INER1', 'r-matricule': 'R2'})
+        self.assertContains(r, 'Aucun dossier ne correspond')
+        r = self.client.post(reverse('espace_accueil'), {'mode': 'reinscription', 'r-ine': 'iner1', 'r-matricule': 'r1'})
+        self.assertRedirects(r, reverse('espace_dossier'))
+        r = self.client.get(reverse('espace_dossier'))
+        self.assertContains(r, 'Dernier niveau')
+        self.assertContains(r, f'<option value="{self.l2.pk}" selected>')        # niveau suivant proposé
+        r = self.client.post(reverse('espace_dossier'), {
+            'telephone': '622 00 00 01', 'licence': self.l2.pk, 'boursier': 'payante', 'type_formation': 'continue',
+            'piece_releve_notes': SimpleUploadedFile('releve.pdf', b'%PDF-1.4 releve')})
+        self.assertRedirects(r, reverse('espace_confirmation'))
+        d = DemandeEtudiant.objects.get(type='reinscription')
+        self.assertEqual((d.licence, d.derniere_inscription, d.boursier), (self.l2, derniere, 'payante'))
+        self.assertFalse(Inscription.objects.filter(etudiant=e, session=self.session).exists())
+        # Scolarité : liste, fiche avec les notes empilées (note < 5 en rouge), refus sans motif impossible
+        self.connecter('info')
+        self.assertEqual(self.client.get(reverse('demandes_liste')).status_code, 403)
+        self.connecter('scol')
+        self.assertContains(self.client.get(reverse('demandes_liste')), 'SOW')
+        r = self.client.get(reverse('demande_detail', args=[d.pk]))
+        self.assertContains(r, 'Algorithmique')
+        self.assertContains(r, 'class="note-rouge"')
+        self.assertContains(r, '622 00 00 01')
+        r = self.client.post(reverse('demande_detail', args=[d.pk]), {'action': 'refuser'}, follow=True)
+        self.assertContains(r, 'Indiquez le motif')
+        # Validation : inscription créée au niveau demandé, coordonnées et choix appliqués
+        self.client.post(reverse('demande_detail', args=[d.pk]), {'action': 'valider'})
+        insc = Inscription.objects.get(etudiant=e, session=self.session)
+        self.assertEqual((insc.licence, insc.filiere, insc.promotion, insc.cycle, insc.redouble),
+                         (self.l2, self.info, self.p20, 'Licence', False))
+        e.refresh_from_db()
+        self.assertEqual((e.telephone, e.boursier, e.type_formation), ('622 00 00 01', 'payante', 'continue'))
+        # Déjà inscrit pour la session : l'espace le dit
+        self.client.logout()
+        r = self.client.post(reverse('espace_accueil'), {'mode': 'reinscription', 'r-ine': 'INER1', 'r-matricule': 'R1'})
+        self.assertContains(r, 'déjà inscrit(e)')
+
     def test_personnel_chef_seulement_scolarite_ou_departement(self):
         from .forms import PersonnelForm
         admin = User.objects.create_superuser('admin_chef', 'a@t.local', 'x')

@@ -521,6 +521,9 @@ def importer_etudiants(fichier, simulation=False, cycle=None, preinscription=Fal
                 generes[k] = (numero, insc['filiere'])
             data['email'] = (data.get('email') or f"{data['matricule']}@{DOMAINE_EMAIL_GENERE}").lower()
             data['preinscrit'] = preinscription
+            if preinscription:              # préinscrits : boursiers et en formation initiale par défaut
+                data.setdefault('boursier', 'boursier')
+                data.setdefault('type_formation', 'initiale')
             nouveaux[k] = data
         emails_nouveaux = [d['email'] for d in nouveaux.values()]
         pris = set()

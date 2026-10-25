@@ -220,6 +220,17 @@ WHITENOISE_MAX_AGE = 7 * 24 * 3600          # les URL portent ?v=<empreinte> : u
 # n'a pas été relancé après une mise à jour (les fichiers rassemblés, compressés, restent prioritaires).
 WHITENOISE_USE_FINDERS = True
 
+# Cache partagé par tous les processus (Passenger en lance plusieurs) : sert à limiter les essais
+# d'identification de l'espace étudiant. Dans tmp/ (hors Git), créé au besoin.
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.filebased.FileBasedCache',
+        'LOCATION': str(BASE_DIR / 'tmp' / 'cache'),
+        'TIMEOUT': 3600,
+        'OPTIONS': {'MAX_ENTRIES': 5000},
+    }
+}
+
 # Grandes grilles de saisie (notes : 5 champs × plusieurs centaines d'étudiants)
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 20000
 

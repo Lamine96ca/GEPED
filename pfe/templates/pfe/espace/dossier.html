@@ -1,0 +1,101 @@
+{% extends 'pfe/espace/base.html' %}
+{% load static %}
+{% block titre %}{% if reinscription %}Réinscription{% else %}Inscription{% endif %}{% endblock %}
+{% block contenu %}
+<form method="post" enctype="multipart/form-data" novalidate id="form-dossier">
+  {% csrf_token %}
+  <section class="verif-carte mb-3">
+    <div class="d-flex flex-wrap align-items-center gap-3 mb-3">
+      <button type="button" class="avatar-profil avatar-cliquable {% if photo_url %}a-photo{% endif %}" data-apercu="espace"
+              {% if photo_url %}style="background-image: url('{{ photo_url }}')"{% endif %}
+              data-photo-ouvrir data-photo-input="{{ form.photo.id_for_label }}" data-photo-cible='[data-apercu="espace"]'
+              data-photo-actuelle="0" data-photo-titre="Votre photo d'identité" title="Ajouter ou changer ma photo">
+        {{ etudiant.prenom|first }}{{ etudiant.nom|first }}<span class="badge-photo"><i class="bi bi-camera"></i></span>
+      </button>
+      <div class="me-auto" style="min-width:0">
+        <div class="small text-secondary">{% if reinscription %}Réinscription{% else %}Inscription{% endif %} · {{ session }}</div>
+        <h1 class="h4 mb-1" style="color:var(--encre)">{{ etudiant.prenom }} {{ etudiant.nom }}</h1>
+        <div class="small text-secondary" data-photo-info>Touchez la photo pour la prendre ou la changer (format identité, compressée automatiquement).</div>
+        {{ form.photo }}
+        {% for err in form.photo.errors %}<div class="invalid-feedback d-block">{{ err }}</div>{% endfor %}
+      </div>
+      <span class="small text-secondary"><i class="bi bi-clock"></i> Session ouverte encore {{ expire_minutes }} min</span>
+    </div>
+    {% if demande %}
+      <div class="alert {% if demande.statut == 'refusee' %}alert-danger{% else %}alert-info{% endif %} py-2 small">
+        {% if demande.statut == 'refusee' %}<i class="bi bi-x-octagon"></i> Votre demande a été <strong>refusée</strong>{% if demande.motif_refus %} : {{ demande.motif_refus }}{% endif %}. Vous pouvez la corriger et la renvoyer.
+        {% else %}<i class="bi bi-hourglass-split"></i> Demande déposée le {{ demande.date_depot|date:"d/m/Y à H:i" }}, <strong>en attente</strong> de validation par la scolarité. Vous pouvez encore la modifier.{% endif %}
+      </div>
+    {% endif %}
+
+    <h2 class="h6 text-uppercase text-secondary mt-2"><i class="bi bi-lock"></i> Vos informations <span class="fw-normal text-lowercase">(modifiables seulement par la scolarité)</span></h2>
+    <ul class="infos-compte grille trois">
+      {% if etudiant.matricule %}<li><i class="bi bi-upc"></i><div><div class="lib">Matricule</div><div class="val">{{ etudiant.matricule }}</div></div></li>{% endif %}
+      <li><i class="bi bi-person-vcard"></i><div><div class="lib">INE</div><div class="val">{{ etudiant.ine|default:"—" }}</div></div></li>
+      <li><i class="bi bi-cake2"></i><div><div class="lib">Né(e) le</div><div class="val">{{ etudiant.date_de_naissance|date:"d/m/Y"|default:"—" }}{% if etudiant.lieu_de_naissance %} à {{ etudiant.lieu_de_naissance }}{% endif %}</div></div></li>
+      {% if reinscription %}
+        <li><i class="bi bi-building"></i><div><div class="lib">Département</div><div class="val">{{ departement|default:"—" }}</div></div></li>
+        <li><i class="bi bi-diagram-3"></i><div><div class="lib">Programme</div><div class="val">{{ programme|default:"—" }}</div></div></li>
+        <li><i class="bi bi-people"></i><div><div class="lib">Promotion</div><div class="val">{{ insc.promotion|default:"—" }}</div></div></li>
+        <li><i class="bi bi-bar-chart-steps"></i><div><div class="lib">Dernier niveau</div><div class="val">{{ insc.licence }} ({{ insc.session }})</div></div></li>
+      {% else %}
+        <li><i class="bi bi-diagram-3"></i><div><div class="lib">Programme</div><div class="val">{{ programme|default:"—" }}</div></div></li>
+        <li><i class="bi bi-bar-chart-steps"></i><div><div class="lib">Niveau</div><div class="val">{{ insc.licence }}</div></div></li>
+        <li><i class="bi bi-people"></i><div><div class="lib">Promotion</div><div class="val">{{ insc.promotion|default:"—" }}</div></div></li>
+        <li><i class="bi bi-award"></i><div><div class="lib">Bac</div><div class="val">{{ etudiant.option_de_bac|default:"—" }}{% if etudiant.annee_obtention_bac %} · {{ etudiant.annee_obtention_bac }}{% endif %}</div></div></li>
+        <li><i class="bi bi-cash-coin"></i><div><div class="lib">Bourse · Formation</div><div class="val">{{ etudiant.get_boursier_display|default:"Boursier" }} · {{ etudiant.get_type_formation_display|default:"Initiale" }}</div></div></li>
+      {% endif %}
+    </ul>
+  </section>
+
+  {% if reinscription %}
+  <section class="verif-carte mb-3">
+    <h2 class="h6 text-uppercase text-secondary"><i class="bi bi-mortarboard"></i> Votre réinscription</h2>
+    <div class="row g-3">
+      {% include 'pfe/_champ.html' with champ=form.licence col='col-md-4' %}
+      {% include 'pfe/_choix_boutons.html' with champ=form.boursier col='col-md-8' %}
+      {% include 'pfe/_choix_boutons.html' with champ=form.type_formation col='col-md-8' %}
+    </div>
+  </section>
+  {% endif %}
+
+  <section class="verif-carte mb-3">
+    <h2 class="h6 text-uppercase text-secondary"><i class="bi bi-telephone"></i> Vos coordonnées</h2>
+    <div class="row g-3">
+      {% include 'pfe/_champ.html' with champ=form.telephone col='col-md-4' %}
+      {% include 'pfe/_champ.html' with champ=form.email col='col-md-8' %}
+      {% include 'pfe/_champ.html' with champ=form.adresse col='col-md-8' %}
+      {% include 'pfe/_champ.html' with champ=form.ville col='col-md-4' %}
+      {% include 'pfe/_champ.html' with champ=form.tuteur %}
+      {% include 'pfe/_champ.html' with champ=form.contact_de_tuteur %}
+    </div>
+  </section>
+
+  <section class="verif-carte mb-3">
+    <h2 class="h6 text-uppercase text-secondary"><i class="bi bi-folder2-open"></i> Pièces du dossier <span class="fw-normal text-lowercase">(facultatives)</span></h2>
+    <p class="small text-secondary">Scannez chaque pièce avec l'appareil photo (une photo par page) ou envoyez un PDF. Les fichiers sont compressés automatiquement.</p>
+    <div class="row g-3">
+      {% for code, libelle, deposee, erreur in pieces %}
+        <div class="col-md-6">
+          <div class="fw-semibold mb-1" style="color:var(--encre)">{{ libelle }}
+            {% if deposee %}<span class="pill pill-succes ms-1"><i class="bi bi-check2"></i> déposée le {{ deposee.date|date:"d/m/Y" }}</span>{% endif %}</div>
+          {% include 'pfe/_depot_piece.html' with nom='piece_'|add:code %}
+          {% if deposee %}<div class="small text-secondary mt-1">Un nouvel envoi remplacera la pièce déjà déposée.</div>{% endif %}
+          {% if erreur %}<div class="invalid-feedback d-block">{{ erreur }}</div>{% endif %}
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  {% if form.errors %}<div class="alert alert-danger py-2"><i class="bi bi-exclamation-circle"></i> Corrigez les champs signalés.</div>{% endif %}
+  <div class="d-flex flex-wrap gap-2 align-items-center">
+    <button class="btn btn-primary btn-lg"><i class="bi bi-send"></i> {% if demande %}Mettre à jour ma demande{% else %}Envoyer ma demande{% endif %}</button>
+    <span class="small text-secondary">Vos changements ne seront appliqués qu'après vérification par la scolarité.</span>
+  </div>
+</form>
+<form method="post" action="{% url 'espace_quitter' %}" class="mt-3">{% csrf_token %}<button class="btn btn-link btn-sm px-0"><i class="bi bi-box-arrow-left"></i> Quitter sans envoyer</button></form>
+{% endblock %}
+{% block scripts %}
+{% include 'pfe/_modal_photo.html' %}
+<script src="{% static 'pfe/js/gped-pieces.js' %}?v={{ version_statique }}" defer></script>
+{% endblock %}

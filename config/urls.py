@@ -4,9 +4,15 @@ from django.urls import include, path, re_path
 
 from pfe.forms import MotDePasseOublieForm, NouveauMotDePasseForm
 from pfe.views import media_protege
+from pfe import views_espace
 
 urlpatterns = [
     path('django-admin/', admin.site.urls),
+    # Espace étudiant public (sans compte) : inscription et réinscription en ligne
+    path('etudiant/', views_espace.espace_accueil, name='espace_accueil'),
+    path('etudiant/dossier/', views_espace.espace_dossier, name='espace_dossier'),
+    path('etudiant/dossier/envoye/', views_espace.espace_confirmation, name='espace_confirmation'),
+    path('etudiant/quitter/', views_espace.espace_quitter, name='espace_quitter'),
     path('connexion/', auth_views.LoginView.as_view(template_name='pfe/connexion.html',
                                                      redirect_authenticated_user=True), name='login'),
     path('deconnexion/', auth_views.LogoutView.as_view(), name='logout'),

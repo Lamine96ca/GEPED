@@ -1,0 +1,127 @@
+{% extends 'pfe/base.html' %}
+{% block titre %}{{ demande.get_type_display }} · {{ etudiant.nom }}{% endblock %}
+{% block titre_page %}<a href="{% url 'demandes_liste' %}?type={{ demande.type }}" class="text-decoration-none text-secondary me-1" title="Retour aux demandes"><i class="bi bi-arrow-left"></i></a> {{ demande.get_type_display }} en ligne{% endblock %}
+{% block sous_titre %}<div class="sous-titre">{{ etudiant.prenom }} {{ etudiant.nom }} · {{ demande.session }} · déposée le {{ demande.date_depot|date:"d/m/Y à H:i" }}</div>{% endblock %}
+{% block actions %}{% if fiche %}<a class="btn btn-light" href="{% url 'etudiant_fiche' fiche.pk %}"><i class="bi bi-person-vcard"></i> <span class="d-none d-sm-inline">Fiche de l'étudiant</span></a>{% endif %}{% endblock %}
+{% block contenu %}
+
+{% if demande.statut != 'en_attente' %}
+  <div class="alert {% if demande.statut == 'validee' %}alert-success{% else %}alert-danger{% endif %} d-flex gap-2">
+    <i class="bi {% if demande.statut == 'validee' %}bi-check-circle{% else %}bi-x-octagon{% endif %} mt-1"></i>
+    <div>Demande <strong>{{ demande.get_statut_display|lower }}</strong> le {{ demande.traitee_le|date:"d/m/Y à H:i" }}{% if demande.traitee_par %} par {{ demande.traitee_par.get_full_name|default:demande.traitee_par.username }}{% endif %}.{% if demande.motif_refus %}<div class="small">Motif : {{ demande.motif_refus }}</div>{% endif %}</div>
+  </div>
+{% endif %}
+
+<div class="row g-3">
+  <div class="col-xl-5 d-flex flex-column gap-3">
+    <div class="card carte-gped"><div class="card-body">
+      <div class="entete-carte"><span class="icone-carte"><i class="bi bi-person"></i></span><div><h3>{{ etudiant.prenom }} {{ etudiant.nom }}</h3><p>{{ etudiant.matricule|default:"Sans matricule" }} · INE {{ etudiant.ine|default:"—" }}</p></div></div>
+      <ul class="infos-compte grille">
+        {% if demande.type == 'reinscription' %}
+          <li><i class="bi bi-building"></i><div><div class="lib">Département</div><div class="val">{{ departement|default:"—" }}</div></div></li>
+          <li><i class="bi bi-diagram-3"></i><div><div class="lib">Programme</div><div class="val">{{ programme|default:"—" }}</div></div></li>
+          <li><i class="bi bi-people"></i><div><div class="lib">Promotion</div><div class="val">{{ derniere.promotion|default:"—" }}</div></div></li>
+          <li><i class="bi bi-bar-chart-steps"></i><div><div class="lib">Dernier niveau</div><div class="val">{{ derniere.licence|default:"—" }} ({{ derniere.session|default:"—" }})</div></div></li>
+          <li class="col-span"><i class="bi bi-arrow-up-right-circle"></i><div><div class="lib">Niveau demandé pour {{ demande.session }}</div><div class="val fs-5">{{ demande.licence|default:"—" }}{% if demande.licence_id == derniere.licence_id %} <span class="pill pill-attention">redoublement</span>{% endif %}</div></div></li>
+        {% else %}
+          <li><i class="bi bi-diagram-3"></i><div><div class="lib">Programme</div><div class="val">{{ insc_session.filiere|default:"—" }}</div></div></li>
+          <li><i class="bi bi-bar-chart-steps"></i><div><div class="lib">Niveau</div><div class="val">{{ insc_session.licence|default:"—" }}</div></div></li>
+          <li><i class="bi bi-hourglass-split"></i><div><div class="lib">Statut actuel</div><div class="val">{% if etudiant.preinscrit %}Préinscrit{% else %}Inscrit{% endif %}</div></div></li>
+        {% endif %}
+      </ul>
+    </div></div>
+
+    <div class="card carte-gped"><div class="card-body">
+      <div class="entete-carte"><span class="icone-carte"><i class="bi bi-pencil-square"></i></span><div><h3>Changements proposés</h3><p>Appliqués à la fiche seulement si vous validez</p></div></div>
+      {% if demande.photo %}
+        <div class="d-flex align-items-center gap-3 mb-3">
+          <img src="{% url 'demande_photo' demande.pk %}" alt="Nouvelle photo proposée" width="90" height="120" style="object-fit:cover;border-radius:10px;border:1px solid #d5dde6">
+          <div class="small text-secondary">Nouvelle photo d'identité proposée.</div>
+        </div>
+      {% endif %}
+      {% if changements %}
+        <div class="table-responsive"><table class="table table-sm mb-0">
+          <thead><tr><th>Champ</th><th>Actuel</th><th>Proposé</th></tr></thead>
+          <tbody>{% for libelle, ancien, nouveau in changements %}<tr><td class="text-secondary">{{ libelle }}</td><td>{{ ancien|default:"—" }}</td><td class="fw-semibold" style="color:var(--encre)">{{ nouveau }}</td></tr>{% endfor %}</tbody>
+        </table></div>
+      {% elif not demande.photo %}
+        <div class="small text-secondary"><i class="bi bi-check2"></i> Aucun changement de coordonnées.</div>
+      {% endif %}
+    </div></div>
+
+    <div class="card carte-gped"><div class="card-body">
+      <div class="entete-carte"><span class="icone-carte"><i class="bi bi-folder2-open"></i></span><div><h3>Pièces du dossier</h3><p>Déposées par l'étudiant ou la scolarité</p></div></div>
+      <div class="liste-pieces">
+        {% for p in pieces %}
+          <div class="piece"><i class="bi bi-file-earmark-pdf"></i>
+            <div class="me-auto"><div class="fw-semibold" style="color:var(--encre)">{{ p.get_type_display }}{% if p.session %} <span class="text-secondary fw-normal">({{ p.session }})</span>{% endif %}</div>
+              <div class="small text-secondary">{{ p.pages }} page{{ p.pages|pluralize }} · {{ p.taille|filesizeformat }} · {{ p.date|date:"d/m/Y" }}{% if p.par_etudiant %} · par l'étudiant{% endif %}</div></div>
+            <a class="btn btn-sm btn-light" href="{% url 'piece_voir' p.pk %}" target="_blank" rel="noopener"><i class="bi bi-eye"></i> Voir</a>
+          </div>
+        {% empty %}<div class="small text-secondary">Aucune pièce (elles sont facultatives).</div>{% endfor %}
+      </div>
+    </div></div>
+
+    {% if demande.statut == 'en_attente' %}
+    <div class="card carte-gped"><div class="card-body">
+      <div class="entete-carte"><span class="icone-carte"><i class="bi bi-clipboard-check"></i></span><div><h3>Décision</h3><p>{% if demande.type == 'reinscription' %}Après avoir vu ses notes{% else %}Après avoir vérifié son dossier{% endif %}</p></div></div>
+      <form method="post" class="mb-3">{% csrf_token %}<input type="hidden" name="action" value="valider">
+        <button class="btn btn-primary w-100" onclick="return confirm('Valider cette demande ?{% if demande.type == 'reinscription' %} L\'étudiant sera inscrit en {{ demande.licence }} pour {{ demande.session }}.{% endif %}');"><i class="bi bi-check2-circle"></i> Valider {% if demande.type == 'reinscription' %}la réinscription en {{ demande.licence }}{% else %}l'inscription{% endif %}</button>
+      </form>
+      <form method="post">{% csrf_token %}<input type="hidden" name="action" value="refuser">
+        <label class="form-label small mb-1" for="motif">Ou refuser, avec le motif (affiché à l'étudiant)</label>
+        <textarea id="motif" name="motif" rows="2" class="form-control mb-2" placeholder="Ex. : relevé illisible, niveau demandé non conforme aux résultats…"></textarea>
+        <button class="btn btn-outline-danger w-100"><i class="bi bi-x-circle"></i> Refuser</button>
+      </form>
+    </div></div>
+    {% endif %}
+  </div>
+
+  <div class="col-xl-7">
+    {% if annees is not None %}
+    <div class="card carte-gped liste">
+      <div class="card-header d-flex flex-wrap align-items-center gap-2">
+        <h3 class="titre-stat me-auto mb-0"><i class="bi bi-journal-text"></i> Notes de l'étudiant, année par année</h3>
+        <span class="small"><span class="note-rouge px-2 rounded">&nbsp;&lt; {{ seuil_rouge }}&nbsp;</span> note inférieure à {{ seuil_rouge }}</span>
+      </div>
+      {% for a in annees %}
+        <div class="bloc-annee">
+          <div class="entete-annee d-flex flex-wrap align-items-center gap-2">
+            <strong>{{ a.inscription.session }} · {{ a.inscription.licence }}</strong>
+            <span class="text-secondary small">{{ a.inscription.filiere }}{% if a.inscription.redouble %} · redoublant{% endif %}</span>
+            <span class="ms-auto small">
+              {% if a.resultat and a.resultat.moyenne is not None %}Moyenne <strong>{{ a.resultat.moyenne|floatformat:2 }}</strong>/10 · {{ a.resultat.credits_valides }}/{{ a.resultat.credits_total }} cr.{% if a.resultat.mention %} · {{ a.resultat.mention }}{% endif %}{% else %}<span class="text-secondary">Résultat non calculé</span>{% endif %}
+              {% if a.nb_rouges %} · <span class="text-danger fw-semibold">{{ a.nb_rouges }} note{{ a.nb_rouges|pluralize }} &lt; {{ seuil_rouge }}</span>{% endif %}
+              {% if a.nb_manquantes %} · <span class="text-secondary">{{ a.nb_manquantes }} sans note</span>{% endif %}
+            </span>
+          </div>
+          <div class="table-responsive">
+            <table class="table table-sm table-notes-empilees mb-0">
+              <thead><tr><th>Semestre</th><th>Matière</th><th class="text-end">Crédits</th><th class="text-end">Note /10</th></tr></thead>
+              <tbody>
+              {% for semestre, lignes in a.semestres %}
+                {% for l in lignes %}
+                  <tr class="{% if l.rouge %}note-rouge{% endif %}">
+                    <td class="text-secondary">{% if forloop.first %}{{ semestre }}{% endif %}</td>
+                    <td>{{ l.matiere.nom }}</td>
+                    <td class="text-end">{{ l.matiere.credit }}</td>
+                    <td class="text-end fw-semibold">{% if l.finale is not None %}{{ l.finale|floatformat:2 }}{% if l.note.par_session %} <span class="pill pill-accent">Session</span>{% endif %}{% else %}<span class="text-secondary">—</span>{% endif %}</td>
+                  </tr>
+                {% endfor %}
+              {% empty %}
+                <tr><td colspan="4" class="text-secondary small">Aucune matière enregistrée pour cette année.</td></tr>
+              {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      {% empty %}
+        <div class="etat-vide"><i class="bi bi-journal-x"></i><div class="fw-semibold text-body">Aucune note</div><div class="small">L'étudiant n'a aucune note enregistrée.</div></div>
+      {% endfor %}
+    </div>
+    {% else %}
+      <div class="card carte-gped"><div class="card-body small text-secondary"><i class="bi bi-info-circle"></i> Nouvel étudiant (préinscrit) : pas encore de notes. Valider la demande l'inscrit (comme le bouton « Inscrire » de la page Préinscription) et applique ses coordonnées et sa photo.</div></div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

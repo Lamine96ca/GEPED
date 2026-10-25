@@ -1117,3 +1117,75 @@ class ImportSoutenancesForm(ImportMatieresForm):
     """Même fichier (.xlsx / .csv) et même mode simulation que l'import des matières."""
 
 
+
+
+# ------------------------------------------------------------------ espace étudiant (sans compte)
+
+class IdentificationInscriptionForm(BootstrapMixin, forms.Form):
+    ine = forms.CharField(label='INE', max_length=25, widget=forms.TextInput(attrs={
+        'placeholder': 'Ex. CAMM0511984521', 'autocomplete': 'off', 'autocapitalize': 'characters'}))
+    pvbac = forms.CharField(label='Numéro de PV du bac', max_length=25, widget=forms.TextInput(attrs={
+        'placeholder': 'Ex. 184882', 'autocomplete': 'off', 'inputmode': 'numeric'}))
+
+
+class IdentificationReinscriptionForm(BootstrapMixin, forms.Form):
+    ine = forms.CharField(label='INE', max_length=25, widget=forms.TextInput(attrs={
+        'placeholder': 'Ex. CAMM0511984521', 'autocomplete': 'off', 'autocapitalize': 'characters'}))
+    matricule = forms.CharField(label='Matricule', max_length=25, widget=forms.TextInput(attrs={
+        'placeholder': 'Ex. 2306004423', 'autocomplete': 'off'}))
+
+
+class DossierEtudiantForm(BootstrapMixin, forms.Form):
+    """
+    Ce que l'étudiant peut proposer dans son espace : contacts, photo (déjà recadrée et compressée
+    par la fenêtre photo), et pour une réinscription le niveau, la bourse et le type de formation.
+    Tout reste en attente jusqu'à la validation par la scolarité.
+    """
+    telephone = forms.CharField(label='Téléphone', max_length=25, widget=forms.TextInput(attrs={
+        'placeholder': 'Ex. 620 00 00 00', 'inputmode': 'tel', 'autocomplete': 'tel'}))
+    email = forms.EmailField(label='E-mail', max_length=150, required=False, widget=forms.EmailInput(attrs={
+        'placeholder': 'nom@exemple.com', 'autocomplete': 'email'}))
+    adresse = forms.CharField(label='Adresse', max_length=200, required=False,
+                              widget=forms.TextInput(attrs={'placeholder': 'Quartier, secteur…'}))
+    ville = forms.CharField(label='Ville / Commune', max_length=100, required=False)
+    tuteur = forms.CharField(label='Nom du tuteur', max_length=100, required=False,
+                             widget=forms.TextInput(attrs={'placeholder': 'Ex. Mariam CAMARA'}))
+    contact_de_tuteur = forms.CharField(label='Contact du tuteur', max_length=25, required=False,
+                                        widget=forms.TextInput(attrs={'inputmode': 'tel'}))
+    photo = forms.FileField(label='Photo', required=False,
+                            widget=forms.FileInput(attrs={'accept': 'image/*', 'class': 'visually-hidden'}))
+    licence = forms.ModelChoiceField(label='Niveau demandé', queryset=Licence.objects.none(), required=False,
+                                     empty_label=None)
+    boursier = forms.ChoiceField(label='Bourse', choices=Etudiant.BOURSIER_CHOICES, required=False,
+                                 widget=forms.RadioSelect(attrs={'class': 'btn-check'}))
+    type_formation = forms.ChoiceField(label='Type de formation', choices=Etudiant.TYPE_FORMATION_CHOICES,
+                                       required=False, widget=forms.RadioSelect(attrs={'class': 'btn-check'}))
+
+    def __init__(self, *args, reinscription=False, niveaux=(), etudiant=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.reinscription, self.etudiant = reinscription, etudiant
+        if reinscription:
+            self.fields['licence'].queryset = Licence.objects.filter(pk__in=[n.pk for n in niveaux])
+            self.fields['licence'].required = True
+            self.fields['boursier'].required = self.fields['type_formation'].required = True
+        else:
+            for champ in ('licence', 'boursier', 'type_formation'):
+                del self.fields[champ]
+
+    def clean_telephone(self):
+        return ' '.join(self.cleaned_data['telephone'].split())
+
+    def clean_email(self):
+        email = (self.cleaned_data.get('email') or '').strip().lower()
+        if email and Etudiant.objects.filter(email__iexact=email).exclude(pk=getattr(self.etudiant, 'pk', None)).exists():
+            raise forms.ValidationError("Cette adresse e-mail est déjà utilisée par un autre étudiant.")
+        return email
+
+    def clean_photo(self):
+        photo = self.cleaned_data.get('photo')
+        if photo:
+            try:
+                return compresser(photo)               # octets JPEG (≤ 350 Ko, 600 × 800)
+            except ValidationError as e:
+                raise forms.ValidationError(e.messages)
+        return None

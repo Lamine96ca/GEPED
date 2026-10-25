@@ -33,6 +33,9 @@ def gped(request):
                                     or url_photo(getattr(request.user, 'profil_etudiant', None)))
         if profil.a_acces:
             contexte['nb_preinscrits'] = _nb_preinscrits(profil)
+        if profil.est_scolarite:
+            from .views_demandes import nb_demandes_en_attente
+            contexte['nb_demandes'] = nb_demandes_en_attente()
     return contexte
 
 

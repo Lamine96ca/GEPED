@@ -839,3 +839,19 @@ code { color: var(--encre); background: var(--survol); padding: .05rem .3rem; bo
   .zone-formulaire { padding: 1.5rem 1rem 2.5rem; align-items: flex-start; }
   .boite-formulaire .carte { padding: 1.75rem 1.25rem; margin-top: -1rem; }
 }
+
+/* Espace étudiant public (inscription / réinscription en ligne) : mêmes bandeau et cartes que la vérification */
+.espace-contenu { position: relative; z-index: 2; max-width: 900px; margin: -4.25rem auto 0; padding: 0 1rem 2rem; }
+.page-espace .verif-carte { padding: 1.4rem 1.5rem; overflow: visible; }
+.page-espace .verif-carte .verif-conseil { margin: 0; }
+.page-espace .verif-carte .verif-statut { margin: -1.4rem -1.5rem 0; border-radius: 18px 18px 0 0; }
+.onglets-espace .nav-link { border-radius: 999px; font-weight: 600; color: var(--encre); background: var(--fond); margin-right: .4rem; }
+.onglets-espace .nav-link.active { background: var(--encre); color: #fff; }
+@media (max-width: 575.98px) { .page-espace .verif-carte { padding: 1.1rem 1rem; } .page-espace .verif-carte .verif-statut { margin: -1.1rem -1rem 0; } }
+
+/* Demandes en ligne : notes empilées (réinscription) ; note < 5 sur fond rouge clair */
+.bloc-annee { border-top: 1px solid var(--bord); }
+.bloc-annee .entete-annee { padding: .75rem 1.25rem; background: var(--fond); color: var(--encre); }
+.table-notes-empilees td, .table-notes-empilees th { padding-left: 1.25rem; }
+.table-notes-empilees tr.note-rouge > td, .note-rouge { background-color: #fde2e2 !important; }
+.infos-compte .col-span { grid-column: 1 / -1; }

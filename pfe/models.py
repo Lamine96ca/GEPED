@@ -58,6 +58,10 @@ class Personnel(models.Model):
 class Session(models.Model):
     annee = models.CharField(max_length=20, unique=True, verbose_name="Année académique")
     en_cours = models.BooleanField(default=False, verbose_name="Session en cours")
+    # Espace étudiant (sans compte) : ouverture des dépôts pour cette session, par la scolarité
+    inscriptions_ouvertes = models.BooleanField(default=False, verbose_name="Inscriptions ouvertes (espace étudiant)")
+    reinscriptions_ouvertes = models.BooleanField(default=False,
+                                                  verbose_name="Réinscriptions ouvertes (espace étudiant)")
 
     def __str__(self):
         return self.annee
@@ -434,6 +438,51 @@ class PieceDossier(models.Model):
 
     def __str__(self):
         return f"{self.get_type_display()} · {self.etudiant}"
+
+
+class DemandeEtudiant(models.Model):
+    """
+    Demande déposée par l'étudiant depuis l'espace étudiant (sans compte) :
+      - inscription (préinscrit, identifié par INE + PV du bac) ;
+      - réinscription (identifié par INE + matricule), avec le niveau demandé.
+    Les contacts, la bourse, le type de formation et la photo proposés restent EN ATTENTE : ils ne
+    sont appliqués à la fiche qu'à la validation par la scolarité (« Inscrire » pour un préinscrit,
+    « Valider » pour une réinscription, qui crée alors l'inscription de la session).
+    Les pièces scannées vont directement dans le dossier (PieceDossier).
+    """
+    INSCRIPTION, REINSCRIPTION = 'inscription', 'reinscription'
+    TYPES = [(INSCRIPTION, 'Inscription'), (REINSCRIPTION, 'Réinscription')]
+    EN_ATTENTE, VALIDEE, REFUSEE = 'en_attente', 'validee', 'refusee'
+    STATUTS = [(EN_ATTENTE, 'En attente'), (VALIDEE, 'Validée'), (REFUSEE, 'Refusée')]
+    CHAMPS_CONTACTS = ['telephone', 'email', 'adresse', 'ville', 'tuteur', 'contact_de_tuteur']
+
+    etudiant = models.ForeignKey(Etudiant, on_delete=models.CASCADE, related_name='demandes', verbose_name='Étudiant')
+    type = models.CharField('Demande', max_length=15, choices=TYPES)
+    session = models.ForeignKey(Session, on_delete=models.CASCADE, verbose_name='Session')
+    statut = models.CharField('Statut', max_length=12, choices=STATUTS, default=EN_ATTENTE)
+    contacts = models.JSONField('Contacts proposés', default=dict, blank=True)
+    boursier = models.CharField('Bourse proposée', max_length=20, choices=Etudiant.BOURSIER_CHOICES, blank=True)
+    type_formation = models.CharField('Formation proposée', max_length=20, choices=Etudiant.TYPE_FORMATION_CHOICES,
+                                      blank=True)
+    licence = models.ForeignKey(Licence, on_delete=models.SET_NULL, null=True, blank=True,
+                                verbose_name='Niveau demandé')
+    derniere_inscription = models.ForeignKey(Inscription, on_delete=models.SET_NULL, null=True, blank=True,
+                                             related_name='+', verbose_name='Dernière inscription')
+    photo = models.FileField('Nouvelle photo proposée', upload_to='demandes/photos/%Y', storage=stockage_prive,
+                             blank=True)
+    date_depot = models.DateTimeField('Déposée le', auto_now_add=True)
+    date_maj = models.DateTimeField('Mise à jour le', auto_now=True)
+    traitee_le = models.DateTimeField('Traitée le', null=True, blank=True)
+    traitee_par = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+                                    verbose_name='Traitée par')
+    motif_refus = models.TextField('Motif du refus', blank=True)
+
+    class Meta:
+        ordering = ['-date_maj']
+        constraints = [models.UniqueConstraint(fields=['etudiant', 'session', 'type'], name='demande_unique')]
+
+    def __str__(self):
+        return f"{self.get_type_display()} {self.session} · {self.etudiant}"
 
 
 class ImportNotes(models.Model):

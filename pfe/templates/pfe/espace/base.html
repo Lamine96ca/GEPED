@@ -1,0 +1,37 @@
+{% load static %}<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#41627c">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="referrer" content="same-origin">
+  {% include 'pfe/_icones.html' %}
+  <title>GePed &gt; {% block titre %}Espace étudiant{% endblock %}</title>
+  {% include 'pfe/_ressources.html' %}
+  <link rel="stylesheet" href="{% static 'pfe/css/gped.css' %}?v={{ version_statique }}">
+</head>
+<body class="page-verification page-espace">
+
+<header class="verif-bandeau">
+  <div class="verif-marque">
+    <img src="{% static 'pfe/img/logo_ist.png' %}?v={{ version_statique }}" class="logo-ist" width="64" height="64" alt="Logo de l'IST de Mamou">
+    <div>
+      <div class="etab">Institut Supérieur de Technologie de Mamou</div>
+      <div class="service">Service de la Scolarité · Espace étudiant{% if session %} · {{ session }}{% endif %}</div>
+    </div>
+  </div>
+</header>
+
+<main class="espace-contenu">
+  {% for m in messages %}
+    <div class="alert alert-{% if m.tags == 'error' %}danger{% else %}{{ m.tags }}{% endif %} d-flex gap-2 align-items-center"><i class="bi bi-info-circle"></i> {{ m }}</div>
+  {% endfor %}
+  {% block contenu %}{% endblock %}
+  <p class="text-center small text-secondary mt-4 mb-0">Un problème ? Présentez-vous au Service de la Scolarité de l'IST de Mamou.</p>
+</main>
+<script src="{% static 'pfe/vendor/bootstrap/bootstrap.bundle.min.js' %}?v={{ version_statique }}"></script>
+<script src="{% static 'pfe/js/gped-reseau.js' %}?v={{ version_statique }}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

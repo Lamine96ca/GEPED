@@ -1,0 +1,65 @@
+{% extends 'pfe/base.html' %}
+{% block titre %}Demandes en ligne{% endblock %}
+{% block titre_page %}Demandes en ligne{% endblock %}
+{% block sous_titre %}<div class="sous-titre">Inscriptions et réinscriptions déposées par les étudiants dans l'espace étudiant{% if session %} · {{ session }}{% endif %}</div>{% endblock %}
+{% block contenu %}
+{% load humanize %}
+<div class="row g-3 mb-3">
+  <div class="col-md-6">
+    <div class="card carte-gped h-100"><div class="card-body d-flex flex-wrap align-items-center gap-3">
+      <span class="tuile {% if session.inscriptions_ouvertes %}tuile-vert{% else %}tuile-orange{% endif %}"><i class="bi bi-person-plus"></i></span>
+      <div class="me-auto"><div class="fw-semibold" style="color:var(--encre)">Inscriptions en ligne (préinscrits)</div>
+        <div class="small text-secondary">{% if session.inscriptions_ouvertes %}Ouvertes{% else %}Fermées{% endif %} pour {{ session }}</div></div>
+      <form method="post">{% csrf_token %}<input type="hidden" name="ouverture" value="inscriptions_ouvertes">
+        <input type="hidden" name="valeur" value="{% if session.inscriptions_ouvertes %}0{% else %}1{% endif %}">
+        <button class="btn btn-sm {% if session.inscriptions_ouvertes %}btn-light{% else %}btn-primary{% endif %}">{% if session.inscriptions_ouvertes %}<i class="bi bi-lock"></i> Fermer{% else %}<i class="bi bi-unlock"></i> Ouvrir{% endif %}</button></form>
+    </div></div>
+  </div>
+  <div class="col-md-6">
+    <div class="card carte-gped h-100"><div class="card-body d-flex flex-wrap align-items-center gap-3">
+      <span class="tuile {% if session.reinscriptions_ouvertes %}tuile-vert{% else %}tuile-orange{% endif %}"><i class="bi bi-arrow-repeat"></i></span>
+      <div class="me-auto"><div class="fw-semibold" style="color:var(--encre)">Réinscriptions en ligne</div>
+        <div class="small text-secondary">{% if session.reinscriptions_ouvertes %}Ouvertes{% else %}Fermées{% endif %} pour {{ session }}</div></div>
+      <form method="post">{% csrf_token %}<input type="hidden" name="ouverture" value="reinscriptions_ouvertes">
+        <input type="hidden" name="valeur" value="{% if session.reinscriptions_ouvertes %}0{% else %}1{% endif %}">
+        <button class="btn btn-sm {% if session.reinscriptions_ouvertes %}btn-light{% else %}btn-primary{% endif %}">{% if session.reinscriptions_ouvertes %}<i class="bi bi-lock"></i> Fermer{% else %}<i class="bi bi-unlock"></i> Ouvrir{% endif %}</button></form>
+    </div></div>
+  </div>
+  <div class="col-12"><div class="small text-secondary"><i class="bi bi-link-45deg"></i> Adresse à communiquer aux étudiants : <strong>{{ url_espace }}</strong></div></div>
+</div>
+
+<div class="card carte-gped liste">
+  <div class="card-header d-flex flex-wrap align-items-center gap-2">
+    <ul class="nav nav-pills me-auto">
+      {% for code, libelle in types %}
+        <li class="nav-item"><a class="nav-link {% if code == type_demande %}active{% endif %}" href="?type={{ code }}&statut={{ statut }}">{{ libelle }}s{% for cle, n in compteurs.items %}{% if cle.0 == code and cle.1 == 'en_attente' %} <span class="compteur">{{ n }}</span>{% endif %}{% endfor %}</a></li>
+      {% endfor %}
+    </ul>
+    <form method="get" class="d-flex gap-2 flex-wrap">
+      <input type="hidden" name="type" value="{{ type_demande }}">
+      <select name="statut" class="form-select form-select-sm" onchange="this.form.submit()" style="width:auto">
+        {% for code, libelle in statuts %}<option value="{{ code }}" {% if code == statut %}selected{% endif %}>{{ libelle }}</option>{% endfor %}
+      </select>
+      <input type="search" name="q" value="{{ q }}" class="form-control form-control-sm" placeholder="Matricule, nom, INE…" style="width:220px">
+    </form>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-etudiants mb-0">
+      <thead><tr><th>Étudiant</th><th>{% if type_demande == 'reinscription' %}Dernier niveau → demandé{% else %}Inscription{% endif %}</th><th>Programme</th><th>Déposée le</th><th></th></tr></thead>
+      <tbody>
+      {% for d in demandes %}
+        <tr onclick="location.href='{% url 'demande_detail' d.pk %}'">
+          <td><b style="color:var(--encre)">{{ d.etudiant.nom }}</b> {{ d.etudiant.prenom }}<div class="matricule text-secondary">{{ d.etudiant.matricule|default:d.etudiant.ine }}</div></td>
+          <td>{% if d.type == 'reinscription' %}{{ d.derniere_inscription.licence|default:"—" }} <i class="bi bi-arrow-right"></i> <strong>{{ d.licence|default:"—" }}</strong>{% else %}Préinscrit{% endif %}</td>
+          <td>{{ d.derniere_inscription.filiere|default:"—" }}</td>
+          <td class="text-nowrap">{{ d.date_depot|date:"d/m/Y H:i" }}</td>
+          <td class="text-end"><a class="btn btn-sm btn-light" href="{% url 'demande_detail' d.pk %}"><i class="bi bi-eye"></i> Examiner</a></td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="5"><div class="etat-vide"><i class="bi bi-inbox"></i><div class="fw-semibold text-body">Aucune demande</div><div class="small">Rien dans cette catégorie pour {{ session }}.</div></div></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

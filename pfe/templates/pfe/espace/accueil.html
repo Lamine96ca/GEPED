@@ -1,0 +1,49 @@
+{% extends 'pfe/espace/base.html' %}
+{% block titre %}Inscription et réinscription{% endblock %}
+{% block contenu %}
+<section class="verif-carte">
+  <h1 class="h4 mb-1" style="color:var(--encre)">Inscription et réinscription en ligne</h1>
+  <p class="text-secondary mb-4">Complétez votre dossier{% if session %} pour l'année universitaire <strong>{{ session }}</strong>{% endif %} : coordonnées, photo et pièces. La scolarité vérifie ensuite votre demande.</p>
+
+  <ul class="nav nav-pills onglets-espace mb-4" role="tablist">
+    <li class="nav-item"><button class="nav-link {% if mode == 'inscription' %}active{% endif %}" data-bs-toggle="pill" data-bs-target="#onglet-inscription" type="button"><i class="bi bi-person-plus"></i> Inscription <span class="d-none d-sm-inline">(nouvel étudiant)</span></button></li>
+    <li class="nav-item"><button class="nav-link {% if mode == 'reinscription' %}active{% endif %}" data-bs-toggle="pill" data-bs-target="#onglet-reinscription" type="button"><i class="bi bi-arrow-repeat"></i> Réinscription <span class="d-none d-sm-inline">(ancien étudiant)</span></button></li>
+  </ul>
+
+  <div class="tab-content">
+    <div class="tab-pane fade {% if mode == 'inscription' %}show active{% endif %}" id="onglet-inscription">
+      {% if ouvert_insc %}
+        <p class="small text-secondary">Vous avez été <strong>orienté(e)</strong> à l'IST de Mamou et figurez sur la liste des préinscrits : identifiez-vous avec votre <strong>INE</strong> et votre <strong>numéro de PV du bac</strong>.</p>
+        <form method="post" novalidate class="row g-3">
+          {% csrf_token %}<input type="hidden" name="mode" value="inscription">
+          {% if erreur and mode == 'inscription' %}<div class="col-12"><div class="alert alert-danger py-2 mb-0"><i class="bi bi-exclamation-circle"></i> {{ erreur }}</div></div>{% endif %}
+          {% include 'pfe/_champ.html' with champ=form_insc.ine col='col-md-6' %}
+          {% include 'pfe/_champ.html' with champ=form_insc.pvbac col='col-md-6' %}
+          <div class="col-12"><button class="btn btn-primary"><i class="bi bi-box-arrow-in-right"></i> Accéder à mon dossier</button></div>
+        </form>
+      {% else %}
+        <div class="alert alert-secondary mb-0"><i class="bi bi-lock"></i> Les <strong>inscriptions en ligne</strong> sont fermées{% if session %} pour {{ session }}{% endif %}. Renseignez-vous auprès du Service de la Scolarité.</div>
+      {% endif %}
+    </div>
+    <div class="tab-pane fade {% if mode == 'reinscription' %}show active{% endif %}" id="onglet-reinscription">
+      {% if ouvert_reinsc %}
+        <p class="small text-secondary">Vous étiez inscrit(e) l'an dernier : identifiez-vous avec votre <strong>INE</strong> et votre <strong>matricule</strong>.</p>
+        <form method="post" novalidate class="row g-3">
+          {% csrf_token %}<input type="hidden" name="mode" value="reinscription">
+          {% if erreur and mode == 'reinscription' %}<div class="col-12"><div class="alert alert-danger py-2 mb-0"><i class="bi bi-exclamation-circle"></i> {{ erreur }}</div></div>{% endif %}
+          {% include 'pfe/_champ.html' with champ=form_reinsc.ine col='col-md-6' %}
+          {% include 'pfe/_champ.html' with champ=form_reinsc.matricule col='col-md-6' %}
+          <div class="col-12"><button class="btn btn-primary"><i class="bi bi-box-arrow-in-right"></i> Accéder à mon dossier</button></div>
+        </form>
+      {% else %}
+        <div class="alert alert-secondary mb-0"><i class="bi bi-lock"></i> Les <strong>réinscriptions en ligne</strong> sont fermées{% if session %} pour {{ session }}{% endif %}. Renseignez-vous auprès du Service de la Scolarité.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="verif-conseil mt-4">
+    <i class="bi bi-shield-lock"></i>
+    <span>Ne communiquez pas votre INE, votre PV du bac ni votre matricule. Après 5 essais manqués, l'accès est bloqué 15 minutes ; votre session se ferme seule après 30 minutes.</span>
+  </div>
+</section>
+{% endblock %}

@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import views, views_notes, views_personnel, views_releves, views_soutenances
+from . import views, views_demandes, views_notes, views_personnel, views_releves, views_soutenances
 
 urlpatterns = [
     path('', views.tableau_de_bord, name='tableau_de_bord'),
@@ -11,6 +11,9 @@ urlpatterns = [
     path('etudiants/photo/<int:pk>/', views.etudiant_photo, name='etudiant_photo'),     # pk = étudiant
     path('scolarite/etudiants/<int:pk>/pieces/ajouter/', views.piece_ajouter, name='piece_ajouter'),   # pk = étudiant
     path('scolarite/pieces/<int:pk>/', views.piece_voir, name='piece_voir'),
+    path('scolarite/demandes/', views_demandes.demandes_liste, name='demandes_liste'),
+    path('scolarite/demandes/<int:pk>/', views_demandes.demande_detail, name='demande_detail'),
+    path('scolarite/demandes/<int:pk>/photo/', views_demandes.demande_photo, name='demande_photo'),
     path('scolarite/pieces/<int:pk>/supprimer/', views.piece_supprimer, name='piece_supprimer'),
     path('mon-compte/photo/', views.mon_compte_photo, name='mon_compte_photo'),
     path('preinscriptions/', views.preinscriptions_liste, name='preinscriptions_liste'),

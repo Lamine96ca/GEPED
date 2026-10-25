@@ -58,7 +58,7 @@
       <a class="nav-link {% if actif == 'tableau' %}active{% endif %}" href="{% url 'tableau_de_bord' %}"><i class="bi bi-grid-1x2"></i> Tableau de bord</a>
 
       <!-- 1. Étudiants : sous-menu, ouvert quand on est sur l'une de ses pages -->
-      {% if actif == 'etudiants' or actif == 'preinscriptions' or actif == 'inscrire' or actif == 'importer' or actif == 'statistiques' %}
+      {% if actif == 'etudiants' or actif == 'preinscriptions' or actif == 'inscrire' or actif == 'importer' or actif == 'statistiques' or actif == 'demandes' %}
         {% firstof 'show' as etu_ouvert %}
       {% else %}
         {% firstof '' as etu_ouvert %}
@@ -77,6 +77,7 @@
           {% if profil.est_scolarite %}
             <a class="nav-link {% if actif == 'inscrire' %}active{% endif %}" href="{% url 'inscription_creer' %}">Inscription</a>
             <a class="nav-link {% if actif == 'importer' %}active{% endif %}" href="{% url 'importer' %}">Importer une liste</a>
+            <a class="nav-link {% if actif == 'demandes' %}active{% endif %}" href="{% url 'demandes_liste' %}">Demandes en ligne{% if nb_demandes %}<span class="compteur" title="Demandes en attente">{{ nb_demandes }}</span>{% endif %}</a>
           {% endif %}
           <a class="nav-link {% if actif == 'statistiques' %}active{% endif %}" href="{% url 'statistiques' %}">Statistiques</a>
         </div>
