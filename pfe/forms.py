@@ -223,8 +223,10 @@ class PersonnelForm(BootstrapMixin, forms.ModelForm):
 
     class Meta:
         model = Personnel
-        fields = ['prenom', 'nom', 'fonc', 'email', 'telephone', 'service']
+        fields = ['prenom', 'nom', 'fonc', 'email', 'telephone', 'service', 'chef']
         labels = {'fonc': 'Fonction', 'service': 'Services'}
+        help_texts = {'chef': "Chef du Service Scolarité, ou chef d'un département (programme qui est son propre "
+                              "département). Seul un chef modifie les notes d'une année écoulée."}
         widgets = {'service': forms.CheckboxSelectMultiple, 'email': forms.EmailInput()}
 
     def __init__(self, *args, editeur, **kwargs):
@@ -296,6 +298,25 @@ class PersonnelForm(BootstrapMixin, forms.ModelForm):
             raise forms.ValidationError("Seul un super utilisateur peut rattacher quelqu'un au Service Scolarité "
                                         "(droits complets sur gePed).")
         return services
+
+    def clean_chef(self):
+        chef = self.cleaned_data.get('chef')
+        if chef != bool(self.instance.chef) and not self.editeur.is_superuser:
+            raise forms.ValidationError("Seul un super utilisateur peut désigner un chef.")
+        return chef
+
+    def clean(self):
+        d = super().clean()
+        services = d.get('service')
+        if d.get('chef') and services is not None:
+            # Chef : du Service Scolarité, ou d'un département (programme dont le département est lui-même)
+            dirige = [s for s in services if s.pk in self.services_scolarite
+                      or (s.programme and s.departement_id == s.pk)]
+            if not dirige:
+                self.add_error('chef', "Impossible : un chef doit être rattaché au Service Scolarité ou à un "
+                                       "département (programme qui est son propre département, voir "
+                                       "« Département » dans l'administration des services).")
+        return d
 
     def save(self, commit=True):
         from .comptes import identifiant_propose
@@ -837,7 +858,28 @@ class ImportMatieresForm(BootstrapMixin, forms.Form):
 
 
 class ImportNotesForm(ImportMatieresForm):
-    """Même fichier (.xlsx / .csv) et même mode simulation que l'import des matières."""
+    """
+    Même fichier (.xlsx / .csv) et même mode simulation que l'import des matières, plus le PDF de
+    l'enseignant (fiche de notes signée) : obligatoire pour un département ou un programme.
+    """
+    pdf_enseignant = forms.FileField(label="PDF de l'enseignant (fiche de notes signée)", required=False,
+                                     widget=forms.ClearableFileInput(attrs={'accept': '.pdf,application/pdf'}))
+
+    def __init__(self, *args, profil=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.profil = profil
+        if profil is not None and not profil.est_scolarite:
+            self.fields['pdf_enseignant'].required = True
+
+    def clean_pdf_enseignant(self):
+        from .notes import verifier_pdf
+        pdf = self.cleaned_data.get('pdf_enseignant')
+        if pdf:
+            try:
+                verifier_pdf(pdf, "Le PDF de l'enseignant")
+            except ValueError as e:
+                raise forms.ValidationError(str(e))
+        return pdf
 
 
 # ------------------------------------------------------------------ soutenances

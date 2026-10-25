@@ -12,8 +12,12 @@ TP et examen valent tous 0, ces 0 sont considérés comme vides (cases remplies 
 La matière est cherchée parmi celles de l'inscription de l'étudiant dans cette session
 (son programme et sa licence). Contrôles : étudiant inscrit (pas préinscrit), matière trouvée,
 notes dans le barème. Une note déjà enregistrée est MISE À JOUR (et la modification tracée) ;
-une ligne répétée dans le fichier est ignorée (doublon). Un semestre déjà délibéré est refusé :
-seule la scolarité peut encore modifier ces notes, depuis la saisie, avec un motif.
+une ligne répétée dans le fichier est ignorée (doublon). Année en cours (délibérée ou non) : les
+notes sont créées ou mises à jour. Année écoulée : les notes manquantes sont créées, mais une note
+déjà enregistrée n'est modifiée que par un chef (scolarité ou département du programme).
+PDF de l'enseignant (fiche de notes signée) : obligatoire pour un département ou un programme, et
+pour la scolarité dès que l'import modifie des notes déjà enregistrées ; gardé dans le journal des
+imports (ImportNotes) et comme justificatif de chaque note modifiée.
 Chef de programme : si une seule ligne concerne un autre programme, TOUT l'import est refusé.
 """
 import io
@@ -25,7 +29,7 @@ from django.db import transaction
 from .import_matieres import ImportRefuse
 from .importer import _index_programmes, cle, cle_session, lire_lignes, texte
 from .models import Etudiant, Inscription, Matiere, Note, Session
-from .notes import CHAMPS_SAISIE, en_note, enregistrer_notes, recalculer, saisie_de, semestres_delibres
+from .notes import CHAMPS_SAISIE, en_note, enregistrer_notes, recalculer, saisie_de, session_ecoulee, verifier_pdf
 
 OBLIGATOIRES = ['matricule', 'matiere', 'session']
 COLONNES = OBLIGATOIRES + ['programme'] + list(CHAMPS_SAISIE)
@@ -53,6 +57,7 @@ class RapportNotes:
         self.simulation = False
         self.colonnes_ignorees = []
         self.reparations = 0
+        self.journal = None         # ImportNotes enregistré (import réel)
 
     @property
     def nb_erreurs(self):
@@ -66,9 +71,13 @@ class RapportNotes:
         self.erreurs.append((ligne, message))
 
 
-def importer_notes(fichier, profil, utilisateur=None, simulation=False):
+def importer_notes(fichier, profil, utilisateur=None, simulation=False, pdf_enseignant=None):
     rapport = RapportNotes()
     rapport.simulation = simulation
+    if pdf_enseignant:
+        verifier_pdf(pdf_enseignant, "Le PDF de l'enseignant")
+    elif not profil.est_scolarite:
+        raise ValueError("Le PDF de l'enseignant (fiche de notes signée) est obligatoire pour importer des notes.")
     entetes, lignes = lire_lignes(fichier)
     rapport.reparations = getattr(fichier, 'gped_reparations', 0)
     entetes = [ALIAS.get(e, e) for e in entetes]
@@ -182,25 +191,19 @@ def importer_notes(fichier, profil, utilisateur=None, simulation=False):
         raise ImportRefuse(f"Import refusé : le fichier contient des notes d'un programme qui n'est pas le vôtre : "
                            f"{details}. Aucune note n'a été enregistrée.")
 
-    delibres = semestres_delibres([m for _, _, m, _ in valides])
-    retenues = []
-    for numero, etu, matiere, valeurs in valides:
-        if (matiere.filiere_id, matiere.session_id, matiere.semestre_id) in delibres:
-            rapport.erreur(numero, f"{matiere.nom} ({matiere.semestre.nom}) est déjà délibérée : modification "
-                                   f"seulement par la scolarité, depuis la saisie, avec un motif")
-            continue
-        retenues.append((etu, matiere, valeurs))
+    retenues = valides
+    ecoulees = {}                                          # session -> année écoulée ?
 
     # 3) Écriture : création ou mise à jour, puis calcul des résultats ------------
     if retenues:
         with transaction.atomic():
             existantes = {}
-            paires_ids = {(e.pk, m.pk) for e, m, _ in retenues}
+            paires_ids = {(e.pk, m.pk) for _, e, m, _ in retenues}
             for n in Note.objects.filter(etudiant_id__in={p[0] for p in paires_ids},
                                          matiere_id__in={p[1] for p in paires_ids}):
                 existantes[(n.etudiant_id, n.matiere_id)] = n
             changements = []
-            for etu, matiere, valeurs in retenues:
+            for numero, etu, matiere, valeurs in retenues:
                 note = existantes.get((etu.pk, matiere.pk))
                 if note is not None:
                     # Colonnes absentes du fichier : on garde ce qui était saisi
@@ -208,10 +211,33 @@ def importer_notes(fichier, profil, utilisateur=None, simulation=False):
                     if saisie_de(note) == valeurs:
                         rapport.inchangees += 1
                         continue
+                    if matiere.session_id not in ecoulees:
+                        ecoulees[matiere.session_id] = session_ecoulee(matiere.session)
+                    if ecoulees[matiere.session_id] and not profil.est_chef_de(matiere.filiere):
+                        rapport.erreur(numero, f"{etu.matricule} · {matiere.nom} ({matiere.session}) : année écoulée, "
+                                               f"la note déjà enregistrée ne peut être modifiée que par un chef")
+                        continue
+                    if not pdf_enseignant:
+                        rapport.erreur(numero, f"{etu.matricule} · {matiere.nom} : note déjà enregistrée, joignez le "
+                                               f"PDF de l'enseignant pour la modifier")
+                        continue
                 changements.append((note, etu.pk, matiere, valeurs))
+            nom_pdf = ''
+            if pdf_enseignant and changements and not simulation:
+                from django.utils import timezone
+                from .models import stockage_prive
+                nom_pdf = stockage_prive().save(
+                    f"justificatifs/imports_notes/{timezone.now():%Y}/{pdf_enseignant.name}", pdf_enseignant)
+            nom_fichier = getattr(fichier, 'name', '')
             rapport.creees, rapport.mises_a_jour = enregistrer_notes(
-                changements, utilisateur, motif=f"Import du fichier {getattr(fichier, 'name', '')}".strip())
-            recalculer({etu.pk for etu, _, _ in retenues})
+                changements, utilisateur, motif=f"Import du fichier {nom_fichier}".strip(), justificatif=nom_pdf)
+            recalculer({etu.pk for _, etu, _, _ in retenues})
+            if changements and not simulation:
+                from .models import ImportNotes
+                rapport.journal = ImportNotes.objects.create(
+                    utilisateur=utilisateur if getattr(utilisateur, 'pk', None) else None, fichier=nom_fichier[:255],
+                    pdf_enseignant=nom_pdf, creees=rapport.creees, modifiees=rapport.mises_a_jour,
+                    programmes=', '.join(sorted({m.filiere.nom for _, _, m, _ in changements}))[:255])
             if simulation:
                 transaction.set_rollback(True)
     rapport.erreurs.sort()

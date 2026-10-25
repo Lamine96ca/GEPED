@@ -1232,31 +1232,72 @@ class GpedTests(TestCase):
         self.assertEqual((n0.moyenne, n0.moyenne_finale, n0.moyenne_deposee), (7.2, 7.2, False))
         self.assertEqual((n1.moyenne, n1.moyenne_finale, n1.par_session), (6.5, 7, True))
         self.assertTrue(Resultat.objects.filter(etudiant=e0, niveau=Resultat.SEMESTRE, semestre=s1).exists())
-        # Modification : tracée
-        self.client.post(url, {f'controle_{e0.pk}': '6', f'examen_{e0.pk}': '9',
-                               f'moyenne_{e1.pk}': '6,5', f'rattrapage_{e1.pk}': '7'})
-        h = NoteHistorique.objects.get()
-        self.assertEqual((h.avant['examen'], h.apres['examen'], h.apres_deliberation), (8, 9, False))
-
-        # Délibéré : le chef de programme ne peut plus modifier, la scolarité oui avec motif
-        Deliberation.objects.create(filiere=self.info, session=self.session, semestre=s1)
-        self.assertContains(self.client.get(url), 'disabled')
-        self.assertEqual(self.client.post(url, {f'examen_{e0.pk}': '10'}).status_code, 403)
-        self.connecter('scol')
-        r = self.client.post(url, {f'controle_{e0.pk}': '6', f'examen_{e0.pk}': '10',
-                                   f'moyenne_{e1.pk}': '6,5', f'rattrapage_{e1.pk}': '7'})
-        self.assertContains(r, 'indiquez le motif')
+        # Modifier une note déjà saisie : motif ET justificatif PDF obligatoires, puis tracée
         dossier = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, dossier, True)
+        modif = {f'controle_{e0.pk}': '6', f'examen_{e0.pk}': '9', f'moyenne_{e1.pk}': '6,5', f'rattrapage_{e1.pk}': '7'}
+        self.assertContains(self.client.post(url, modif), 'indiquez le motif et joignez le justificatif PDF')
+        r = self.client.post(url, {**modif, 'motif': 'Erreur de report',
+                                   'justificatif': SimpleUploadedFile('pv.txt', b'pas un pdf')})
+        self.assertContains(r, 'doit être un fichier PDF')
+        self.assertFalse(NoteHistorique.objects.exists())
         with override_settings(BASE_DIR=pathlib_path(dossier)):
-            self.client.post(url, {f'controle_{e0.pk}': '6', f'examen_{e0.pk}': '10',
-                                   f'moyenne_{e1.pk}': '6,5', f'rattrapage_{e1.pk}': '7',
-                                   'motif': 'Erreur de report, PV du jury',
+            self.client.post(url, {**modif, 'motif': 'Erreur de report',
+                                   'justificatif': SimpleUploadedFile('pv.pdf', b'%PDF-1.4 pv')})
+        h = NoteHistorique.objects.get()
+        self.assertEqual((h.avant['examen'], h.apres['examen'], h.apres_deliberation), (8, 9, False))
+        self.assertEqual((h.utilisateur.username, h.motif), ('info', 'Erreur de report'))
+        self.assertTrue((pathlib_path(dossier) / 'prive' / h.justificatif.name).exists())
+
+        # Délibéré, année en cours : toujours modifiable par le chef de programme (motif + PDF)
+        Deliberation.objects.create(filiere=self.info, session=self.session, semestre=s1)
+        self.assertNotContains(self.client.get(url), 'disabled')
+        with override_settings(BASE_DIR=pathlib_path(dossier)):
+            self.client.post(url, {**modif, f'examen_{e0.pk}': '10', 'motif': 'PV du jury',
                                    'justificatif': SimpleUploadedFile('pv.pdf', b'%PDF-1.4 pv')})
         h = NoteHistorique.objects.filter(apres_deliberation=True).get()
-        self.assertEqual((h.motif, h.apres['examen']), ('Erreur de report, PV du jury', 10))
-        self.assertTrue(h.justificatif.name.startswith('justificatifs/notes/'))
-        self.assertTrue((pathlib_path(dossier) / 'prive' / h.justificatif.name).exists())
+        self.assertEqual((h.motif, h.apres['examen']), ('PV du jury', 10))
+
+    def test_notes_annee_ecoulee_reservees_aux_chefs(self):
+        from .models import Matiere, Note, Personnel
+        s1, _ = self._semestres()
+        e0 = Etudiant.objects.get(matricule='M0')
+        Inscription.objects.create(etudiant=e0, session=self.s2425, licence=self.l2, filiere=self.info)
+        ancienne = Matiere.objects.create(nom='Réseaux', filiere=self.info, semestre=s1, licence=self.l2,
+                                          session=self.s2425, credit=6)
+        Note.objects.create(etudiant=e0, matiere=ancienne, moyenne=6, moyenne_deposee=True)
+        url = reverse('notes_saisie', args=[ancienne.pk])
+        post = {f'moyenne_{e0.pk}': '9', 'motif': 'x', 'justificatif': SimpleUploadedFile('pv.pdf', b'%PDF-1.4 x')}
+        # Ni le chef de programme ni un agent de la scolarité (non chefs) ne la modifient
+        for login in ('info', 'scol'):
+            self.connecter(login)
+            r = self.client.get(url)
+            self.assertContains(r, 'Année écoulée')
+            self.assertContains(r, 'disabled')
+            self.assertEqual(self.client.post(url, post).status_code, 403)
+        # Chef de programme coché « Chef » mais Informatique n'est pas un département : toujours refusé
+        Personnel.objects.filter(utilisateur__username='info').update(chef=True)
+        self.connecter('info')
+        self.assertEqual(self.client.post(url, post).status_code, 403)
+        # Informatique devient son propre département : son chef peut modifier
+        Service.objects.filter(pk=self.info.pk).update(departement=self.info)
+        self.assertContains(self.client.get(url), 'En tant que chef')
+        # Chef de la scolarité : peut modifier
+        Personnel.objects.filter(utilisateur__username='scol').update(chef=True)
+        self.connecter('scol')
+        self.assertNotContains(self.client.get(url), 'disabled')
+
+    def test_personnel_chef_seulement_scolarite_ou_departement(self):
+        from .forms import PersonnelForm
+        admin = User.objects.create_superuser('admin_chef', 'a@t.local', 'x')
+        donnees = {'prenom': 'Awa', 'nom': 'Bah', 'fonc': 'Chef', 'email': 'awa@t.local', 'telephone': '999',
+                   'service': [self.gc.pk], 'chef': 'on'}
+        f = PersonnelForm(donnees, editeur=admin)
+        self.assertFalse(f.is_valid())
+        self.assertIn('Impossible', f.errors['chef'][0])                      # Génie civil n'est pas un département
+        Service.objects.filter(pk=self.gc.pk).update(departement=self.gc)
+        self.assertTrue(PersonnelForm(donnees, editeur=admin).is_valid())
+        self.assertTrue(PersonnelForm({**donnees, 'service': [self.scol.pk]}, editeur=admin).is_valid())
 
     def test_import_des_notes(self):
         from .import_matieres import ImportRefuse
@@ -1287,31 +1328,75 @@ class GpedTests(TestCase):
         self.assertEqual(Note.objects.get(etudiant__matricule='M0', matiere=algo).moyenne_finale, 7.15)
         self.assertEqual(Note.objects.get(etudiant__matricule='M1', matiere=algo).moyenne_finale, 6.75)
         self.assertEqual(Note.objects.get(etudiant__matricule='M0', matiere=anglais).moyenne_finale, 0)
-        # Réimport : inchangé ; puis mise à jour tracée
+        # Réimport : inchangé ; puis mise à jour : refusée sans le PDF de l'enseignant, tracée avec
+        import shutil, tempfile
+        from django.test import override_settings
+        from .models import ImportNotes
+        dossier = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, dossier, True)
+        pdf = lambda: SimpleUploadedFile('fiche_algo.pdf', b'%PDF-1.4 fiche')   # noqa: E731
         r = importer_notes(fichier(*lignes[:3]), scol)
         self.assertEqual((r.creees, r.mises_a_jour, r.inchangees), (0, 0, 2))
-        r = importer_notes(fichier(['M1', 'Algorithmique', '2025-2026', None, None, None, 5, None]), scol)
+        modif = fichier(['M1', 'Algorithmique', '2025-2026', None, None, None, 5, None])
+        r = importer_notes(modif, scol)
+        self.assertEqual(r.mises_a_jour, 0)
+        self.assertIn("joignez le PDF de l'enseignant", r.erreurs[0][1])
+        with override_settings(BASE_DIR=pathlib_path(dossier)):
+            r = importer_notes(fichier(['M1', 'Algorithmique', '2025-2026', None, None, None, 5, None]), scol,
+                               pdf_enseignant=pdf())
         self.assertEqual((r.mises_a_jour, NoteHistorique.objects.count()), (1, 1))
+        self.assertEqual(ImportNotes.objects.count(), 2)                     # chaque import réel est journalisé
+        journal = ImportNotes.objects.filter(modifiees=1).get()
+        self.assertEqual((journal.modifiees, NoteHistorique.objects.get().justificatif.name), (1, journal.pdf_enseignant.name))
+        self.assertTrue((pathlib_path(dossier) / 'prive' / journal.pdf_enseignant.name).exists())
         # Moyenne remplie et contrôle / TP / examen tous à 0 : ces 0 sont vides ; un seul 0 avec d'autres notes reste
-        importer_notes(fichier(['M0', 'Anglais', '2025-2026', 0, 0, 0, '6,5', None],
-                               ['M1', 'Anglais', '2025-2026', 0, 0, 8, None, None]), scol)
+        with override_settings(BASE_DIR=pathlib_path(dossier)):
+            importer_notes(fichier(['M0', 'Anglais', '2025-2026', 0, 0, 0, '6,5', None],
+                                   ['M1', 'Anglais', '2025-2026', 0, 0, 8, None, None]), scol, pdf_enseignant=pdf())
         a0 = Note.objects.get(etudiant__matricule='M0', matiere=anglais)
         self.assertEqual((a0.controle, a0.tp, a0.examen, a0.moyenne_finale), (None, None, None, 6.5))
         a1 = Note.objects.get(etudiant__matricule='M1', matiere=anglais)
         self.assertEqual((a1.controle, a1.tp, a1.examen, a1.moyenne_finale), (0, 0, 8, 3.2))   # sans moyenne : gardés
 
-        # Chef de programme : une ligne d'un autre programme → tout est refusé
+        # Chef de programme : le PDF de l'enseignant est obligatoire (formulaire et import)
         self.connecter('info')
         info = get_profil(self.client.get(reverse('notes_importer')).wsgi_request)
+        with self.assertRaisesMessage(ValueError, "PDF de l'enseignant"):
+            importer_notes(fichier(['M0', 'Anglais', '2025-2026', None, None, None, 8, None]), info)
+        r = self.client.post(reverse('notes_importer'), {'fichier': SimpleUploadedFile('n.csv', b'matricule;matiere;session;moyenne\n')})
+        self.assertContains(r, 'Ce champ est obligatoire')
+        # Une ligne d'un autre programme → tout est refusé
         self._matiere('Topographie', self.gc, s1)
         with self.assertRaisesMessage(ImportRefuse, 'ligne 3'):
             importer_notes(fichier(['M0', 'Anglais', '2025-2026', None, None, None, 8, None],
-                                   ['M2', 'Topographie', '2025-2026', None, None, None, 6, None]), info)
+                                   ['M2', 'Topographie', '2025-2026', None, None, None, 6, None]), info,
+                           pdf_enseignant=pdf())
         self.assertEqual(Note.objects.get(etudiant__matricule='M0', matiere=anglais).moyenne_finale, 6.5)  # inchangée
-        # Semestre délibéré : ligne refusée
+        # Semestre délibéré de l'année en cours : la note est mise à jour (avec le PDF)
         Deliberation.objects.create(filiere=self.info, session=self.session, semestre=s1)
-        r = importer_notes(fichier(['M0', 'Anglais', '2025-2026', None, None, None, 8, None]), info)
-        self.assertIn('déjà délibérée', r.erreurs[0][1])
+        with override_settings(BASE_DIR=pathlib_path(dossier)):
+            r = importer_notes(fichier(['M0', 'Anglais', '2025-2026', None, None, None, 8, None]), info,
+                               User.objects.get(username='info'), pdf_enseignant=pdf())
+        self.assertEqual((r.mises_a_jour, r.erreurs), (1, []))
+        # Journal : le chef de programme voit le PDF de son import
+        imp = ImportNotes.objects.filter(utilisateur__username='info').get()
+        with override_settings(BASE_DIR=pathlib_path(dossier)):
+            self.assertEqual(self.client.get(reverse('notes_import_pdf', args=[imp.pk]))['Content-Type'], 'application/pdf')
+        self.assertContains(self.client.get(reverse('notes_importer')), 'Derniers imports')
+
+        # Année écoulée : notes manquantes créées ; note déjà enregistrée modifiée seulement par un chef
+        from .models import Matiere
+        e0 = Etudiant.objects.get(matricule='M0')
+        Inscription.objects.create(etudiant=e0, session=self.s2425, licence=self.l2, filiere=self.info)
+        reseaux = Matiere.objects.create(nom='Réseaux', filiere=self.info, semestre=s1, licence=self.l2,
+                                         session=self.s2425, credit=6)
+        ligne = ['M0', 'Réseaux', '2024-2025', None, None, None, 6, None]
+        r = importer_notes(fichier(ligne), scol)
+        self.assertEqual(r.creees, 1)
+        with override_settings(BASE_DIR=pathlib_path(dossier)):
+            r = importer_notes(fichier(ligne[:6] + [7, None]), scol, pdf_enseignant=pdf())
+        self.assertIn('année écoulée', r.erreurs[0][1])
+        self.assertEqual(Note.objects.get(etudiant=e0, matiere=reseaux).moyenne_finale, 6)
         self.assertEqual(self.client.get(reverse('notes_modele')).status_code, 200)
 
     def test_resultats_et_deliberation(self):

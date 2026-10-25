@@ -45,6 +45,11 @@
           {% endfor %}
           {% endwith %}
           {% for err in form.service.errors %}<div class="invalid-feedback d-block">{{ err }}</div>{% endfor %}
+          <label class="option-import mt-3" for="{{ form.chef.id_for_label }}">
+            {{ form.chef }}
+            <div><strong>Chef de service ou de département</strong><span>{{ form.chef.help_text }}</span></div>
+          </label>
+          {% for err in form.chef.errors %}<div class="invalid-feedback d-block">{{ err }}</div>{% endfor %}
           <div class="note-verrou mt-2"><i class="bi bi-info-circle"></i>
             <span><strong>Service Scolarité</strong> : tous les droits (inscriptions, attestations, relevés, personnel…) · <strong>un programme</strong> : chef de programme (ses étudiants, matières, notes et soutenances) · <strong>autre service</strong> : consultation.{% if not user.is_superuser %} Seul un super utilisateur peut rattacher quelqu'un au Service Scolarité.{% endif %}</span>
           </div>

@@ -25,6 +25,12 @@
             <div class="small text-secondary">ou cliquez pour parcourir · .xlsx, .csv</div>
           </label>
           {% for err in form.fichier.errors %}<div class="alert alert-danger py-2 small"><i class="bi bi-x-octagon"></i> {{ err }}</div>{% endfor %}
+          <div class="mb-3">
+            <label class="form-label small mb-1" for="{{ form.pdf_enseignant.id_for_label }}"><i class="bi bi-file-earmark-pdf"></i> {{ form.pdf_enseignant.label }}{% if form.pdf_enseignant.field.required %} <span class="text-danger">*</span>{% endif %}</label>
+            {{ form.pdf_enseignant }}
+            <div class="small text-secondary mt-1">{% if form.pdf_enseignant.field.required %}Obligatoire : la fiche déposée par l'enseignant.{% else %}Obligatoire si l'import modifie des notes déjà enregistrées.{% endif %} Gardée avec l'import, jamais publiée.</div>
+            {% for err in form.pdf_enseignant.errors %}<div class="invalid-feedback d-block">{{ err }}</div>{% endfor %}
+          </div>
           <label class="option-import mb-3" for="{{ form.simulation.id_for_label }}">
             {{ form.simulation }}
             <div><strong>Mode simulation</strong><span>Vérifie le fichier sans rien enregistrer. Conseillé pour un premier essai.</span></div>
@@ -105,10 +111,33 @@
           <li><strong>Sur 10.</strong> <code>ABS</code> = 0. La colonne <code>moyenne</code> (déposée par le programme) est prise telle quelle ; sinon elle est calculée : contrôle 25 % + TP 35 % + examen 40 % (sans TP : 40 % + 60 %). Si la moyenne est remplie et que contrôle, TP et examen valent <strong>tous 0</strong>, ces 0 sont <strong>considérés comme vides</strong>.</li>
           <li><code>rattrapage</code> : on garde la meilleure des deux notes, avec la mention « Session ».</li>
           <li>La matière est cherchée dans le programme et la licence de l'inscription de l'étudiant pour la session. Une note déjà enregistrée est <strong>mise à jour</strong> (modification tracée) ; une ligne répétée est ignorée.</li>
-          <li class="pb-0">Semestre <strong>délibéré</strong> : ligne refusée (modification seulement par la scolarité, depuis la saisie, avec un motif).{% if mes_programmes %} <strong>Votre périmètre :</strong> si une ligne concerne un autre programme, tout l'import est refusé.{% endif %}</li>
+          <li><strong>Année en cours</strong> (délibérée ou non) : les notes sont créées ou mises à jour. <strong>Année écoulée</strong> : les notes manquantes sont créées ; une note déjà enregistrée n'est modifiée que par un <strong>chef</strong> (scolarité ou département).</li>
+          <li class="pb-0">Le <strong>PDF de l'enseignant</strong> est gardé avec l'import et sert de justificatif à chaque note modifiée.{% if mes_programmes %} <strong>Votre périmètre :</strong> si une ligne concerne un autre programme, tout l'import est refusé.{% endif %}</li>
         </ol>
       </div>
     </div>
+
+    {% if journal %}
+    <div class="card carte-gped liste">
+      <div class="card-header"><h3 class="titre-stat mb-0"><i class="bi bi-clock-history"></i> Derniers imports</h3></div>
+      <div class="table-responsive">
+        <table class="table table-etudiants mb-0">
+          <thead><tr><th>Date</th><th>Par</th><th>Fichier</th><th class="text-end">Créées</th><th class="text-end">Modifiées</th><th>PDF</th></tr></thead>
+          <tbody>
+          {% for imp in journal %}
+            <tr style="cursor:default">
+              <td class="text-nowrap">{{ imp.date|date:"d/m/Y H:i" }}</td>
+              <td>{{ imp.utilisateur.get_full_name|default:imp.utilisateur.username|default:"—" }}</td>
+              <td style="white-space:normal">{{ imp.fichier }}<div class="small text-secondary">{{ imp.programmes }}</div></td>
+              <td class="text-end">{{ imp.creees }}</td><td class="text-end">{{ imp.modifiees }}</td>
+              <td>{% if imp.pdf_enseignant %}<a href="{% url 'notes_import_pdf' imp.pk %}" class="btn btn-sm btn-light" target="_blank" rel="noopener"><i class="bi bi-file-earmark-pdf"></i> Voir</a>{% else %}<span class="text-secondary">—</span>{% endif %}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
   </div>
 </div>
 {% endblock %}

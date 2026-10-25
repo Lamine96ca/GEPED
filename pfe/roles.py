@@ -33,10 +33,33 @@ LIBELLES = {
 
 
 class Profil:
-    def __init__(self, role, services=(), personnel=None):
+    def __init__(self, role, services=(), personnel=None, superuser=False, tous_services=None):
         self.role = role
         self.services = list(services)
         self.personnel = personnel
+        self.superuser = superuser
+        # Tous les services du personnel (le rôle n'en garde qu'une partie) : sert aux droits de chef
+        self.tous_services = list(tous_services if tous_services is not None else services)
+
+    @property
+    def est_chef(self):
+        return bool(self.personnel and self.personnel.chef)
+
+    @property
+    def est_chef_scolarite(self):
+        """Super utilisateur, ou chef rattaché au Service Scolarité."""
+        return self.superuser or (self.est_chef and any(est_service_scolarite(s) for s in self.tous_services))
+
+    @property
+    def departements_diriges(self):
+        """Départements dont le profil est chef : programmes qui sont leur propre département."""
+        if not self.est_chef:
+            return set()
+        return {s.id for s in self.tous_services if s.programme and s.departement_id == s.id}
+
+    def est_chef_de(self, filiere):
+        """Chef pour ce programme : chef de la scolarité, ou chef du département du programme."""
+        return self.est_chef_scolarite or bool(filiere and filiere.departement_effectif.id in self.departements_diriges)
 
     @property
     def libelle(self):
@@ -86,14 +109,15 @@ def _calculer_profil(user):
     services = list(personnel.service.all()) if personnel else []
     scolarite = [s for s in services if est_service_scolarite(s)]
 
+    options = {'superuser': user.is_superuser, 'tous_services': services}
     if user.is_superuser or scolarite:
-        return Profil(SCOLARITE, scolarite, personnel)
+        return Profil(SCOLARITE, scolarite, personnel, **options)
     programmes = [s for s in services if s.programme]
     if programmes:
-        return Profil(PROGRAMME, programmes, personnel)
+        return Profil(PROGRAMME, programmes, personnel, **options)
     if services:
-        return Profil(DEPARTEMENT, services, personnel)
-    return Profil(AUCUN, [], personnel)
+        return Profil(DEPARTEMENT, services, personnel, **options)
+    return Profil(AUCUN, [], personnel, **options)
 
 
 def get_profil(request):

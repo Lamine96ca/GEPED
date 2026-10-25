@@ -90,22 +90,60 @@ def est_delibere(matiere):
     return (matiere.filiere_id, matiere.session_id, matiere.semestre_id) in semestres_delibres([matiere])
 
 
-def peut_modifier(profil, matiere, delibere):
-    """Avant délibération : scolarité et chef du programme ; après : la scolarité seulement (avec motif)."""
-    if delibere:
-        return profil.est_scolarite
-    return profil.est_scolarite or (profil.role == 'programme' and matiere.filiere_id in profil.programme_ids)
+TAILLE_MAX_PDF = 10 * 1024 * 1024
+
+
+def verifier_pdf(fichier, quoi='Le justificatif'):
+    """Justificatif ou fiche de l'enseignant : un vrai PDF (pas un fichier renommé), 10 Mo au plus."""
+    if not fichier:
+        raise ValueError(f"{quoi} (PDF) est obligatoire.")
+    if fichier.size > TAILLE_MAX_PDF:
+        raise ValueError(f"{quoi} dépasse 10 Mo : scannez-le en noir et blanc ou en résolution plus basse.")
+    debut = fichier.read(5)
+    fichier.seek(0)
+    if not str(fichier.name).lower().endswith('.pdf') or debut != b'%PDF-':
+        raise ValueError(f"{quoi} doit être un fichier PDF.")
+    return fichier
+
+
+def _debut(annee):
+    """« 2025 - 2026 » → 2025 (première année de la session)."""
+    import re
+    m = re.match(r'\s*(\d{4})', str(annee or ''))
+    return int(m.group(1)) if m else 0
+
+
+def session_ecoulee(session):
+    """Session antérieure à la session en cours : ses notes sont toutes considérées délibérées."""
+    from .models import Session
+    courante = Session.objects.filter(en_cours=True).order_by('-annee').first() or Session.objects.order_by('-annee').first()
+    return bool(session and courante and _debut(session.annee) < _debut(courante.annee))
+
+
+def peut_modifier(profil, matiere, delibere=None):
+    """
+    Année en cours (délibérée ou non) : la scolarité et le chef du programme, avec motif et PDF pour
+    toute modification. Année écoulée : seulement un chef (chef de la scolarité, chef du département
+    du programme) ou un super utilisateur.
+    """
+    dans_perimetre = profil.est_scolarite or (profil.role == 'programme' and matiere.filiere_id in profil.programme_ids)
+    if not dans_perimetre:
+        return False
+    if session_ecoulee(matiere.session):
+        return profil.est_chef_de(matiere.filiere)
+    return True
 
 
 def enregistrer_notes(changements, utilisateur, apres_deliberation=False, motif='', justificatif=None):
     """
     changements : [(note existante ou None, etudiant_id, matiere, valeurs)].
     Crée ou modifie les notes ; chaque MODIFICATION est tracée (avant / après, auteur, motif,
-    justificatif enregistré une seule fois). Renvoie (créées, modifiées).
+    justificatif enregistré une seule fois). `justificatif` : fichier envoyé, ou nom d'un fichier déjà
+    rangé dans le stockage privé (PDF de l'enseignant d'un import). Renvoie (créées, modifiées).
     """
     from .models import Note, NoteHistorique, stockage_prive
-    nom_justificatif = ''
-    if justificatif:
+    nom_justificatif = justificatif if isinstance(justificatif, str) else ''
+    if justificatif and not isinstance(justificatif, str):
         from django.utils import timezone
         nom_justificatif = stockage_prive().save(f"justificatifs/notes/{timezone.now():%Y}/{justificatif.name}",
                                                  justificatif)

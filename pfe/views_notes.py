@@ -17,9 +17,9 @@ from django.views.decorators.http import require_POST
 
 from .forms import ImportNotesForm
 from .import_notes import OBLIGATOIRES as OBLIGATOIRES_NOTES, importer_notes, modele_notes_xlsx
-from .models import Deliberation, Inscription, Matiere, Note, Resultat, Semestre, Session
+from .models import Deliberation, ImportNotes, Inscription, Matiere, Note, Resultat, Semestre, Session
 from .notes import (CHAMPS_SAISIE, en_note, enregistrer_notes, est_delibere, peut_modifier, recalculer, regles,
-                    saisie_de, semestres_delibres)
+                    saisie_de, semestres_delibres, session_ecoulee, verifier_pdf)
 from .roles import gestion_matieres_requise, get_profil, matieres_visibles, programmes_du_profil, scolarite_requise
 
 LIBELLES = {'controle': 'Contrôle', 'tp': 'TP', 'examen': 'Examen', 'moyenne': 'Moyenne', 'rattrapage': 'Rattrapage'}
@@ -115,7 +115,8 @@ def notes_saisie(request, pk):
 
     if request.method == 'POST':
         if not modifiable:
-            raise PermissionDenied("Ce semestre est délibéré : seule la scolarité peut modifier ces notes.")
+            raise PermissionDenied("Année écoulée : seul un chef (scolarité ou département) ou un super utilisateur "
+                                   "peut modifier ces notes.")
         motif = (request.POST.get('motif') or '').strip()
         changements = []
         for insc in inscrits:
@@ -136,12 +137,20 @@ def notes_saisie(request, pk):
             if note is not None and saisie_de(note) == valeurs:
                 continue
             changements.append((note, etu, matiere, valeurs))
-        if delibere and changements and not motif:
-            erreur_motif = "Semestre délibéré : indiquez le motif de la modification (et joignez le justificatif)."
+        # Modifier une note déjà saisie : motif et justificatif PDF obligatoires (gardés dans l'historique)
+        justificatif = request.FILES.get('justificatif')
+        if any(note is not None for note, _, _, _ in changements):
+            if not motif:
+                erreur_motif = "Vous modifiez des notes déjà saisies : indiquez le motif et joignez le justificatif PDF."
+            else:
+                try:
+                    verifier_pdf(justificatif)
+                except ValueError as e:
+                    erreur_motif = f"Vous modifiez des notes déjà saisies : {e}"
         if not erreurs and not erreur_motif:
             with transaction.atomic():
                 creees, modifiees = enregistrer_notes(changements, request.user, apres_deliberation=delibere,
-                                                      motif=motif, justificatif=request.FILES.get('justificatif'))
+                                                      motif=motif, justificatif=justificatif)
                 recalculer({etu for _, etu, _, _ in changements})
             if creees or modifiees:
                 messages.success(request, f"Notes enregistrées : {creees} nouvelle(s), {modifiees} modifiée(s).")
@@ -164,6 +173,7 @@ def notes_saisie(request, pk):
     nb_notes = sum(1 for n in notes.values() if n.moyenne_finale is not None)
     return render(request, 'pfe/notes_saisie.html', {
         'matiere': matiere, 'lignes': lignes, 'delibere': delibere, 'modifiable': modifiable,
+        'ecoulee': session_ecoulee(matiere.session),
         'deliberation': Deliberation.objects.filter(filiere_id=matiere.filiere_id, session_id=matiere.session_id,
                                                     semestre_id=matiere.semestre_id).select_related('par').first(),
         'erreurs': bool(erreurs), 'erreur_motif': erreur_motif, 'motif': request.POST.get('motif', ''),
@@ -293,22 +303,41 @@ def notes_importer(request):
     profil = get_profil(request)
     rapport = None
     if request.method == 'POST':
-        form = ImportNotesForm(request.POST, request.FILES)
+        form = ImportNotesForm(request.POST, request.FILES, profil=profil)
         if form.is_valid():
             try:
                 rapport = importer_notes(form.cleaned_data['fichier'], profil, request.user,
-                                         simulation=form.cleaned_data['simulation'])
+                                         simulation=form.cleaned_data['simulation'],
+                                         pdf_enseignant=form.cleaned_data.get('pdf_enseignant'))
             except ValueError as e:
                 form.add_error('fichier', str(e))
             else:
                 if not rapport.simulation and (rapport.creees or rapport.mises_a_jour):
                     messages.success(request, "Import des notes terminé et enregistré.")
     else:
-        form = ImportNotesForm()
+        form = ImportNotesForm(profil=profil)
+    journal = ImportNotes.objects.select_related('utilisateur')
+    if not profil.est_scolarite:
+        journal = journal.filter(utilisateur=request.user)
     return render(request, 'pfe/notes_importer.html', {
         'form': form, 'rapport': rapport, 'obligatoires': OBLIGATOIRES_NOTES, 'actif': 'notes_importer',
         'mes_programmes': None if profil.est_scolarite else programmes_du_profil(profil),
+        'journal': journal[:15],
     })
+
+
+@login_required
+@gestion_matieres_requise
+def notes_import_pdf(request, pk):
+    """PDF de l'enseignant d'un import : la scolarité, ou la personne qui a fait l'import."""
+    from django.http import FileResponse
+    profil = get_profil(request)
+    imp = get_object_or_404(ImportNotes, pk=pk)
+    if not imp.pdf_enseignant or not (profil.est_scolarite or imp.utilisateur_id == request.user.id):
+        raise Http404
+    from .models import stockage_prive
+    return FileResponse(stockage_prive().open(imp.pdf_enseignant.name, 'rb'), content_type='application/pdf',
+                        filename=imp.pdf_enseignant.name.rsplit('/', 1)[-1])
 
 
 @login_required

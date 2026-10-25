@@ -47,8 +47,9 @@ class Personnel(models.Model):
     photo = models.ImageField(upload_to="personnel/photo", default="", null=True, blank=True, verbose_name="Photo du personnel")
 
     utilisateur = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profil_personnel')
-
-
+    # Chef du Service Scolarité, ou chef d'un département (programme qui est son propre département) :
+    # seul un chef (ou un super utilisateur) modifie les notes d'une année écoulée. Coché par un super utilisateur.
+    chef = models.BooleanField(default=False, verbose_name="Chef de service ou de département")
 
     def __str__(self):
         return f"{self.prenom} {self.nom}"
@@ -400,6 +401,28 @@ class NoteHistorique(models.Model):
 
     class Meta:
         ordering = ['-date']
+
+
+class ImportNotes(models.Model):
+    """
+    Journal des imports de notes : qui, quand, quel fichier, et le PDF de l'enseignant (fiche de notes
+    signée), obligatoire pour un département ou un programme. Il sert aussi de justificatif aux notes
+    modifiées par cet import.
+    """
+    date = models.DateTimeField(auto_now_add=True)
+    utilisateur = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, verbose_name='Importé par')
+    fichier = models.CharField('Fichier importé', max_length=255, blank=True)
+    pdf_enseignant = models.FileField("PDF de l'enseignant", upload_to='justificatifs/imports_notes/%Y',
+                                      storage=stockage_prive, blank=True)
+    creees = models.PositiveIntegerField('Notes créées', default=0)
+    modifiees = models.PositiveIntegerField('Notes modifiées', default=0)
+    programmes = models.CharField('Programmes', max_length=255, blank=True)
+
+    class Meta:
+        ordering = ['-date']
+
+    def __str__(self):
+        return f"Import {self.fichier} · {self.date:%d/%m/%Y %H:%M}"
 
 
 class Resultat(models.Model):

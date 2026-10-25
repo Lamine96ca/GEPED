@@ -30,6 +30,7 @@ urlpatterns = [
     path('notes/saisie/<int:pk>/', views_notes.notes_saisie, name='notes_saisie'),        # pk = matière
     path('notes/importer/', views_notes.notes_importer, name='notes_importer'),
     path('notes/importer/modele/', views_notes.notes_modele, name='notes_modele'),
+    path('notes/importer/<int:pk>/pdf/', views_notes.notes_import_pdf, name='notes_import_pdf'),
     path('notes/resultats/', views_notes.notes_resultats, name='notes_resultats'),
     path('notes/deliberer/', views_notes.notes_deliberer, name='notes_deliberer'),
     path('soutenances/', views_soutenances.soutenances_liste, name='soutenances'),

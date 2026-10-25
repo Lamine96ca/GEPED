@@ -7,13 +7,21 @@
 {% endblock %}
 {% block contenu %}
 
-{% if delibere %}
+{% if ecoulee %}
   <div class="alert {% if modifiable %}alert-warning{% else %}alert-secondary{% endif %} d-flex gap-2 align-items-start">
     <i class="bi bi-lock-fill mt-1"></i>
     <div>
+      <strong>Année écoulée ({{ matiere.session.annee }})</strong> : ces notes sont considérées comme délibérées.
+      {% if modifiable %}En tant que chef, vous pouvez encore les modifier : indiquez le motif et joignez le justificatif PDF ; chaque modification est tracée.
+      {% else %}Seul un chef (chef de la scolarité ou du département) ou un super utilisateur peut les modifier.{% endif %}
+    </div>
+  </div>
+{% elif delibere %}
+  <div class="alert alert-warning d-flex gap-2 align-items-start">
+    <i class="bi bi-lock-fill mt-1"></i>
+    <div>
       <strong>Semestre délibéré</strong>{% if deliberation %} le {{ deliberation.date|date:"d/m/Y à H:i" }}{% if deliberation.par %} par {{ deliberation.par.get_full_name|default:deliberation.par.username }}{% endif %}{% endif %}.
-      {% if modifiable %}Vous pouvez encore modifier ces notes : indiquez le motif et joignez le justificatif ; chaque modification est tracée.
-      {% else %}Les notes sont verrouillées : seule la scolarité peut encore les modifier.{% endif %}
+      Les notes restent modifiables jusqu'à la fin de l'année : indiquez le motif et joignez le justificatif PDF ; chaque modification est tracée.
     </div>
   </div>
 {% endif %}
@@ -62,16 +70,17 @@
     </div>
     {% if modifiable and lignes %}
       <div class="pied-tableau">
-        {% if delibere %}
+        {% if nb_notes or erreur_motif %}
           <div class="row g-2 mb-3">
+            <div class="col-12 small text-secondary"><i class="bi bi-info-circle"></i> Pour <strong>modifier</strong> une note déjà saisie, le motif et le justificatif PDF sont obligatoires (gardés dans l'historique avec votre nom). Saisir une note vide n'en demande pas.</div>
             <div class="col-md-7">
-              <label class="form-label small mb-1" for="motif">Motif de la modification <span class="text-danger">*</span></label>
+              <label class="form-label small mb-1" for="motif">Motif de la modification</label>
               <textarea id="motif" name="motif" rows="2" class="form-control{% if erreur_motif %} is-invalid{% endif %}" placeholder="Ex. : erreur de report constatée par le jury, PV n° …">{{ motif }}</textarea>
               {% if erreur_motif %}<div class="invalid-feedback d-block">{{ erreur_motif }}</div>{% endif %}
             </div>
             <div class="col-md-5">
-              <label class="form-label small mb-1" for="justificatif">Justificatif (PV, courrier…)</label>
-              <input type="file" id="justificatif" name="justificatif" class="form-control" accept=".pdf,image/*">
+              <label class="form-label small mb-1" for="justificatif">Justificatif PDF (PV, fiche de l'enseignant…)</label>
+              <input type="file" id="justificatif" name="justificatif" class="form-control" accept=".pdf,application/pdf">
               <div class="small text-secondary mt-1"><i class="bi bi-lock"></i> Conservé en interne, jamais publié.</div>
             </div>
           </div>
