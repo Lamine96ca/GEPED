@@ -4,9 +4,16 @@ Espace étudiant (sans compte) : inscription des préinscrits et réinscription 
 Identification :
   - inscription   : INE + PV du bac ; l'étudiant doit être PRÉINSCRIT dans la session ouverte ;
   - réinscription : INE + matricule ; étudiant inscrit, pas encore inscrit dans la session ouverte.
-Sécurité (pas de mot de passe) : 5 essais manqués par adresse IP, puis 15 minutes d'attente ;
-l'accès au dossier dure 30 minutes ; aucune donnée sensible n'est affichée (ni notes, ni
-handicap, ni anciennes pièces).
+Seules les promotions prévues pour la session (Promotion_Licence_Session) passent en ligne ; les
+autres étudiants doivent se présenter à la scolarité. À la réinscription, le niveau proposé est celui
+prévu pour la promotion dans la session.
+Sécurité (pas de mot de passe) :
+  - 5 essais manqués pour un même INE, ou 10 depuis un même appareil (adresse IP), puis 15 minutes
+    d'attente : deviner un PV du bac ou un matricule est impossible en pratique ;
+  - l'accès au dossier dure 30 minutes (nouvel identifiant de session à l'identification) ;
+  - aucune donnée sensible n'est affichée (ni notes, ni handicap, ni anciennes pièces) ;
+  - échecs journalisés (adresse IP et INE, jamais le PV ni le matricule) ;
+  - en-têtes de sécurité stricts sur toutes les pages de l'espace (voir views_espace.py).
 
 Ce que l'étudiant propose (contacts, bourse, formation, photo, niveau) reste EN ATTENTE dans une
 DemandeEtudiant : rien ne change sur sa fiche avant la validation par la scolarité (appliquer).
@@ -18,10 +25,11 @@ from django.core.cache import cache
 from django.db import transaction
 from django.utils import timezone
 
-from .models import DemandeEtudiant, Etudiant, Inscription, Session
+from .models import DemandeEtudiant, Etudiant, Inscription, Promotion_Licence_Session, Session
 
-ESSAIS_MAX = 5
-ATTENTE = 15 * 60                     # secondes de blocage après ESSAIS_MAX échecs
+ESSAIS_MAX = 5                        # échecs pour un même INE
+ESSAIS_MAX_APPAREIL = 10              # échecs depuis une même adresse (plusieurs étudiants derrière un même Wi-Fi)
+ATTENTE = 15 * 60                     # secondes de blocage après ces échecs
 DUREE_ACCES = 30 * 60                 # secondes d'accès au dossier après identification
 CLE_SESSION = 'espace_etudiant'
 
@@ -39,29 +47,52 @@ def _norm(v):
 # ------------------------------------------------------------------ essais limités
 
 def _ip(request):
-    return (request.META.get('HTTP_X_FORWARDED_FOR', '').split(',')[0].strip()
-            or request.META.get('REMOTE_ADDR', '') or 'inconnue')
+    """
+    Adresse de l'appareil. La PREMIÈRE valeur de X-Forwarded-For est choisie par le client (falsifiable) :
+    on prend l'adresse vue par le serveur, et la DERNIÈRE valeur ajoutée par le relais s'il y en a un.
+    """
+    relais = request.META.get('HTTP_X_FORWARDED_FOR', '').split(',')[-1].strip()
+    return f"{request.META.get('REMOTE_ADDR', '') or 'inconnue'}|{relais[:45]}"
 
 
-def bloque(request):
-    """Secondes restantes de blocage (0 si l'adresse peut encore essayer)."""
-    d = cache.get(f'espace:{_ip(request)}')
-    if d and d['n'] >= ESSAIS_MAX:
-        return max(0, int(d['depuis'] + ATTENTE - time.time()))
-    return 0
+def _cles(request, ine):
+    import hashlib
+    cles = [('appareil', hashlib.sha256(_ip(request).encode()).hexdigest()[:32], ESSAIS_MAX_APPAREIL)]
+    if ine:
+        cles.append(('ine', hashlib.sha256(_norm(ine).encode()).hexdigest()[:32], ESSAIS_MAX))
+    return cles
 
 
-def echec(request):
-    cle = f'espace:{_ip(request)}'
-    d = cache.get(cle) or {'n': 0, 'depuis': time.time()}
-    d['n'] += 1
-    d['depuis'] = time.time()
-    cache.set(cle, d, ATTENTE)
-    return ESSAIS_MAX - d['n']
+def bloque(request, ine=''):
+    """Secondes restantes de blocage (0 si l'appareil, et cet INE, peuvent encore essayer)."""
+    reste = 0
+    for genre, cle, maxi in _cles(request, ine):
+        d = cache.get(f'espace:{genre}:{cle}')
+        if d and d['n'] >= maxi:
+            reste = max(reste, int(d['depuis'] + ATTENTE - time.time()))
+    return max(0, reste)
 
 
-def reussite(request):
-    cache.delete(f'espace:{_ip(request)}')
+def echec(request, ine=''):
+    """Compte l'échec (appareil et INE) ; renvoie les essais restants pour cet INE."""
+    import logging
+    logging.getLogger('pfe').warning("Espace étudiant : identification refusée (adresse %s, INE %s)",
+                                     request.META.get('REMOTE_ADDR', '?'), _norm(ine)[:25] or '—')
+    restants = ESSAIS_MAX
+    for genre, cle, maxi in _cles(request, ine):
+        cle_cache = f'espace:{genre}:{cle}'
+        d = cache.get(cle_cache) or {'n': 0, 'depuis': time.time()}
+        d['n'] += 1
+        d['depuis'] = time.time()
+        cache.set(cle_cache, d, ATTENTE)
+        restants = min(restants, maxi - d['n'])
+    return restants
+
+
+def reussite(request, ine=''):
+    for genre, cle, _ in _cles(request, ine):
+        if genre == 'ine':                    # l'appareil garde ses échecs (autres INE essayés)
+            cache.delete(f'espace:{genre}:{cle}')
 
 
 # ------------------------------------------------------------------ identification
@@ -71,6 +102,8 @@ class Refus(Exception):
 
 
 INCONNU = "Aucun dossier ne correspond à ces informations. Vérifiez-les ou adressez-vous à la scolarité."
+HORS_PROMOTION = ("Votre promotion n'est pas prévue pour les inscriptions en ligne de {session} : "
+                  "présentez-vous au Service de la Scolarité.")
 
 
 def identifier_inscription(ine, pvbac, session):
@@ -89,6 +122,9 @@ def identifier_inscription(ine, pvbac, session):
                         f"pour toute modification.")
         raise Refus(f"Vous n'êtes pas préinscrit(e) pour {session}. Ancien étudiant ? Utilisez l'onglet "
                     f"« Réinscription ».")
+    if not insc.promotion_id or not Promotion_Licence_Session.objects.filter(
+            promotion_id=insc.promotion_id, licence_id=insc.licence_id, session=session).exists():
+        raise Refus(HORS_PROMOTION.format(session=session))
     return e, insc
 
 
@@ -110,6 +146,8 @@ def identifier_reinscription(ine, matricule, session):
                 .order_by('-session__annee', '-licence__nom').first())
     if derniere is None:
         raise Refus(INCONNU)
+    if not derniere.promotion_id or not niveaux_prevus(derniere, session):
+        raise Refus(HORS_PROMOTION.format(session=session))
     return e, derniere
 
 
@@ -140,20 +178,26 @@ def _rang(licence):
     return int(m.group()) if m else 0
 
 
-def niveaux_proposes(derniere):
-    """Niveaux proposés à la réinscription : ceux de la même famille (LICENCE n, n ème Année…),
-    du même rang ou au-dessus ; le niveau suivant est proposé par défaut."""
-    from .models import Licence
-    nom = (derniere.licence.nom or '').upper()
-    famille = 'ANNEE' if 'ANN' in nom else re.sub(r'[\s\d]+', '', nom)
+def _famille(licence):
+    """« LICENCE 3 » → « LICENCE » ; « 2ème Année » → « ANNEE » (pour ne pas mélanger les deux écritures)."""
+    nom = (licence.nom or '').upper()
+    return 'ANNEE' if 'ANN' in nom else re.sub(r'[\s\d]+', '', nom)
 
-    def meme_famille(l):
-        n = (l.nom or '').upper()
-        return ('ANN' in n) if famille == 'ANNEE' else re.sub(r'[\s\d]+', '', n) == famille
-    rang = _rang(derniere.licence)
-    niveaux = sorted((l for l in Licence.objects.all() if meme_famille(l) and _rang(l) >= rang), key=_rang)
-    suivant = next((l for l in niveaux if _rang(l) == rang + 1), derniere.licence)
-    return niveaux or [derniere.licence], suivant
+
+def niveaux_prevus(derniere, session):
+    """Niveaux prévus pour la promotion de l'étudiant dans la session (Promotion_Licence_Session),
+    de la même écriture que son dernier niveau quand c'est possible."""
+    from .models import Licence
+    prevus = list(Licence.objects.filter(licence_promotion_session__promotion_id=derniere.promotion_id,
+                                         licence_promotion_session__session=session).distinct())
+    memes = [l for l in prevus if _famille(l) == _famille(derniere.licence)]
+    return sorted(memes or prevus, key=_rang)
+
+
+def niveaux_proposes(derniere, session):
+    """Niveaux proposés à la réinscription (prévus pour la promotion) ; le premier est sélectionné."""
+    niveaux = niveaux_prevus(derniere, session)
+    return niveaux, (niveaux[0] if niveaux else None)
 
 
 # ------------------------------------------------------------------ validation par la scolarité

@@ -1359,7 +1359,8 @@ class GpedTests(TestCase):
         p = Etudiant.objects.create(matricule='2601000135', prenom='Awa', nom='BAH', email='awa@etudiant.gped',
                                     ine='INEP1', pvbac='123 456', preinscrit=True, telephone='600',
                                     boursier='boursier', type_formation='initiale')
-        insc = Inscription.objects.create(etudiant=p, session=self.session, licence=self.licence, filiere=self.info)
+        insc = Inscription.objects.create(etudiant=p, session=self.session, licence=self.licence, filiere=self.info,
+                                          promotion=self.p20)
         accueil = reverse('espace_accueil')
         identifiants = {'mode': 'inscription', 'i-ine': 'inep1', 'i-pvbac': '123456'}
         # Fermé par défaut
@@ -1444,9 +1445,9 @@ class GpedTests(TestCase):
         Session.objects.filter(pk=self.session.pk).update(reinscriptions_ouvertes=True)
         e = Etudiant.objects.create(matricule='R1', prenom='Ali', nom='SOW', email='ali@t.local', ine='INER1',
                                     telephone='611')
-        derniere = Inscription.objects.create(etudiant=e, session=self.s2425, licence=self.licence, filiere=self.info,
-                                              promotion=self.p20, cycle='Licence')
-        algo = Matiere.objects.create(nom='Algorithmique', filiere=self.info, semestre=s1, licence=self.licence,
+        derniere = Inscription.objects.create(etudiant=e, session=self.s2425, licence=self.l2, filiere=self.info,
+                                              promotion=self.p18, cycle='Licence')
+        algo = Matiere.objects.create(nom='Algorithmique', filiere=self.info, semestre=s1, licence=self.l2,
                                       session=self.s2425, credit=6)
         Note.objects.create(etudiant=e, matiere=algo, moyenne=3.5, moyenne_deposee=True)
         # Préinscrit ou mauvais matricule : refusé
@@ -1456,15 +1457,16 @@ class GpedTests(TestCase):
         self.assertRedirects(r, reverse('espace_dossier'))
         r = self.client.get(reverse('espace_dossier'))
         self.assertContains(r, 'Dernier niveau')
-        self.assertContains(r, f'<option value="{self.l2.pk}" selected>')        # niveau suivant proposé
+        self.assertContains(r, f'<option value="{self.l3.pk}" selected>')        # niveau prévu pour P18
+        self.assertNotContains(r, f'<option value="{self.l2.pk}"')                # pas d'autre niveau
         self.assertContains(r, 'value="boursier" class="btn-check" id="id_boursier_0" required checked')   # par défaut
         self.assertContains(r, 'value="initiale" class="btn-check" id="id_type_formation_0" required checked')
         r = self.client.post(reverse('espace_dossier'), {
-            'telephone': '622 00 00 01', 'licence': self.l2.pk, 'boursier': 'payante', 'type_formation': 'continue',
+            'telephone': '622 00 00 01', 'licence': self.l3.pk, 'boursier': 'payante', 'type_formation': 'continue',
             'piece_releve_notes': SimpleUploadedFile('releve.pdf', b'%PDF-1.4 releve')})
         self.assertRedirects(r, reverse('espace_confirmation'))
         d = DemandeEtudiant.objects.get(type='reinscription')
-        self.assertEqual((d.licence, d.derniere_inscription, d.boursier), (self.l2, derniere, 'payante'))
+        self.assertEqual((d.licence, d.derniere_inscription, d.boursier), (self.l3, derniere, 'payante'))
         self.assertFalse(Inscription.objects.filter(etudiant=e, session=self.session).exists())
         # Scolarité : liste, fiche avec les notes empilées (note < 5 en rouge), refus sans motif impossible
         self.connecter('info')
@@ -1486,7 +1488,7 @@ class GpedTests(TestCase):
                                                                    'type_formation': 'initiale'})
         insc = Inscription.objects.get(etudiant=e, session=self.session)
         self.assertEqual((insc.licence, insc.filiere, insc.promotion, insc.cycle, insc.redouble),
-                         (self.l2, self.info, self.p20, 'Licence', False))
+                         (self.l3, self.info, self.p18, 'Licence', False))
         e.refresh_from_db()
         self.assertEqual((e.telephone, e.boursier, e.type_formation), ('622 00 00 01', 'payante', 'initiale'))
         # Déjà inscrit pour la session : l'espace le dit
@@ -1523,6 +1525,66 @@ class GpedTests(TestCase):
         self.assertNotEqual(p.telephone, '600')                                   # changements non appliqués
         self.assertContains(self.client.get(url, {'type': 'inscription', 'statut': 'validee'}), 'validée ailleurs')
         self.assertContains(self.client.get(reverse('demande_detail', args=[d_insc.pk])), 'hors des demandes en ligne')
+
+    def test_espace_etudiant_promotions_prevues_seulement(self):
+        """Seules les promotions prévues pour la session (Promotion_Licence_Session) passent en ligne."""
+        self._espace()
+        Session.objects.filter(pk=self.session.pk).update(inscriptions_ouvertes=True, reinscriptions_ouvertes=True)
+        accueil = reverse('espace_accueil')
+        # Préinscrit sans promotion, puis dans une promotion non prévue à ce niveau : scolarité
+        p = Etudiant.objects.create(matricule='Q1', prenom='Ina', nom='SY', email='sy@t.local', ine='INEQ1',
+                                    pvbac='111', preinscrit=True)
+        insc = Inscription.objects.create(etudiant=p, session=self.session, licence=self.licence, filiere=self.info)
+        hors = 'présentez-vous au Service de la Scolarité'
+        self.assertContains(self.client.post(accueil, {'mode': 'inscription', 'i-ine': 'INEQ1', 'i-pvbac': '111'}), hors)
+        Inscription.objects.filter(pk=insc.pk).update(promotion=self.p18)          # P18 n'est pas en Licence 1
+        self.assertContains(self.client.post(accueil, {'mode': 'inscription', 'i-ine': 'INEQ1', 'i-pvbac': '111'}), hors)
+        Inscription.objects.filter(pk=insc.pk).update(promotion=self.p20)          # P20 : Licence 1 en 2025-2026
+        self.assertRedirects(self.client.post(accueil, {'mode': 'inscription', 'i-ine': 'INEQ1', 'i-pvbac': '111'}),
+                             reverse('espace_dossier'))
+        # Ancien étudiant d'une promotion sans niveau prévu (P21) : scolarité
+        self.client.post(reverse('espace_quitter'))
+        a = Etudiant.objects.create(matricule='Q2', prenom='Bah', nom='LY', email='ly@t.local', ine='INEQ2')
+        Inscription.objects.create(etudiant=a, session=self.s2425, licence=self.licence, filiere=self.info,
+                                   promotion=Promotion.objects.get(nom='P21'))
+        self.assertContains(self.client.post(accueil, {'mode': 'reinscription', 'r-ine': 'INEQ2', 'r-matricule': 'Q2'}),
+                            hors)
+
+    def test_espace_etudiant_securite(self):
+        """En-têtes stricts, essais limités par INE (même en changeant d'adresse), envois trop lourds refusés."""
+        self._espace()
+        Session.objects.filter(pk=self.session.pk).update(inscriptions_ouvertes=True)
+        accueil = reverse('espace_accueil')
+        r = self.client.get(accueil)
+        self.assertIn("frame-ancestors 'none'", r['Content-Security-Policy'])
+        self.assertIn("script-src 'self';", r['Content-Security-Policy'])
+        self.assertEqual((r['X-Frame-Options'], r['X-Content-Type-Options']), ('DENY', 'nosniff'))
+        self.assertIn('no-cache', r['Cache-Control'])
+        self.assertNotIn('<script>', r.content.decode())                        # aucun script en ligne
+        # Deviner le PV d'un INE en changeant d'adresse IP (ou de X-Forwarded-For) : bloqué au 5e échec
+        p = Etudiant.objects.create(matricule='S1', prenom='Ina', nom='SY', email='sy@t.local', ine='INES1',
+                                    pvbac='424242', preinscrit=True)
+        Inscription.objects.create(etudiant=p, session=self.session, licence=self.licence, filiere=self.info,
+                                   promotion=self.p20)
+        for i in range(5):
+            self.client.post(accueil, {'mode': 'inscription', 'i-ine': 'INES1', 'i-pvbac': str(100000 + i)},
+                             REMOTE_ADDR=f'10.0.0.{i}', HTTP_X_FORWARDED_FOR=f'1.2.3.{i}')
+        r = self.client.post(accueil, {'mode': 'inscription', 'i-ine': 'INES1', 'i-pvbac': '424242'},
+                             REMOTE_ADDR='10.0.0.99')
+        self.assertContains(r, "Trop d&#x27;essais")                            # même avec le bon PV
+        # Un autre INE, depuis une autre adresse, n'est pas bloqué
+        q = Etudiant.objects.create(matricule='S2', prenom='Ali', nom='BA', email='ba@t.local', ine='INES2',
+                                    pvbac='777', preinscrit=True)
+        Inscription.objects.create(etudiant=q, session=self.session, licence=self.licence, filiere=self.info,
+                                   promotion=self.p20)
+        r = self.client.post(accueil, {'mode': 'inscription', 'i-ine': 'INES2', 'i-pvbac': '777'}, REMOTE_ADDR='10.0.1.1')
+        self.assertRedirects(r, reverse('espace_dossier'))
+        # Envoi trop lourd : refusé avant tout traitement
+        r = self.client.post(reverse('espace_dossier'), {'telephone': '6'}, CONTENT_LENGTH=str(50 * 1024 * 1024))
+        self.assertRedirects(r, reverse('espace_dossier'), fetch_redirect_response=False)
+        self.assertEqual(self.client.get(reverse('espace_dossier'))['Content-Security-Policy'][:19], "default-src 'self';")
+        # Photo d'un autre étudiant : inaccessible (seulement celle de l'étudiant identifié, sinon 404)
+        self.assertEqual(self.client.get(reverse('espace_photo')).status_code, 404)
 
     def test_personnel_chef_seulement_scolarite_ou_departement(self):
         from .forms import PersonnelForm

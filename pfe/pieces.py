@@ -26,6 +26,7 @@ PDF_MAX = 3 * 1024 * 1024                 # PDF envoyé tel quel
 IMAGE_MAX = 15 * 1024 * 1024              # photo brute (elle est réduite ensuite)
 PAGES_MAX = 10
 COTE_MAX = 1700                           # pixels, plus grand côté d'une page
+PIXELS_MAX = 50_000_000                   # au-delà : image refusée avant décodage (image piégée, « bombe »)
 QUALITE_JPEG = 72
 EXTENSIONS_IMAGES = ('.jpg', '.jpeg', '.png', '.webp')
 
@@ -46,8 +47,10 @@ def _page_jpeg(f):
         raise ValidationError(f"« {f.name} » est trop lourd ({f.size / 1048576:.1f} Mo) : 15 Mo au plus par photo.")
     try:
         img = Image.open(f)
+        if img.width * img.height > PIXELS_MAX:
+            raise ValidationError(f"« {f.name} » : image trop grande ({img.width} × {img.height} pixels).")
         img.load()
-    except (UnidentifiedImageError, OSError):
+    except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError):
         raise ValidationError(f"« {f.name} » n'est pas une image lisible : JPG, PNG ou WEBP, ou un PDF.")
     img = _en_rgb(ImageOps.exif_transpose(img))
     img.thumbnail((COTE_MAX, COTE_MAX), Image.LANCZOS)

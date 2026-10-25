@@ -5,6 +5,8 @@ Espace étudiant (public, sans compte) : /etudiant/
                     relevé de notes de la dernière année.
 Rien n'est appliqué à la fiche avant la validation par la scolarité (voir pfe/espace_etudiant.py).
 """
+from functools import wraps
+
 from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.db import transaction
@@ -20,6 +22,31 @@ from .forms import DossierEtudiantForm, IdentificationInscriptionForm, Identific
 from .models import DemandeEtudiant, Etudiant, Inscription, PieceDossier
 from .photos import url_photo
 
+ENVOI_MAX = 40 * 1024 * 1024           # taille maximale d'un envoi du dossier (photos déjà réduites : ≈ 2 à 5 Mo)
+
+# En-têtes de sécurité des pages publiques de l'espace : rien ne vient d'un autre site, pas de script en
+# ligne, pas d'intégration dans un cadre, formulaires envoyés seulement à gePed, pas de cache.
+CSP_ESPACE = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+              "img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' blob:; "
+              "media-src 'self' blob: mediastream:; object-src 'none'; frame-src 'none'; worker-src 'none'; "
+              "frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
+
+
+def securise(vue):
+    @wraps(vue)
+    def enveloppe(request, *args, **kwargs):
+        reponse = vue(request, *args, **kwargs)
+        reponse['Content-Security-Policy'] = CSP_ESPACE
+        reponse['X-Frame-Options'] = 'DENY'
+        reponse['X-Content-Type-Options'] = 'nosniff'
+        reponse['Referrer-Policy'] = 'same-origin'
+        reponse['Permissions-Policy'] = 'camera=(self), microphone=(), geolocation=(), payment=(), usb=()'
+        reponse['Cross-Origin-Opener-Policy'] = 'same-origin'
+        reponse['X-Robots-Tag'] = 'noindex, nofollow'
+        return reponse
+    return enveloppe
+
+
 PIECES = {
     DemandeEtudiant.INSCRIPTION: [PieceDossier.ACTE_NAISSANCE, PieceDossier.DIPLOME_BAC, PieceDossier.RELEVE_BAC],
     DemandeEtudiant.REINSCRIPTION: [PieceDossier.RELEVE_NOTES],
@@ -32,6 +59,7 @@ def _ouvert(session, type_demande):
     return session.inscriptions_ouvertes if type_demande == DemandeEtudiant.INSCRIPTION else session.reinscriptions_ouvertes
 
 
+@securise
 @never_cache
 def espace_accueil(request):
     session = espace.session_cible()
@@ -41,9 +69,10 @@ def espace_accueil(request):
     form_insc = IdentificationInscriptionForm(request.POST if mode == DemandeEtudiant.INSCRIPTION and request.method == 'POST' else None, prefix='i')
     form_reinsc = IdentificationReinscriptionForm(request.POST if mode == DemandeEtudiant.REINSCRIPTION and request.method == 'POST' else None, prefix='r')
     erreur = ''
-    attente = espace.bloque(request)
     if request.method == 'POST' and _ouvert(session, mode):
         form = form_insc if mode == DemandeEtudiant.INSCRIPTION else form_reinsc
+        ine = request.POST.get(form.add_prefix('ine'), '')
+        attente = espace.bloque(request, ine)
         if attente:
             erreur = f"Trop d'essais : réessayez dans {attente // 60 + 1} minute(s)."
         elif form.is_valid():
@@ -54,11 +83,11 @@ def espace_accueil(request):
                 else:
                     etudiant, insc = espace.identifier_reinscription(d['ine'], d['matricule'], session)
             except espace.Refus as e:
-                reste = espace.echec(request)
+                reste = espace.echec(request, d['ine'])
                 erreur = str(e) + (f" ({reste} essai{'s' if reste > 1 else ''} restant{'s' if reste > 1 else ''})"
                                    if 0 < reste < espace.ESSAIS_MAX - 1 else '')
             else:
-                espace.reussite(request)
+                espace.reussite(request, d['ine'])
                 espace.ouvrir_acces(request, etudiant, mode, insc)
                 return redirect('espace_dossier')
     return render(request, 'pfe/espace/accueil.html', {
@@ -68,6 +97,7 @@ def espace_accueil(request):
     })
 
 
+@securise
 @never_cache
 def espace_dossier(request):
     a = espace.acces(request)
@@ -75,6 +105,14 @@ def espace_dossier(request):
     if a is None or not _ouvert(session, a['type']):
         messages.info(request, "Votre accès a expiré : identifiez-vous de nouveau.")
         return redirect('espace_accueil')
+    # Envoi trop lourd : refusé AVANT de lire le contenu (rien n'est décodé ni enregistré)
+    try:
+        taille_envoi = int(request.META.get('CONTENT_LENGTH') or 0)
+    except ValueError:
+        taille_envoi = 0
+    if request.method == 'POST' and taille_envoi > ENVOI_MAX:
+        messages.error(request, "Envoi trop lourd : envoyez moins de pages, ou des PDF plus légers.")
+        return redirect('espace_dossier')
     etudiant = Etudiant.objects.get(pk=a['etudiant'])
     insc = Inscription.objects.select_related('session', 'licence', 'filiere', 'promotion').get(pk=a['inscription'])
     type_demande = a['type']
@@ -84,7 +122,7 @@ def espace_dossier(request):
         espace.fermer_acces(request)
         messages.success(request, f"Votre {demande.get_type_display().lower()} pour {session} est déjà validée.")
         return redirect('espace_accueil')
-    niveaux, suivant = espace.niveaux_proposes(insc) if reinscription else ([], None)
+    niveaux, suivant = espace.niveaux_proposes(insc, session) if reinscription else ([], None)
 
     initial = {c: getattr(etudiant, c) or '' for c in DemandeEtudiant.CHAMPS_CONTACTS}
     if reinscription:                       # Boursier et formation initiale cochés par défaut
@@ -154,6 +192,7 @@ def espace_dossier(request):
     })
 
 
+@securise
 @never_cache
 def espace_confirmation(request):
     a = espace.acces(request)
@@ -166,6 +205,7 @@ def espace_confirmation(request):
     return render(request, 'pfe/espace/confirmation.html', {'demande': demande, 'session': session})
 
 
+@securise
 @never_cache
 def espace_photo(request):
     """
@@ -193,6 +233,7 @@ def espace_photo(request):
     return reponse
 
 
+@securise
 @require_POST
 def espace_quitter(request):
     espace.fermer_acces(request)

@@ -1186,7 +1186,8 @@ class DossierEtudiantForm(BootstrapMixin, forms.Form):
     def clean_email(self):
         email = (self.cleaned_data.get('email') or '').strip().lower()
         if email and Etudiant.objects.filter(email__iexact=email).exclude(pk=getattr(self.etudiant, 'pk', None)).exists():
-            raise forms.ValidationError("Cette adresse e-mail est déjà utilisée par un autre étudiant.")
+            # Message neutre : ne pas révéler qu'une adresse appartient à un autre étudiant
+            raise forms.ValidationError("Cette adresse e-mail ne peut pas être utilisée : indiquez-en une autre.")
         return email
 
     def clean_photo(self):
