@@ -1382,6 +1382,7 @@ class GpedTests(TestCase):
         self.assertRedirects(r, reverse('espace_confirmation'))
         d = DemandeEtudiant.objects.get()
         self.assertEqual((d.type, d.statut, d.contacts['telephone']), ('inscription', 'en_attente', '622 11 22 33'))
+        self.assertEqual((d.boursier, d.type_formation), ('boursier', 'initiale'))      # cochés par défaut
         p.refresh_from_db()
         self.assertEqual((p.telephone, p.preinscrit), ('600', True))      # rien d'appliqué avant validation
         self.assertTrue(PieceDossier.objects.get(etudiant=p, type='acte_naissance').par_etudiant)
@@ -1429,6 +1430,8 @@ class GpedTests(TestCase):
         r = self.client.get(reverse('espace_dossier'))
         self.assertContains(r, 'Dernier niveau')
         self.assertContains(r, f'<option value="{self.l2.pk}" selected>')        # niveau suivant proposé
+        self.assertContains(r, 'value="boursier" class="btn-check" id="id_boursier_0" required checked')   # par défaut
+        self.assertContains(r, 'value="initiale" class="btn-check" id="id_type_formation_0" required checked')
         r = self.client.post(reverse('espace_dossier'), {
             'telephone': '622 00 00 01', 'licence': self.l2.pk, 'boursier': 'payante', 'type_formation': 'continue',
             'piece_releve_notes': SimpleUploadedFile('releve.pdf', b'%PDF-1.4 releve')})
@@ -1445,15 +1448,17 @@ class GpedTests(TestCase):
         self.assertContains(r, 'Algorithmique')
         self.assertContains(r, 'class="note-rouge"')
         self.assertContains(r, '622 00 00 01')
+        self.assertContains(r, 'value="payante" checked')                      # choix de l'étudiant, coché
         r = self.client.post(reverse('demande_detail', args=[d.pk]), {'action': 'refuser'}, follow=True)
         self.assertContains(r, 'Indiquez le motif')
-        # Validation : inscription créée au niveau demandé, coordonnées et choix appliqués
-        self.client.post(reverse('demande_detail', args=[d.pk]), {'action': 'valider'})
+        # Validation : la scolarité change la formation ; inscription créée, coordonnées et choix appliqués
+        self.client.post(reverse('demande_detail', args=[d.pk]), {'action': 'valider', 'boursier': 'payante',
+                                                                   'type_formation': 'initiale'})
         insc = Inscription.objects.get(etudiant=e, session=self.session)
         self.assertEqual((insc.licence, insc.filiere, insc.promotion, insc.cycle, insc.redouble),
                          (self.l2, self.info, self.p20, 'Licence', False))
         e.refresh_from_db()
-        self.assertEqual((e.telephone, e.boursier, e.type_formation), ('622 00 00 01', 'payante', 'continue'))
+        self.assertEqual((e.telephone, e.boursier, e.type_formation), ('622 00 00 01', 'payante', 'initiale'))
         # Déjà inscrit pour la session : l'espace le dit
         self.client.logout()
         r = self.client.post(reverse('espace_accueil'), {'mode': 'reinscription', 'r-ine': 'INER1', 'r-matricule': 'R1'})

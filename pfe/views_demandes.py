@@ -18,7 +18,7 @@ from django.views.decorators.http import require_POST
 
 from . import espace_etudiant as espace
 from .attestations import _nom_departement, _nom_programme
-from .models import DemandeEtudiant, Matiere, Note, Resultat, Session
+from .models import DemandeEtudiant, Etudiant, Matiere, Note, Resultat, Session
 from .roles import scolarite_requise
 
 LIBELLES_CONTACTS = {'telephone': 'Téléphone', 'email': 'E-mail', 'adresse': 'Adresse', 'ville': 'Ville / Commune',
@@ -97,6 +97,11 @@ def demande_detail(request, pk):
     if request.method == 'POST' and demande.statut == DemandeEtudiant.EN_ATTENTE:
         action = request.POST.get('action')
         if action == 'valider':
+            # Bourse et type de formation : cochés (Boursier, Initiale par défaut), modifiables par la scolarité
+            for champ, choix in (('boursier', Etudiant.BOURSIER_CHOICES), ('type_formation',
+                                                                            Etudiant.TYPE_FORMATION_CHOICES)):
+                if request.POST.get(champ) in dict(choix):
+                    setattr(demande, champ, request.POST[champ])
             espace.appliquer(demande, request.user)
             if demande.type == DemandeEtudiant.REINSCRIPTION:
                 messages.success(request, f"Réinscription validée : {e.prenom} {e.nom} est inscrit(e) en "
@@ -118,11 +123,6 @@ def demande_detail(request, pk):
         ancien = getattr(e, champ) or ''
         if nouveau and nouveau != ancien:
             changements.append((libelle, ancien, nouveau))
-    for champ, libelle in (('boursier', 'Bourse'), ('type_formation', 'Type de formation')):
-        nouveau = getattr(demande, champ)
-        if nouveau and nouveau != getattr(e, champ):
-            changements.append((libelle, getattr(e, f'get_{champ}_display')() or '—',
-                                getattr(demande, f'get_{champ}_display')()))
     d = demande.derniere_inscription
     insc_session = e.etudiant_inscription.filter(session=demande.session).select_related('licence', 'filiere').first()
     return render(request, 'pfe/demande_detail.html', {
@@ -133,6 +133,7 @@ def demande_detail(request, pk):
         'pieces': e.pieces.select_related('session'),
         'annees': notes_empilees(e) if demande.type == DemandeEtudiant.REINSCRIPTION else None,
         'seuil_rouge': SEUIL_ROUGE, 'actif': 'demandes',
+        'choix_bourse': Etudiant.BOURSIER_CHOICES, 'choix_formation': Etudiant.TYPE_FORMATION_CHOICES,
         'fiche': (insc_session or d or e.etudiant_inscription.order_by('-session__annee').first()),
     })
 

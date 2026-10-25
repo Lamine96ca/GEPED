@@ -855,3 +855,9 @@ code { color: var(--encre); background: var(--survol); padding: .05rem .3rem; bo
 .table-notes-empilees td, .table-notes-empilees th { padding-left: 1.25rem; }
 .table-notes-empilees tr.note-rouge > td, .note-rouge { background-color: #fde2e2 !important; }
 .infos-compte .col-span { grid-column: 1 / -1; }
+/* Recadrage d'une page scannée */
+.zone-recadrage { height: min(65vh, 560px); background: #1f2937; border-radius: 10px; overflow: hidden; }
+.zone-recadrage img { display: block; max-width: 100%; }
+@media (max-width: 575.98px) { .zone-recadrage { height: calc(100vh - 210px); border-radius: 0; } }
+.page-piece.recadrable { cursor: pointer; }
+.page-piece.recadrable::after { content: "\F294"; font-family: bootstrap-icons; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: rgba(15, 23, 42, .65); color: #fff; font-size: .7rem; display: grid; place-items: center; }

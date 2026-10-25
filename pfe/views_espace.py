@@ -86,9 +86,8 @@ def espace_dossier(request):
     niveaux, suivant = espace.niveaux_proposes(insc) if reinscription else ([], None)
 
     initial = {c: getattr(etudiant, c) or '' for c in DemandeEtudiant.CHAMPS_CONTACTS}
-    if reinscription:
-        initial.update(licence=suivant.pk if suivant else None, boursier=etudiant.boursier or 'boursier',
-                       type_formation=etudiant.type_formation or 'initiale')
+    if reinscription:                       # Boursier et formation initiale cochés par défaut
+        initial.update(licence=suivant.pk if suivant else None, boursier='boursier', type_formation='initiale')
     if demande:
         initial.update({c: v for c, v in (demande.contacts or {}).items() if v})
         if reinscription:
@@ -119,6 +118,9 @@ def espace_dossier(request):
                 if reinscription:
                     demande.licence, demande.boursier, demande.type_formation = (
                         d['licence'], d['boursier'], d['type_formation'])
+                else:                       # inscription : boursier et formation initiale par défaut
+                    demande.boursier = demande.boursier or 'boursier'
+                    demande.type_formation = demande.type_formation or 'initiale'
                 if d.get('photo'):
                     from django.core.files.base import ContentFile
                     from django.utils import timezone

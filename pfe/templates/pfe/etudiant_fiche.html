@@ -232,5 +232,5 @@
 {% endblock %}
 {% block scripts %}
 {% if peut_changer_photo %}{% include 'pfe/_modal_photo.html' %}{% endif %}
-{% if pieces is not None %}<script src="{% static 'pfe/js/gped-pieces.js' %}?v={{ version_statique }}" defer></script>{% endif %}
+{% if pieces is not None %}{% include 'pfe/_modal_recadrage.html' %}<script src="{% static 'pfe/js/gped-pieces.js' %}?v={{ version_statique }}" defer></script>{% endif %}
 {% endblock %}

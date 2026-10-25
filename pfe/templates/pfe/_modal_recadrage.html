@@ -1,0 +1,27 @@
+{% load static %}
+{# Recadrage d'une page scannée (pièces du dossier) : cadre libre, rotation. Une seule fois par page web. #}
+{# Cropper.js n'est chargé qu'à la première utilisation (voir static/pfe/js/gped-pieces.js).            #}
+<link rel="stylesheet" href="{% static 'pfe/vendor/cropperjs/cropper.min.css' %}?v={{ version_statique }}">
+<div class="modal fade" id="modal-recadrage" tabindex="-1" aria-labelledby="modal-recadrage-titre" aria-hidden="true"
+     data-bs-backdrop="static" data-cropper-src="{% static 'pfe/vendor/cropperjs/cropper.min.js' %}?v={{ version_statique }}">
+  <div class="modal-dialog modal-dialog-centered modal-lg modal-fullscreen-sm-down">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h5 class="modal-title" id="modal-recadrage-titre"><i class="bi bi-crop"></i> Recadrer la page <span data-recadrage-numero></span></h5>
+      </div>
+      <div class="modal-body p-2">
+        <div class="zone-recadrage"><img alt="Page à recadrer" data-recadrage-image></div>
+        <div class="small text-secondary mt-2 px-1"><i class="bi bi-hand-index"></i> Faites glisser les coins du cadre sur les bords du document ; tournez la page si elle est couchée.</div>
+      </div>
+      <div class="modal-footer flex-wrap gap-2 py-2">
+        <div class="btn-group me-auto" role="group" aria-label="Rotation et cadre">
+          <button type="button" class="btn btn-light" data-recadrage="gauche" title="Tourner à gauche"><i class="bi bi-arrow-counterclockwise"></i></button>
+          <button type="button" class="btn btn-light" data-recadrage="droite" title="Tourner à droite"><i class="bi bi-arrow-clockwise"></i></button>
+          <button type="button" class="btn btn-light" data-recadrage="tout" title="Toute la photo"><i class="bi bi-arrows-fullscreen"></i> <span class="d-none d-sm-inline">Toute la photo</span></button>
+        </div>
+        <button type="button" class="btn btn-light" data-recadrage="annuler">Ne pas ajouter</button>
+        <button type="button" class="btn btn-primary" data-recadrage="valider"><i class="bi bi-check-lg"></i> Valider la page</button>
+      </div>
+    </div>
+  </div>
+</div>

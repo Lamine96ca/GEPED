@@ -461,9 +461,11 @@ class DemandeEtudiant(models.Model):
     session = models.ForeignKey(Session, on_delete=models.CASCADE, verbose_name='Session')
     statut = models.CharField('Statut', max_length=12, choices=STATUTS, default=EN_ATTENTE)
     contacts = models.JSONField('Contacts proposés', default=dict, blank=True)
-    boursier = models.CharField('Bourse proposée', max_length=20, choices=Etudiant.BOURSIER_CHOICES, blank=True)
-    type_formation = models.CharField('Formation proposée', max_length=20, choices=Etudiant.TYPE_FORMATION_CHOICES,
-                                      blank=True)
+    # Boursier et formation initiale par défaut ; la scolarité peut changer avant de valider
+    boursier = models.CharField('Bourse', max_length=20, choices=Etudiant.BOURSIER_CHOICES, blank=True,
+                                default='boursier')
+    type_formation = models.CharField('Type de formation', max_length=20, choices=Etudiant.TYPE_FORMATION_CHOICES,
+                                      blank=True, default='initiale')
     licence = models.ForeignKey(Licence, on_delete=models.SET_NULL, null=True, blank=True,
                                 verbose_name='Niveau demandé')
     derniere_inscription = models.ForeignKey(Inscription, on_delete=models.SET_NULL, null=True, blank=True,
