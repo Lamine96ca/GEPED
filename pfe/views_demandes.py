@@ -44,6 +44,7 @@ def demandes_liste(request):
         else DemandeEtudiant.REINSCRIPTION
     statut = request.GET.get('statut') if request.GET.get('statut') in dict(DemandeEtudiant.STATUTS) \
         else DemandeEtudiant.EN_ATTENTE
+    espace.cloturer_traitees_ailleurs(session)          # déjà validées ailleurs : quittent la liste « En attente »
     base = DemandeEtudiant.objects.filter(session=session)
     compteurs = {(c['type'], c['statut']): c['n'] for c in base.values('type', 'statut').annotate(n=Count('id'))}
     demandes = (base.filter(type=type_demande, statut=statut)
@@ -97,6 +98,8 @@ def demande_detail(request, pk):
     demande = get_object_or_404(DemandeEtudiant.objects.select_related(
         'etudiant', 'session', 'licence', 'derniere_inscription__licence', 'derniere_inscription__filiere',
         'derniere_inscription__promotion', 'derniere_inscription__session', 'traitee_par'), pk=pk)
+    if demande.statut == DemandeEtudiant.EN_ATTENTE and espace.cloturer_traitees_ailleurs(demande.session):
+        demande.refresh_from_db()
     e = demande.etudiant
     if request.method == 'POST' and demande.statut == DemandeEtudiant.EN_ATTENTE:
         action = request.POST.get('action')
@@ -157,4 +160,7 @@ def demande_photo(request, pk):
 
 def nb_demandes_en_attente():
     session = espace.session_cible()
-    return DemandeEtudiant.objects.filter(session=session, statut=DemandeEtudiant.EN_ATTENTE).count() if session else 0
+    if not session:
+        return 0
+    espace.cloturer_traitees_ailleurs(session)
+    return DemandeEtudiant.objects.filter(session=session, statut=DemandeEtudiant.EN_ATTENTE).count()

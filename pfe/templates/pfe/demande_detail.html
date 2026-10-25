@@ -8,7 +8,7 @@
 {% if demande.statut != 'en_attente' %}
   <div class="alert {% if demande.statut == 'validee' %}alert-success{% else %}alert-danger{% endif %} d-flex gap-2">
     <i class="bi {% if demande.statut == 'validee' %}bi-check-circle{% else %}bi-x-octagon{% endif %} mt-1"></i>
-    <div>Demande <strong>{{ demande.get_statut_display|lower }}</strong> le {{ demande.traitee_le|date:"d/m/Y à H:i" }}{% if demande.traitee_par %} par {{ demande.traitee_par.get_full_name|default:demande.traitee_par.username }}{% endif %}.{% if demande.statut == 'validee' %}<div class="small">{{ demande.get_boursier_display|default:"—" }} · formation {{ demande.get_type_formation_display|lower|default:"—" }}</div>{% endif %}{% if demande.motif_refus %}<div class="small">Motif : {{ demande.motif_refus }}</div>{% endif %}</div>
+    <div>Demande <strong>{{ demande.get_statut_display|lower }}</strong> le {{ demande.traitee_le|date:"d/m/Y à H:i" }}{% if demande.traitee_par %} par {{ demande.traitee_par.get_full_name|default:demande.traitee_par.username }}{% elif demande.statut == 'validee' %}, <strong>hors des demandes en ligne</strong> (l'étudiant a été inscrit autrement : changements proposés non appliqués){% endif %}.{% if demande.statut == 'validee' and demande.traitee_par %}<div class="small">{{ demande.get_boursier_display|default:"—" }} · formation {{ demande.get_type_formation_display|lower|default:"—" }}</div>{% endif %}{% if demande.motif_refus %}<div class="small">Motif : {{ demande.motif_refus }}</div>{% endif %}</div>
   </div>
 {% endif %}
 

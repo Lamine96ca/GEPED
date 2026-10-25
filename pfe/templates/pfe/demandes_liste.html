@@ -57,7 +57,7 @@
           </div></td>
           <td>{% if d.type == 'reinscription' %}{{ d.derniere_inscription.licence|default:"—" }} <i class="bi bi-arrow-right"></i> <strong>{{ d.licence|default:"—" }}</strong>{% else %}Préinscrit{% endif %}</td>
           <td>{{ d.derniere_inscription.filiere|default:"—" }}</td>
-          <td class="text-nowrap">{{ d.date_depot|date:"d/m/Y H:i" }}</td>
+          <td class="text-nowrap">{{ d.date_depot|date:"d/m/Y H:i" }}{% if d.statut == 'validee' and not d.traitee_par_id %}<div class="small text-secondary">validée ailleurs</div>{% endif %}</td>
           <td class="text-end"><a class="btn btn-sm btn-light" href="{% url 'demande_detail' d.pk %}"><i class="bi bi-eye"></i> Examiner</a></td>
         </tr>
       {% empty %}

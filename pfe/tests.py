@@ -1494,6 +1494,36 @@ class GpedTests(TestCase):
         r = self.client.post(reverse('espace_accueil'), {'mode': 'reinscription', 'r-ine': 'INER1', 'r-matricule': 'R1'})
         self.assertContains(r, 'déjà inscrit(e)')
 
+    def test_demandes_reglees_ailleurs_quittent_la_liste(self):
+        from .models import DemandeEtudiant
+        self._espace()
+        p = Etudiant.objects.create(matricule='P7', prenom='Awa', nom='KABA', email='kaba@t.local', preinscrit=True)
+        Inscription.objects.create(etudiant=p, session=self.session, licence=self.licence, filiere=self.info)
+        r1 = Etudiant.objects.create(matricule='R7', prenom='Ali', nom='DIALLO', email='diallo@t.local')
+        Inscription.objects.create(etudiant=r1, session=self.s2425, licence=self.licence, filiere=self.info)
+        d_insc = DemandeEtudiant.objects.create(etudiant=p, session=self.session, type='inscription',
+                                                contacts={'telephone': '600'})
+        d_reinsc = DemandeEtudiant.objects.create(etudiant=r1, session=self.session, type='reinscription',
+                                                  licence=self.l2)
+        self.connecter('scol')
+        url = reverse('demandes_liste')
+        self.assertContains(self.client.get(url, {'type': 'inscription'}), 'KABA')
+        self.assertEqual(self.client.get(url).context['nb_demandes'], 2)
+        # Réglées autrement : la case « Préinscrit » décochée, l'inscription de la session saisie à la main
+        Etudiant.objects.filter(pk=p.pk).update(preinscrit=False)
+        Inscription.objects.create(etudiant=r1, session=self.session, licence=self.l2, filiere=self.info)
+        r = self.client.get(url, {'type': 'inscription'})
+        self.assertNotContains(r, 'KABA')
+        self.assertEqual(r.context['nb_demandes'], 0)
+        self.assertNotContains(self.client.get(url, {'type': 'reinscription'}), 'DIALLO')
+        for d in (d_insc, d_reinsc):
+            d.refresh_from_db()
+            self.assertEqual((d.statut, d.traitee_par), ('validee', None))
+        p.refresh_from_db()
+        self.assertNotEqual(p.telephone, '600')                                   # changements non appliqués
+        self.assertContains(self.client.get(url, {'type': 'inscription', 'statut': 'validee'}), 'validée ailleurs')
+        self.assertContains(self.client.get(reverse('demande_detail', args=[d_insc.pk])), 'hors des demandes en ligne')
+
     def test_personnel_chef_seulement_scolarite_ou_departement(self):
         from .forms import PersonnelForm
         admin = User.objects.create_superuser('admin_chef', 'a@t.local', 'x')

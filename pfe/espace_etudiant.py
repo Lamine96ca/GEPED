@@ -212,6 +212,35 @@ def appliquer(demande, utilisateur):
     return demande
 
 
+def cloturer_traitees_ailleurs(session=None):
+    """
+    Demandes en attente déjà réglées par un autre moyen : elles quittent « Demandes en ligne ».
+      - inscription : l'étudiant n'est plus préinscrit (bouton « Inscrire », case décochée, import…) ;
+      - réinscription : l'étudiant a déjà une inscription dans la session (saisie, import…).
+    Elles sont classées « Validées » sans auteur (validées hors des demandes en ligne) ; les
+    changements proposés ne sont PAS appliqués, la nouvelle photo proposée est supprimée.
+    Renvoie le nombre de demandes classées.
+    """
+    from .models import stockage_prive
+    qs = DemandeEtudiant.objects.filter(statut=DemandeEtudiant.EN_ATTENTE)
+    if session is not None:
+        qs = qs.filter(session=session)
+    demandes = list(qs.select_related('etudiant'))
+    reinscrits = set(Inscription.objects.filter(
+        etudiant_id__in=[d.etudiant_id for d in demandes if d.type == DemandeEtudiant.REINSCRIPTION],
+        session_id__in={d.session_id for d in demandes}).values_list('etudiant_id', 'session_id'))
+    a_clore = [d for d in demandes
+               if (d.type == DemandeEtudiant.INSCRIPTION and not d.etudiant.preinscrit)
+               or (d.type == DemandeEtudiant.REINSCRIPTION and (d.etudiant_id, d.session_id) in reinscrits)]
+    for d in a_clore:
+        if d.photo:
+            stockage_prive().delete(d.photo.name)
+            d.photo = ''
+        d.statut, d.traitee_le, d.traitee_par, d.motif_refus = DemandeEtudiant.VALIDEE, timezone.now(), None, ''
+        d.save(update_fields=['statut', 'traitee_le', 'traitee_par', 'motif_refus', 'photo', 'date_maj'])
+    return len(a_clore)
+
+
 def refuser(demande, utilisateur, motif):
     from .models import stockage_prive
     if demande.photo:
