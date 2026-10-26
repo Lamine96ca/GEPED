@@ -1682,6 +1682,52 @@ class GpedTests(TestCase):
         r = self.client.get(reverse('inscription_creer'))
         self.assertNotContains(r, 'Notes de l')
 
+    def test_import_notes_inscrit_automatiquement(self):
+        """Notes d'une session où l'étudiant n'est pas inscrit : la scolarité l'y inscrit automatiquement."""
+        from .import_notes import importer_notes
+        from .models import Matiere, Note
+        from .roles import get_profil
+        s1, _ = self._semestres()
+        topo = Matiere.objects.create(nom='Topographie', filiere=self.gc, semestre=s1, licence=self.l2,
+                                      session=self.s2425, credit=6)
+        for prog in (self.info, self.gc):                                      # « Anglais » existe deux fois
+            Matiere.objects.create(nom='Anglais', filiere=prog, semestre=s1, licence=self.l2, session=self.s2425,
+                                   credit=2)
+        Matiere.objects.create(nom='Chimie', filiere=self.gc, semestre=s1, licence=self.l3, session=self.s2425,
+                               credit=2)
+        entetes = ['matricule', 'matiere', 'session', 'programme', 'moyenne']
+        fichier = lambda *l: fichier_xlsx([entetes, *l])           # noqa: E731
+        lignes = [['M1', 'Topographie', '2024-2025', '', 6],           # 2 inscrit en Génie civil L2 (unique)
+                  ['M1', 'Anglais', '2024-2025', 'Génie civil', 7],    # 3 levé par la colonne programme
+                  ['M0', 'Anglais', '2024-2025', '', 5],               # 4 ambigu (deux programmes)
+                  ['M2', 'Topographie', '2024-2025', '', 6],           # 5 M2 : deux licences (L2 et L3)…
+                  ['M2', 'Chimie', '2024-2025', '', 6]]                # 6 … → pas d'inscription
+        self.connecter('scol')
+        scol = get_profil(self.client.get(reverse('notes_importer')).wsgi_request)
+        r = importer_notes(fichier(*lignes), scol, simulation=True)
+        self.assertEqual([(l[1], l[4], l[5], l[6]) for l in r.inscriptions_creees], [('M1', self.l2, self.gc, self.p18)])
+        self.assertFalse(Inscription.objects.filter(session=self.s2425).exists())   # simulation : rien de créé
+        self.assertIn('plusieurs programmes ou licences', dict(r.erreurs)[4])
+        self.assertIn('plusieurs programmes ou licences', dict(r.erreurs)[5])
+        r = importer_notes(fichier(*lignes), scol)
+        insc = Inscription.objects.get(etudiant__matricule='M1', session=self.s2425)
+        self.assertEqual((insc.licence, insc.filiere, insc.promotion, insc.redouble), (self.l2, self.gc, self.p18, False))
+        self.assertEqual(Note.objects.get(etudiant__matricule='M1', matiere=topo).moyenne_finale, 6)
+        self.assertEqual(r.creees, 2)
+        self.assertFalse(Inscription.objects.filter(etudiant__matricule__in=['M0', 'M2'], session=self.s2425).exists())
+        # Préinscrit : jamais inscrit automatiquement
+        Etudiant.objects.filter(matricule='M0').update(preinscrit=True)
+        r = importer_notes(fichier(['M0', 'Anglais', '2024-2025', 'Informatique', 5]), scol)
+        self.assertIn('préinscrit', r.erreurs[0][1])
+        # Chef de programme : pas d'inscription automatique
+        Etudiant.objects.filter(matricule='M0').update(preinscrit=False)
+        self.connecter('info')
+        info = get_profil(self.client.get(reverse('notes_importer')).wsgi_request)
+        r = importer_notes(fichier(['M0', 'Anglais', '2024-2025', 'Informatique', 5]), info,
+                           pdf_enseignant=SimpleUploadedFile('f.pdf', b'%PDF-1.4 f'), simulation=True)
+        self.assertIn("faites inscrire l'étudiant par la scolarité", r.erreurs[0][1])
+        self.assertEqual(r.inscriptions_creees, [])
+
     def test_personnel_chef_seulement_scolarite_ou_departement(self):
         from .forms import PersonnelForm
         admin = User.objects.create_superuser('admin_chef', 'a@t.local', 'x')

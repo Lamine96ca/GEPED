@@ -65,6 +65,21 @@
             <div class="col-6 col-md-3"><div class="kpi" style="background:var(--fond)"><div class="haut"><span class="tuile {% if rapport.nb_erreurs %}tuile-orange{% else %}tuile-vert{% endif %}"><i class="bi {% if rapport.nb_erreurs %}bi-exclamation-triangle{% else %}bi-check2-all{% endif %}"></i></span>
               <div><div class="lib">Lignes rejetées</div><div class="val">{{ rapport.nb_erreurs|intcomma }}</div></div></div></div></div>
           </div>
+          {% if rapport.inscriptions_creees %}
+            <details class="mb-3" open>
+              <summary class="small fw-semibold" style="cursor:pointer;color:var(--encre)"><i class="bi bi-person-plus"></i> {{ rapport.inscriptions_creees|length|intcomma }} inscription{{ rapport.inscriptions_creees|length|pluralize }} {% if rapport.simulation %}à créer (aperçu : elles seront créées à l'import réel){% else %}créée{{ rapport.inscriptions_creees|length|pluralize }} automatiquement{% endif %} : étudiants qui avaient des notes dans une session sans y être inscrits</summary>
+              <div class="table-responsive rounded-3 border mt-2" style="max-height: 320px;">
+                <table class="table table-etudiants mb-0">
+                  <thead><tr><th style="width: 5rem;">Ligne</th><th>Étudiant</th><th>Session</th><th>Licence</th><th>Programme</th><th>Promotion</th></tr></thead>
+                  <tbody>
+                  {% for ligne, matricule, nom, session, licence, programme, promotion in rapport.inscriptions_creees|slice:":300" %}
+                    <tr style="cursor:default"><td class="fw-semibold">{{ ligne }}</td><td>{{ nom }} <span class="matricule text-secondary">{{ matricule }}</span></td><td>{{ session }}</td><td>{{ licence }}</td><td>{{ programme }}</td><td>{{ promotion|default:"—" }}</td></tr>
+                  {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            </details>
+          {% endif %}
           {% include 'pfe/_reparation_fichier.html' %}
           {% if rapport.colonnes_ignorees %}<p class="small text-secondary"><i class="bi bi-dash-circle"></i> Colonnes ignorées : {{ rapport.colonnes_ignorees|join:", " }}</p>{% endif %}
           {% if rapport.simulation and rapport.lignes %}
@@ -111,6 +126,7 @@
           <li><strong>Sur 10.</strong> <code>ABS</code> = 0. La colonne <code>moyenne</code> (déposée par le programme) est prise telle quelle ; sinon elle est calculée : contrôle 25 % + TP 35 % + examen 40 % (sans TP : 40 % + 60 %). Si la moyenne est remplie et que contrôle, TP et examen valent <strong>tous 0</strong>, ces 0 sont <strong>considérés comme vides</strong>.</li>
           <li><code>rattrapage</code> : on garde la meilleure des deux notes, avec la mention « Session ».</li>
           <li>La matière est cherchée dans le programme et la licence de l'inscription de l'étudiant pour la session. Une note déjà enregistrée est <strong>mise à jour</strong> (modification tracée) ; une ligne répétée est ignorée.</li>
+          {% if not mes_programmes %}<li><strong>Étudiant non inscrit dans la session :</strong> il y est <strong>inscrit automatiquement</strong> si la matière est unique dans la session (sinon ajoutez la colonne <code>programme</code>) et si toutes ses notes de la session sont du même programme et de la même licence. Jamais pour un préinscrit ni pour un étudiant déjà inscrit dans la session. La simulation liste ces inscriptions avant l'import.</li>{% endif %}
           <li><strong>Année en cours</strong> (délibérée ou non) : les notes sont créées ou mises à jour. <strong>Année écoulée</strong> : les notes manquantes sont créées ; une note déjà enregistrée n'est modifiée que par un <strong>chef</strong> (scolarité ou département).</li>
           <li class="pb-0">Le <strong>PDF de l'enseignant</strong> est gardé avec l'import et sert de justificatif à chaque note modifiée.{% if mes_programmes %} <strong>Votre périmètre :</strong> si une ligne concerne un autre programme, tout l'import est refusé.{% endif %}</li>
         </ol>

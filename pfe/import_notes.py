@@ -19,6 +19,14 @@ PDF de l'enseignant (fiche de notes signée) : obligatoire pour un département 
 pour la scolarité dès que l'import modifie des notes déjà enregistrées ; gardé dans le journal des
 imports (ImportNotes) et comme justificatif de chaque note modifiée.
 Chef de programme : si une seule ligne concerne un autre programme, TOUT l'import est refusé.
+
+INSCRIPTION AUTOMATIQUE (scolarité seulement) : un étudiant qui a des notes dans une session où il n'a
+AUCUNE inscription y est inscrit. La matière est cherchée parmi toutes celles de la session (nom ou
+code ; la colonne « programme » lève le doute) et doit être UNIQUE ; toutes ses notes de la session
+doivent mener au même programme et à la même licence. Promotion : celle prévue pour la licence dans la
+session (Promotion_Licence_Session), sinon celle de sa dernière inscription ; cycle : celui de sa
+dernière inscription, sinon celui du programme ; redoublant s'il avait déjà été inscrit dans cette
+licence. Jamais pour un préinscrit, ni pour un étudiant déjà inscrit dans la session (matières en dette).
 """
 import io
 import re
@@ -58,6 +66,7 @@ class RapportNotes:
         self.colonnes_ignorees = []
         self.reparations = 0
         self.journal = None         # ImportNotes enregistré (import réel)
+        self.inscriptions_creees = []  # [(1re ligne, matricule, étudiant, session, licence, programme, promotion)]
 
     @property
     def nb_erreurs(self):
@@ -69,6 +78,37 @@ class RapportNotes:
 
     def erreur(self, ligne, message):
         self.erreurs.append((ligne, message))
+
+
+def _inscrire(a_inscrire, etudiants):
+    """
+    Crée les inscriptions automatiques : {(étudiant, session): [(n° de ligne, matière)]}.
+    Renvoie [(1re ligne, matricule, étudiant, session, licence, programme, promotion)].
+    """
+    from .models import Promotion_Licence_Session
+    par_pk = {e.pk: e for e in etudiants.values()}
+    prevues = defaultdict(set)                                 # (licence, session) -> {promotions prévues}
+    for lic, ses, promo in Promotion_Licence_Session.objects.filter(
+            session_id__in={s for _, s in a_inscrire}).values_list('licence_id', 'session_id', 'promotion_id'):
+        prevues[(lic, ses)].add(promo)
+    crees = []
+    for (etu_id, session_id), lignes_auto in sorted(a_inscrire.items(), key=lambda x: min(n for n, _ in x[1])):
+        numero, matiere = min(lignes_auto, key=lambda x: x[0])
+        etu = par_pk[etu_id]
+        derniere = (Inscription.objects.filter(etudiant_id=etu_id).select_related('promotion')
+                    .order_by('-session__annee', '-licence__nom').first())
+        promos = prevues.get((matiere.licence_id, session_id), set())
+        promotion_id = (next(iter(promos)) if len(promos) == 1
+                        else (derniere.promotion_id if derniere else None))
+        insc = Inscription.objects.create(
+            etudiant_id=etu_id, session_id=session_id, licence_id=matiere.licence_id, filiere_id=matiere.filiere_id,
+            promotion_id=promotion_id, cycle=(derniere.cycle if derniere and derniere.cycle else matiere.filiere.cycle),
+            redouble=Inscription.objects.filter(etudiant_id=etu_id, licence_id=matiere.licence_id).exclude(
+                session_id=session_id).exists())
+        insc = Inscription.objects.select_related('session', 'licence', 'filiere', 'promotion').get(pk=insc.pk)
+        crees.append((numero, etu.matricule, f"{etu.prenom} {etu.nom}", insc.session, insc.licence, insc.filiere,
+                       insc.promotion))
+    return crees
 
 
 def importer_notes(fichier, profil, utilisateur=None, simulation=False, pdf_enseignant=None):
@@ -152,7 +192,34 @@ def importer_notes(fichier, profil, utilisateur=None, simulation=False, pdf_ense
                 if m.code:
                     matieres[t].setdefault(cle_intitule(m.code), m)
 
+    # Inscription automatique (scolarité) : matières de la session pour les étudiants sans inscription
+    sans_inscription = {(e.pk, b[2].pk) for b in brutes if (e := etudiants.get(b[1])) is not None
+                        and not e.preinscrit and not inscriptions.get((e.pk, b[2].pk))}
+    matieres_session = defaultdict(lambda: defaultdict(list))   # session -> intitulé -> [matières]
+    if profil.est_scolarite and sans_inscription:
+        for m in Matiere.objects.filter(session_id__in={s for _, s in sans_inscription}).select_related(
+                'filiere', 'licence', 'semestre'):
+            matieres_session[m.session_id][cle_intitule(m.nom)].append(m)
+            if m.code and cle_intitule(m.code) != cle_intitule(m.nom):
+                matieres_session[m.session_id][cle_intitule(m.code)].append(m)
+
+    def matiere_sans_inscription(numero, matricule, session, programme, nom_matiere):
+        """Matière unique de la session (pour inscrire l'étudiant) ; None + erreur sinon."""
+        trouvees = [m for m in matieres_session[session.pk].get(cle_intitule(nom_matiere), [])
+                    if programme is None or m.filiere_id == programme.pk]
+        if not trouvees:
+            rapport.erreur(numero, f"{matricule} n'est pas inscrit en {session} et la matière « {nom_matiere} » "
+                                   f"n'existe pas dans cette session" + (f" en {programme}" if programme else ''))
+            return None
+        if len({(m.filiere_id, m.licence_id) for m in trouvees}) > 1:
+            ou = ', '.join(sorted({f"{m.filiere.nom} {m.licence.nom}" for m in trouvees})[:3])
+            rapport.erreur(numero, f"{matricule} n'est pas inscrit en {session} : « {nom_matiere} » existe dans "
+                                   f"plusieurs programmes ou licences ({ou}) ; ajoutez la colonne « programme »")
+            return None
+        return trouvees[0]
+
     valides, vues, hors_perimetre = [], {}, []
+    a_inscrire = defaultdict(list)          # (étudiant, session) -> [(n° de ligne, matière)] : inscription automatique
     for numero, matricule, session, programme, nom_matiere, valeurs in brutes:
         etu = etudiants.get(matricule)
         if etu is None:
@@ -161,19 +228,30 @@ def importer_notes(fichier, profil, utilisateur=None, simulation=False, pdf_ense
         if etu.preinscrit:
             rapport.erreur(numero, f"{matricule} est préinscrit : finalisez d'abord son inscription")
             continue
+        inscrit = bool(inscriptions.get((etu.pk, session.pk)))
         candidates = [x for x in inscriptions.get((etu.pk, session.pk), [])
                       if programme is None or x.filiere_id == programme.pk]
-        if not candidates:
-            rapport.erreur(numero, f"{matricule} n'est pas inscrit en {session}"
-                                   + (f" en {programme}" if programme else ''))
+        if not inscrit:
+            if not profil.est_scolarite:
+                rapport.erreur(numero, f"{matricule} n'est pas inscrit en {session} : faites inscrire l'étudiant "
+                                       f"par la scolarité")
+                continue
+            matiere = matiere_sans_inscription(numero, matricule, session, programme, nom_matiere)
+            if matiere is None:
+                continue
+            a_inscrire[(etu.pk, session.pk)].append((numero, matiere))
+        elif not candidates:
+            rapport.erreur(numero, f"{matricule} n'est pas inscrit en {session} en {programme}")
             continue
-        intitule = cle_intitule(nom_matiere)
-        matiere = next((matieres[(x.filiere_id, x.session_id, x.licence_id)][intitule]
-                        for x in candidates if intitule in matieres[(x.filiere_id, x.session_id, x.licence_id)]), None)
-        if matiere is None:
-            rapport.erreur(numero, f"matière « {nom_matiere} » introuvable pour {matricule} "
-                                   f"(son programme et sa licence en {session})")
-            continue
+        else:
+            intitule = cle_intitule(nom_matiere)
+            matiere = next((matieres[(x.filiere_id, x.session_id, x.licence_id)][intitule]
+                            for x in candidates if intitule in matieres[(x.filiere_id, x.session_id, x.licence_id)]),
+                           None)
+            if matiere is None:
+                rapport.erreur(numero, f"matière « {nom_matiere} » introuvable pour {matricule} "
+                                       f"(son programme et sa licence en {session})")
+                continue
         if autorises is not None and matiere.filiere_id not in autorises:
             hors_perimetre.append((numero, matiere.filiere.nom))
             continue
@@ -183,6 +261,21 @@ def importer_notes(fichier, profil, utilisateur=None, simulation=False, pdf_ense
             continue
         vues[identite] = numero
         valides.append((numero, etu, matiere, valeurs))
+
+    # Inscription automatique : toutes les notes d'un étudiant dans la session doivent mener au même
+    # programme et à la même licence ; sinon aucune inscription, et ses lignes de la session sont rejetées
+    incoherents = set()
+    for (etu_id, session_id), lignes_auto in a_inscrire.items():
+        couples = {(m.filiere_id, m.licence_id) for _, m in lignes_auto}
+        if len(couples) > 1:
+            incoherents.add((etu_id, session_id))
+            ou = ', '.join(sorted({f"{m.filiere.nom} {m.licence.nom}" for _, m in lignes_auto}))
+            for numero, m in lignes_auto:
+                rapport.erreur(numero, f"{m.session} : notes de plusieurs programmes ou licences ({ou}) pour un "
+                                       f"étudiant non inscrit : inscrivez-le d'abord")
+    if incoherents:
+        valides = [v for v in valides if (v[1].pk, v[2].session_id) not in incoherents]
+        a_inscrire = {k: v for k, v in a_inscrire.items() if k not in incoherents}
 
     if hors_perimetre:
         details = ', '.join(f"ligne {n} ({p})" for n, p in hors_perimetre[:10])
@@ -197,6 +290,8 @@ def importer_notes(fichier, profil, utilisateur=None, simulation=False, pdf_ense
     # 3) Écriture : création ou mise à jour, puis calcul des résultats ------------
     if retenues:
         with transaction.atomic():
+            if a_inscrire:
+                rapport.inscriptions_creees = _inscrire(a_inscrire, etudiants)
             existantes = {}
             paires_ids = {(e.pk, m.pk) for _, e, m, _ in retenues}
             for n in Note.objects.filter(etudiant_id__in={p[0] for p in paires_ids},
