@@ -36,7 +36,9 @@ def _ressource(nom):
 
 
 def fmt(v):
-    return '—' if v is None else f"{v:.2f}".replace('.', ',')
+    """Deux chiffres après la virgule, TRONQUÉS (6,257 → 6,25) : jamais arrondis."""
+    from .notes import arrondi
+    return '—' if v is None else f"{arrondi(v):.2f}".replace('.', ',')
 
 
 def _date(d):

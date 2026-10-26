@@ -48,7 +48,7 @@ def en_note(valeur):
         raise ValueError(f"note invalide « {valeur} »")
     if not 0 <= v <= regles()['note_max']:
         raise ValueError(f"note hors barème « {valeur} » (de 0 à {regles()['note_max']})")
-    return round(v, 2)
+    return arrondi(v)                       # deux décimales, TRONQUÉES (6,257 → 6,25), jamais arrondies
 
 
 # ---------------------------------------------------------------- saisie, droits, verrouillage

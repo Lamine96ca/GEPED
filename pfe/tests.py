@@ -1121,6 +1121,13 @@ class GpedTests(TestCase):
                                  (7.99, 'Bien'), (8, 'Très bien'), (10, 'Très bien'), (None, '')):
             self.assertEqual(mention(moyenne), attendu, moyenne)
 
+    def test_notes_tronquees_jamais_arrondies(self):
+        """Saisie, import et relevés : deux décimales TRONQUÉES (6,257 → 6,25), jamais arrondies."""
+        from .notes import en_note
+        from .pdf_releves import fmt
+        self.assertEqual([en_note(v) for v in ('6,257', '6.999', '5,005', '7,2', 'ABS')], [6.25, 6.99, 5.0, 7.2, 0.0])
+        self.assertEqual([fmt(v) for v in (6.257, 6.999, 7.19999999, 10, None)], ['6,25', '6,99', '7,20', '10,00', '—'])
+
     def test_note_moyenne_deposee_rattrapage_absent(self):
         from django.core.exceptions import ValidationError
         from .models import Note
