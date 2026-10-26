@@ -55,8 +55,6 @@ def demandes_liste(request):
         demandes = demandes.filter(Q(etudiant__matricule__icontains=q) | Q(etudiant__nom__icontains=q)
                                    | Q(etudiant__prenom__icontains=q) | Q(etudiant__ine__icontains=q))
     demandes = list(demandes[:300])
-    for d in demandes:                                  # photo actuelle de l'étudiant (vignette)
-        d.photo_url = url_photo(d.etudiant)
     return render(request, 'pfe/demandes_liste.html', {
         'session': session, 'type_demande': type_demande, 'statut': statut, 'demandes': demandes, 'q': q,
         'compteurs': compteurs, 'types': DemandeEtudiant.TYPES, 'statuts': DemandeEtudiant.STATUTS,

@@ -23,6 +23,14 @@ def fichier_xlsx(lignes, nom='import.xlsx'):
     return SimpleUploadedFile(nom, flux.getvalue())
 
 
+def photo_jpeg(nom='moi.jpg'):
+    """Photo d'identité JPEG valide (espace étudiant : la photo est obligatoire)."""
+    from PIL import Image
+    flux = io.BytesIO()
+    Image.new('RGB', (600, 800), (180, 150, 120)).save(flux, 'JPEG')
+    return SimpleUploadedFile(nom, flux.getvalue(), 'image/jpeg')
+
+
 class GpedTests(TestCase):
     @classmethod
     def setUpTestData(cls):
@@ -1395,10 +1403,14 @@ class GpedTests(TestCase):
             'telephone': '622 11 22 33', 'email': 'awa.bah@exemple.com', 'adresse': 'Petel/Mamou',
             'tuteur': 'Mariam CAMARA', 'contact_de_tuteur': '+224 622 11 22 33'})
         self.assertContains(r, 'différent de votre propre numéro')
+        complet = {'telephone': '622 11 22 33', 'email': 'awa.bah@exemple.com', 'adresse': '  Petel /Mamou ',
+                   'tuteur': 'Mariam CAMARA', 'contact_de_tuteur': '628 99 88 77'}
+        # Photo obligatoire (l'étudiant n'en a pas encore) : refusé sans photo
+        r = self.client.post(reverse('espace_dossier'), complet)
+        self.assertContains(r, 'elle est obligatoire')
+        self.assertFalse(DemandeEtudiant.objects.exists())
         r = self.client.post(reverse('espace_dossier'), {
-            'telephone': '622 11 22 33', 'email': 'awa.bah@exemple.com', 'adresse': '  Petel /Mamou ',
-            'tuteur': 'Mariam CAMARA', 'contact_de_tuteur': '628 99 88 77',
-            'piece_acte_naissance': SimpleUploadedFile('acte.pdf', b'%PDF-1.4 acte')})
+            **complet, 'photo': photo_jpeg(), 'piece_acte_naissance': SimpleUploadedFile('acte.pdf', b'%PDF-1.4 acte')})
         self.assertRedirects(r, reverse('espace_confirmation'))
         # Retour sur la demande : l'étudiant retrouve ce qu'il a saisi
         self.assertContains(self.client.get(reverse('espace_dossier')), 'value="628 99 88 77"')
@@ -1485,7 +1497,7 @@ class GpedTests(TestCase):
             'telephone': '622 00 00 01', 'email': 'ali.sow@exemple.com', 'adresse': 'Horé Fello/Mamou',
             'tuteur': 'Mamadou SOW', 'contact_de_tuteur': '664 00 00 02', 'licence': self.l3.pk,
             'boursier': 'payante', 'type_formation': 'continue',
-            'piece_releve_notes': SimpleUploadedFile('releve.pdf', b'%PDF-1.4 releve')})
+            'photo': photo_jpeg(), 'piece_releve_notes': SimpleUploadedFile('releve.pdf', b'%PDF-1.4 releve')})
         self.assertRedirects(r, reverse('espace_confirmation'))
         d = DemandeEtudiant.objects.get(type='reinscription')
         self.assertEqual((d.licence, d.derniere_inscription, d.boursier), (self.l3, derniere, 'payante'))
@@ -1496,7 +1508,8 @@ class GpedTests(TestCase):
         self.connecter('scol')
         r = self.client.get(reverse('demandes_liste'))
         self.assertContains(r, 'SOW')
-        self.assertContains(r, '<span class="ini">AS</span>')                   # pas de photo : initiales
+        self.assertContains(r, '<span class="ini">AS</span>')                   # initiales, pas de photo
+        self.assertNotContains(r, 'class="photo-demande"')
         r = self.client.get(reverse('demande_detail', args=[d.pk]))
         self.assertContains(r, 'class="photos-demande"')                         # photo de l'étudiant
         self.assertContains(r, 'Algorithmique')

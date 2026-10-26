@@ -136,6 +136,10 @@ def espace_dossier(request):
     form = DossierEtudiantForm(request.POST or None, request.FILES or None, initial=initial,
                                reinscription=reinscription, niveaux=niveaux, etudiant=etudiant)
     erreurs_pieces = {}
+    # Photo d'identité OBLIGATOIRE : une nouvelle, sinon celle déjà envoyée avec la demande ou celle de la fiche
+    a_deja_photo = bool(demande and demande.photo) or bool(url_photo(etudiant))
+    if request.method == 'POST' and form.is_valid() and not form.cleaned_data.get('photo') and not a_deja_photo:
+        form.add_error('photo', "Ajoutez votre photo d'identité : elle est obligatoire.")
     if request.method == 'POST' and form.is_valid():
         d = form.cleaned_data
         envois = {t: request.FILES.getlist(f'piece_{t}') for t in PIECES[type_demande]}
@@ -186,6 +190,7 @@ def espace_dossier(request):
         'photo_url': (f"{reverse('espace_photo')}?v={int(demande.date_maj.timestamp()) if demande else 0}"
                       if (demande and demande.photo) or url_photo(etudiant) else None),
         'photo_en_attente': bool(demande and demande.photo),
+        'photo_requise': not ((demande and demande.photo) or url_photo(etudiant)),
         'departement': _nom_departement(insc.filiere) if insc.filiere else '',
         'programme': _nom_programme(insc.filiere) if insc.filiere else '',
         'pieces': [(t, dict(PieceDossier.TYPES)[t], deposees.get(t), erreurs_pieces.get(t)) for t in PIECES[type_demande]],
