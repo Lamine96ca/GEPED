@@ -18,7 +18,7 @@ from django.views.decorators.http import require_POST
 
 from . import espace_etudiant as espace
 from .attestations import _nom_departement, _nom_programme
-from .models import DemandeEtudiant, Etudiant, Matiere, Note, Resultat, Session
+from .models import DemandeEtudiant, Etudiant, Inscription, Matiere, Note, Resultat, Session
 from .photos import url_photo
 from .roles import scolarite_requise
 
@@ -109,7 +109,11 @@ def demande_detail(request, pk):
                                                                             Etudiant.TYPE_FORMATION_CHOICES)):
                 if request.POST.get(champ) in dict(choix):
                     setattr(demande, champ, request.POST[champ])
-            espace.appliquer(demande, request.user)
+            inscription = _choix_inscription(request) if demande.type == DemandeEtudiant.REINSCRIPTION else None
+            if inscription is False:
+                messages.error(request, "Choisissez le niveau, la promotion et le programme de l'inscription.")
+                return redirect(f"{request.path}")
+            espace.appliquer(demande, request.user, inscription)
             if demande.type == DemandeEtudiant.REINSCRIPTION:
                 messages.success(request, f"Réinscription validée : {e.prenom} {e.nom} est inscrit(e) en "
                                           f"{demande.licence} pour {demande.session}.")
@@ -142,7 +146,40 @@ def demande_detail(request, pk):
         'seuil_rouge': SEUIL_ROUGE, 'actif': 'demandes',
         'choix_bourse': Etudiant.BOURSIER_CHOICES, 'choix_formation': Etudiant.TYPE_FORMATION_CHOICES,
         'fiche': (insc_session or d or e.etudiant_inscription.order_by('-session__annee').first()),
+        **(_contexte_decision(demande) if demande.type == DemandeEtudiant.REINSCRIPTION else {}),
     })
+
+
+def _choix_inscription(request):
+    """Inscription choisie par l'agent (formulaire de décision) ; False si un choix manque ou n'existe pas."""
+    from .models import Licence, Promotion, Service
+    licence = Licence.objects.filter(pk=request.POST.get('licence') or 0).first()
+    promotion = Promotion.objects.filter(pk=request.POST.get('promotion') or 0).first()
+    filiere = Service.objects.filter(pk=request.POST.get('filiere') or 0, programme=True).first()
+    if not (licence and promotion and filiere):
+        return False
+    cycle = request.POST.get('cycle') if request.POST.get('cycle') in dict(Inscription.CYCLE_CHOICES) else None
+    return {'licence': licence, 'promotion': promotion, 'filiere': filiere, 'cycle': cycle,
+            'redouble': request.POST.get('redouble') == '1'}
+
+
+def _contexte_decision(demande):
+    """Champs préremplis de la décision (réinscription) et table niveau → promotion prévue pour la session."""
+    from .models import Licence, Promotion, Promotion_Licence_Session, Service
+    prevision = espace.prevision_reinscription(demande)
+    prevues = {}
+    for lic, promo in (Promotion_Licence_Session.objects.filter(session=demande.session)
+                       .values_list('licence_id', 'promotion_id')):
+        prevues.setdefault(str(lic), promo)
+    return {
+        'prevision': prevision,
+        'licences': sorted(Licence.objects.all(), key=lambda l: (espace._famille(l), espace._rang(l))),
+        'promotions': Promotion.objects.order_by('-nom'),
+        'programmes': Service.objects.filter(programme=True).order_by('nom'),
+        'cycles': Inscription.CYCLE_CHOICES,
+        'promotions_prevues': prevues,
+        'niveau_precedent': demande.derniere_inscription.licence_id if demande.derniere_inscription else None,
+    }
 
 
 @login_required

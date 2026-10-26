@@ -202,11 +202,24 @@ def niveaux_proposes(derniere, session):
 
 # ------------------------------------------------------------------ validation par la scolarité
 
-def appliquer(demande, utilisateur):
+def prevision_reinscription(demande):
+    """
+    Inscription préremplie pour la décision : niveau prévu pour la promotion (Promotion_Licence_Session),
+    promotion, programme et cycle de la dernière inscription. L'agent peut tout changer.
+    """
+    d = demande.derniere_inscription
+    niveaux = niveaux_prevus(d, demande.session) if d else []
+    licence = demande.licence or (niveaux[0] if niveaux else (d.licence if d else None))
+    return {'licence': licence, 'promotion': d.promotion if d else None, 'filiere': d.filiere if d else None,
+            'cycle': d.cycle if d else None, 'redouble': bool(d and licence and licence.pk == d.licence_id)}
+
+
+def appliquer(demande, utilisateur, inscription=None):
     """
     Applique la demande : contacts (valeurs renseignées), bourse, formation et photo proposés ;
-    pour une réinscription, crée l'inscription de la session au niveau demandé (même programme,
-    même promotion, même cycle). Pour une inscription, l'étudiant n'est plus préinscrit.
+    pour une réinscription, crée l'inscription de la session : celle choisie par l'agent
+    (`inscription` : licence, promotion, filiere, cycle, redouble), sinon la prévision.
+    Pour une inscription, l'étudiant n'est plus préinscrit.
     """
     from .photos import enregistrer_photo
     e = demande.etudiant
@@ -243,12 +256,15 @@ def appliquer(demande, utilisateur):
             stockage.delete(demande.photo.name)
             demande.photo = ''
         if demande.type == DemandeEtudiant.REINSCRIPTION:
-            d = demande.derniere_inscription
-            licence = demande.licence or (d.licence if d else None)
-            if d and licence and not Inscription.objects.filter(etudiant=e, session=demande.session,
-                                                                 licence=licence).exists():
-                Inscription.objects.create(etudiant=e, session=demande.session, licence=licence, filiere=d.filiere,
-                                           promotion=d.promotion, cycle=d.cycle, redouble=(licence.pk == d.licence_id))
+            choix = {**prevision_reinscription(demande), **(inscription or {})}
+            licence = choix['licence']
+            if licence:
+                demande.licence = licence
+            if licence and not Inscription.objects.filter(etudiant=e, session=demande.session,
+                                                          licence=licence).exists():
+                Inscription.objects.create(etudiant=e, session=demande.session, licence=licence,
+                                           filiere=choix['filiere'], promotion=choix['promotion'],
+                                           cycle=choix['cycle'] or None, redouble=bool(choix['redouble']))
         demande.statut = DemandeEtudiant.VALIDEE
         demande.traitee_le, demande.traitee_par = timezone.now(), utilisateur
         demande.motif_refus = ''

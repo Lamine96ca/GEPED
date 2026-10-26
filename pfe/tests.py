@@ -1484,8 +1484,20 @@ class GpedTests(TestCase):
         r = self.client.post(reverse('demande_detail', args=[d.pk]), {'action': 'refuser'}, follow=True)
         self.assertContains(r, 'Indiquez le motif')
         # Validation : la scolarité change la formation ; inscription créée, coordonnées et choix appliqués
-        self.client.post(reverse('demande_detail', args=[d.pk]), {'action': 'valider', 'boursier': 'payante',
-                                                                   'type_formation': 'initiale'})
+        # Décision préremplie : niveau prévu pour P18 (Licence 3), sa promotion, son programme et son cycle
+        r = self.client.get(reverse('demande_detail', args=[d.pk]))
+        for attendu in (f'<option value="{self.l3.pk}" selected>', f'<option value="{self.p18.pk}" selected>',
+                        f'<option value="{self.info.pk}" selected>', '<option value="Licence" selected>'):
+            self.assertContains(r, attendu)
+        self.assertContains(r, 'id="promotions-prevues"')                         # niveau → promotion prévue
+        # Choix incomplet : refusé, rien n'est créé
+        r = self.client.post(reverse('demande_detail', args=[d.pk]), {'action': 'valider', 'licence': self.l3.pk},
+                             follow=True)
+        self.assertContains(r, 'Choisissez le niveau, la promotion et le programme')
+        self.assertFalse(Inscription.objects.filter(etudiant=e, session=self.session).exists())
+        self.client.post(reverse('demande_detail', args=[d.pk]), {
+            'action': 'valider', 'boursier': 'payante', 'type_formation': 'initiale', 'licence': self.l3.pk,
+            'promotion': self.p18.pk, 'filiere': self.info.pk, 'cycle': 'Licence'})
         insc = Inscription.objects.get(etudiant=e, session=self.session)
         self.assertEqual((insc.licence, insc.filiere, insc.promotion, insc.cycle, insc.redouble),
                          (self.l3, self.info, self.p18, 'Licence', False))

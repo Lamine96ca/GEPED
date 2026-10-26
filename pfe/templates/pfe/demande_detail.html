@@ -67,7 +67,45 @@
     {% if demande.statut == 'en_attente' %}
     <div class="card carte-gped"><div class="card-body">
       <div class="entete-carte"><span class="icone-carte"><i class="bi bi-clipboard-check"></i></span><div><h3>Décision</h3><p>{% if demande.type == 'reinscription' %}Après avoir vu ses notes{% else %}Après avoir vérifié son dossier{% endif %}</p></div></div>
-      <form method="post" class="mb-3">{% csrf_token %}<input type="hidden" name="action" value="valider">
+      <form method="post" class="mb-3" id="form-decision">{% csrf_token %}<input type="hidden" name="action" value="valider">
+        {% if demande.type == 'reinscription' %}
+        <div class="small fw-semibold mb-2" style="color:var(--encre)"><i class="bi bi-journal-check"></i> Inscription pour {{ demande.session }} <span class="fw-normal text-secondary">(préremplie d'après la promotion de l'étudiant)</span></div>
+        <div class="row g-2 mb-3">
+          <div class="col-sm-6">
+            <label class="form-label small mb-1" for="decision-licence">Niveau</label>
+            <select id="decision-licence" name="licence" class="form-select" required>
+              {% for l in licences %}<option value="{{ l.pk }}" {% if l.pk == prevision.licence.pk %}selected{% endif %}>{{ l.nom }}{% if l.pk == demande.licence_id %} (demandé){% endif %}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label small mb-1" for="decision-promotion">Promotion</label>
+            <select id="decision-promotion" name="promotion" class="form-select" required>
+              {% for p in promotions %}<option value="{{ p.pk }}" {% if p.pk == prevision.promotion.pk %}selected{% endif %}>{{ p.nom }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="col-sm-8">
+            <label class="form-label small mb-1" for="decision-filiere">Programme</label>
+            <select id="decision-filiere" name="filiere" class="form-select" required>
+              {% for p in programmes %}<option value="{{ p.pk }}" {% if p.pk == prevision.filiere.pk %}selected{% endif %}>{{ p.nom }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="col-sm-4">
+            <label class="form-label small mb-1" for="decision-cycle">Cycle</label>
+            <select id="decision-cycle" name="cycle" class="form-select">
+              <option value="">—</option>
+              {% for code, libelle in cycles %}<option value="{{ code }}" {% if code == prevision.cycle %}selected{% endif %}>{{ libelle }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="col-12">
+            <label class="option-import" for="decision-redouble">
+              <input type="checkbox" class="form-check-input" id="decision-redouble" name="redouble" value="1" {% if prevision.redouble %}checked{% endif %}>
+              <div><strong>Redoublant</strong><span>Coché seul si le niveau choisi est le même que l'an dernier.</span></div>
+            </label>
+          </div>
+        </div>
+        {{ promotions_prevues|json_script:"promotions-prevues" }}
+        <span class="d-none" id="niveau-precedent" data-valeur="{{ niveau_precedent|default:'' }}"></span>
+        {% endif %}
         <div class="mb-2">
           <div class="form-label small mb-1">Bourse</div>
           <div class="d-flex flex-wrap gap-2" role="radiogroup" aria-label="Bourse">
@@ -87,7 +125,7 @@
           </div>
           <div class="small text-secondary mt-1">{% if demande.type == 'reinscription' %}Choix de l'étudiant{% else %}Par défaut{% endif %} : changez-le si besoin avant de valider.</div>
         </div>
-        <button class="btn btn-primary w-100" onclick="return confirm('Valider cette demande ?{% if demande.type == 'reinscription' %} L\'étudiant sera inscrit en {{ demande.licence }} pour {{ demande.session }}.{% endif %}');"><i class="bi bi-check2-circle"></i> Valider {% if demande.type == 'reinscription' %}la réinscription en {{ demande.licence }}{% else %}l'inscription{% endif %}</button>
+        <button class="btn btn-primary w-100" data-confirmer="Valider cette demande ?"><i class="bi bi-check2-circle"></i> Valider {% if demande.type == 'reinscription' %}la réinscription{% else %}l'inscription{% endif %}</button>
       </form>
       <form method="post">{% csrf_token %}<input type="hidden" name="action" value="refuser">
         <label class="form-label small mb-1" for="motif">Ou refuser, avec le motif (affiché à l'étudiant)</label>
@@ -145,4 +183,30 @@
     {% endif %}
   </div>
 </div>
+{% endblock %}
+{% block scripts %}
+<script>
+  (function () {
+    var f = document.getElementById('form-decision');
+    if (!f) return;
+    // Confirmation, avec le niveau et la promotion retenus
+    f.addEventListener('submit', function (ev) {
+      var b = f.querySelector('[data-confirmer]');
+      var niveau = document.getElementById('decision-licence');
+      var promo = document.getElementById('decision-promotion');
+      var texte = b.dataset.confirmer + (niveau ? ' L\'étudiant sera inscrit en ' + niveau.selectedOptions[0].text.replace(' (demandé)', '') +
+                  ', promotion ' + promo.selectedOptions[0].text + '.' : '');
+      if (!window.confirm(texte)) ev.preventDefault();
+    });
+    // Niveau changé : promotion prévue pour ce niveau (Promotion_Licence_Session), redoublant si même niveau
+    var niveau = document.getElementById('decision-licence');
+    if (!niveau) return;
+    var prevues = JSON.parse(document.getElementById('promotions-prevues').textContent);
+    var precedent = document.getElementById('niveau-precedent').dataset.valeur;
+    niveau.addEventListener('change', function () {
+      if (prevues[niveau.value]) document.getElementById('decision-promotion').value = String(prevues[niveau.value]);
+      document.getElementById('decision-redouble').checked = (niveau.value === precedent);
+    });
+  })();
+</script>
 {% endblock %}
