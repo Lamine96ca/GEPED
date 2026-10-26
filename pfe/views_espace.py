@@ -47,13 +47,18 @@ def securise(vue):
     return enveloppe
 
 
-# Pièces obligatoires : le relevé de notes de la dernière année pour une réinscription
-OBLIGATOIRES = {DemandeEtudiant.REINSCRIPTION: [PieceDossier.RELEVE_NOTES]}
-
+# Pièces demandées dans l'espace étudiant : TOUTES obligatoires
 PIECES = {
     DemandeEtudiant.INSCRIPTION: [PieceDossier.ACTE_NAISSANCE, PieceDossier.DIPLOME_BAC, PieceDossier.RELEVE_BAC],
     DemandeEtudiant.REINSCRIPTION: [PieceDossier.RELEVE_NOTES],
 }
+OBLIGATOIRES = PIECES
+
+
+def _piece_deja_deposee(etudiant, type_piece, session):
+    """Pièce déjà dans le dossier : le relevé de notes doit être celui de la session, les autres une fois pour toutes."""
+    qs = etudiant.pieces.filter(type=type_piece)
+    return (qs.filter(session=session) if type_piece == PieceDossier.RELEVE_NOTES else qs).exists()
 
 
 def _ouvert(session, type_demande):
@@ -155,10 +160,9 @@ def espace_dossier(request):
                     preparees[t] = fichiers
                 except ValidationError as e:
                     erreurs_pieces[t] = ' '.join(e.messages)
-        # Pièce obligatoire : envoyée maintenant, ou déjà déposée pour cette session
+        # Pièces obligatoires : envoyées maintenant, ou déjà dans le dossier
         for t in OBLIGATOIRES.get(type_demande, []):
-            if t not in preparees and t not in erreurs_pieces and not etudiant.pieces.filter(
-                    type=t, session=session).exists():
+            if t not in preparees and t not in erreurs_pieces and not _piece_deja_deposee(etudiant, t, session):
                 erreurs_pieces[t] = "Obligatoire : scannez ou envoyez cette pièce."
         if not erreurs_pieces:
             with transaction.atomic():
@@ -190,7 +194,8 @@ def espace_dossier(request):
                                         session=session if t == PieceDossier.RELEVE_NOTES else None)
             return redirect('espace_confirmation')
 
-    deposees = {p.type: p for p in etudiant.pieces.filter(type__in=PIECES[type_demande], par_etudiant=True)}
+    # Pièces déjà dans le dossier (déposées par l'étudiant ou par la scolarité) : affichées « déposée »
+    deposees = {p.type: p for p in etudiant.pieces.filter(type__in=PIECES[type_demande]).order_by('date')}
     if PieceDossier.RELEVE_NOTES in deposees and deposees[PieceDossier.RELEVE_NOTES].session_id != session.pk:
         del deposees[PieceDossier.RELEVE_NOTES]           # relevé d'une autre année : à redéposer
     return render(request, 'pfe/espace/dossier.html', {

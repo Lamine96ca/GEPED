@@ -88,7 +88,7 @@
   </section>
 
   <section class="verif-carte mb-3">
-    <h2 class="h6 text-uppercase text-secondary"><i class="bi bi-folder2-open"></i> Pièces du dossier {% if reinscription %}<span class="fw-normal text-lowercase">(<span class="text-danger">*</span> obligatoire)</span>{% else %}<span class="fw-normal text-lowercase">(facultatives)</span>{% endif %}</h2>
+    <h2 class="h6 text-uppercase text-secondary"><i class="bi bi-folder2-open"></i> Pièces du dossier <span class="fw-normal text-lowercase">(<span class="text-danger">*</span> toutes obligatoires)</span></h2>
     <p class="small text-secondary">Scannez chaque pièce avec l'appareil photo (une photo par page) ou envoyez un PDF. Les fichiers sont compressés automatiquement.</p>
     <div class="row g-3">
       {% for code, libelle, deposee, erreur, obligatoire in pieces %}

@@ -1418,8 +1418,15 @@ class GpedTests(TestCase):
         r = self.client.post(reverse('espace_dossier'), complet)
         self.assertContains(r, 'elle est obligatoire')
         self.assertFalse(DemandeEtudiant.objects.exists())
+        # Toutes les pièces sont obligatoires : il manque le diplôme et le relevé du bac
         r = self.client.post(reverse('espace_dossier'), {
             **complet, 'photo': photo_jpeg(), 'piece_acte_naissance': SimpleUploadedFile('acte.pdf', b'%PDF-1.4 acte')})
+        self.assertContains(r, 'Obligatoire : scannez ou envoyez cette pièce.', count=2)
+        self.assertFalse(DemandeEtudiant.objects.exists())
+        r = self.client.post(reverse('espace_dossier'), {
+            **complet, 'photo': photo_jpeg(), 'piece_acte_naissance': SimpleUploadedFile('acte.pdf', b'%PDF-1.4 acte'),
+            'piece_diplome_bac': SimpleUploadedFile('diplome.pdf', b'%PDF-1.4 diplome'),
+            'piece_releve_bac': SimpleUploadedFile('releve_bac.pdf', b'%PDF-1.4 releve')})
         self.assertRedirects(r, reverse('espace_confirmation'))
         # Retour sur la demande : l'étudiant retrouve ce qu'il a saisi
         self.assertContains(self.client.get(reverse('espace_dossier')), 'value="628 99 88 77"')
