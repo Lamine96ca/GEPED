@@ -124,7 +124,8 @@ def espace_dossier(request):
         return redirect('espace_accueil')
     niveaux, suivant = espace.niveaux_proposes(insc, session) if reinscription else ([], None)
 
-    initial = {c: getattr(etudiant, c) or '' for c in DemandeEtudiant.CHAMPS_CONTACTS}
+    # Contacts VIDES : l'étudiant les saisit lui-même (à jour) ; ceux d'une demande déjà envoyée sont repris
+    initial = {}
     if reinscription:                       # Boursier et formation initiale cochés par défaut
         initial.update(licence=suivant.pk if suivant else None, boursier='boursier', type_formation='initiale')
     if demande:

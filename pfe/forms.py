@@ -1147,19 +1147,20 @@ class DossierEtudiantForm(BootstrapMixin, forms.Form):
     """
     Ce que l'étudiant peut proposer dans son espace : contacts, photo (déjà recadrée et compressée
     par la fenêtre photo), et pour une réinscription le niveau, la bourse et le type de formation.
-    Tout reste en attente jusqu'à la validation par la scolarité.
+    Tous les contacts sont OBLIGATOIRES (l'étudiant fournit des informations à jour) ; la ville
+    n'est pas demandée. Tout reste en attente jusqu'à la validation par la scolarité.
     """
+    CHIFFRES_MIN = 8                      # un numéro de téléphone guinéen compte 9 chiffres (8 au minimum ici)
     telephone = forms.CharField(label='Téléphone', max_length=25, widget=forms.TextInput(attrs={
         'placeholder': 'Ex. 620 00 00 00', 'inputmode': 'tel', 'autocomplete': 'tel'}))
-    email = forms.EmailField(label='E-mail', max_length=150, required=False, widget=forms.EmailInput(attrs={
+    email = forms.EmailField(label='E-mail', max_length=150, widget=forms.EmailInput(attrs={
         'placeholder': 'nom@exemple.com', 'autocomplete': 'email'}))
-    adresse = forms.CharField(label='Adresse', max_length=200, required=False,
-                              widget=forms.TextInput(attrs={'placeholder': 'Quartier, secteur…'}))
-    ville = forms.CharField(label='Ville / Commune', max_length=100, required=False)
-    tuteur = forms.CharField(label='Nom du tuteur', max_length=100, required=False,
+    adresse = forms.CharField(label='Adresse', max_length=200,
+                              widget=forms.TextInput(attrs={'placeholder': 'Quartier/Mamou'}))
+    tuteur = forms.CharField(label='Nom du tuteur', max_length=100,
                              widget=forms.TextInput(attrs={'placeholder': 'Ex. Mariam CAMARA'}))
-    contact_de_tuteur = forms.CharField(label='Contact du tuteur', max_length=25, required=False,
-                                        widget=forms.TextInput(attrs={'inputmode': 'tel'}))
+    contact_de_tuteur = forms.CharField(label='Contact du tuteur', max_length=25, widget=forms.TextInput(attrs={
+        'placeholder': 'Ex. 622 00 00 00', 'inputmode': 'tel'}))
     photo = forms.FileField(label='Photo', required=False,
                             widget=forms.FileInput(attrs={'accept': 'image/*', 'class': 'visually-hidden'}))
     licence = forms.ModelChoiceField(label='Niveau demandé', queryset=Licence.objects.none(), required=False,
@@ -1180,8 +1181,33 @@ class DossierEtudiantForm(BootstrapMixin, forms.Form):
             for champ in ('licence', 'boursier', 'type_formation'):
                 del self.fields[champ]
 
+    @classmethod
+    def _numero(cls, valeur):
+        valeur = ' '.join((valeur or '').split())
+        if len(re.sub(r'\D', '', valeur)) < cls.CHIFFRES_MIN:
+            raise forms.ValidationError(f"Numéro incomplet : {cls.CHIFFRES_MIN} chiffres au moins.")
+        if not re.fullmatch(r'[+\d][\d .\-]*', valeur):
+            raise forms.ValidationError("Numéro invalide : chiffres, espaces et « + » seulement.")
+        return valeur
+
     def clean_telephone(self):
-        return ' '.join(self.cleaned_data['telephone'].split())
+        return self._numero(self.cleaned_data['telephone'])
+
+    def clean_contact_de_tuteur(self):
+        return self._numero(self.cleaned_data['contact_de_tuteur'])
+
+    def clean_adresse(self):
+        return ' '.join(self.cleaned_data['adresse'].split())
+
+    def clean_tuteur(self):
+        return ' '.join(self.cleaned_data['tuteur'].split())
+
+    def clean(self):
+        d = super().clean()
+        tel, tuteur = d.get('telephone'), d.get('contact_de_tuteur')
+        if tel and tuteur and re.sub(r'\D', '', tel)[-9:] == re.sub(r'\D', '', tuteur)[-9:]:
+            self.add_error('contact_de_tuteur', "Le contact du tuteur doit être différent de votre propre numéro.")
+        return d
 
     def clean_email(self):
         email = (self.cleaned_data.get('email') or '').strip().lower()

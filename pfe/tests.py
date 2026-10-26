@@ -1379,10 +1379,29 @@ class GpedTests(TestCase):
         self.assertContains(r, 'Prendre ou charger une photo')
         self.assertNotContains(r, 'name="licence"')                       # pas de choix de niveau à l'inscription
         # Envoi : coordonnées + acte de naissance (PDF) → demande en attente, fiche inchangée
+        # Contacts : vides au départ (même si la fiche en a), sans ville, adresse « Quartier/Mamou »
+        r = self.client.get(reverse('espace_dossier'))
+        self.assertNotContains(r, 'value="600"')                                   # téléphone de la fiche non repris
+        self.assertNotContains(r, 'name="ville"')
+        self.assertContains(r, 'placeholder="Quartier/Mamou"')
+        # Tous obligatoires ; numéros d'au moins 8 chiffres ; contact du tuteur différent du sien
+        r = self.client.post(reverse('espace_dossier'), {'telephone': '622 11 22 33'})
+        self.assertContains(r, 'Ce champ est obligatoire', count=4)                # e-mail, adresse, tuteur, contact
         r = self.client.post(reverse('espace_dossier'), {
-            'telephone': '622 11 22 33', 'email': 'awa.bah@exemple.com', 'tuteur': 'Mariam CAMARA',
+            'telephone': '6221', 'email': 'awa.bah@exemple.com', 'adresse': 'Petel/Mamou', 'tuteur': 'Mariam CAMARA',
+            'contact_de_tuteur': '+224 622 11 22 33'})
+        self.assertContains(r, 'Numéro incomplet')
+        r = self.client.post(reverse('espace_dossier'), {
+            'telephone': '622 11 22 33', 'email': 'awa.bah@exemple.com', 'adresse': 'Petel/Mamou',
+            'tuteur': 'Mariam CAMARA', 'contact_de_tuteur': '+224 622 11 22 33'})
+        self.assertContains(r, 'différent de votre propre numéro')
+        r = self.client.post(reverse('espace_dossier'), {
+            'telephone': '622 11 22 33', 'email': 'awa.bah@exemple.com', 'adresse': '  Petel /Mamou ',
+            'tuteur': 'Mariam CAMARA', 'contact_de_tuteur': '628 99 88 77',
             'piece_acte_naissance': SimpleUploadedFile('acte.pdf', b'%PDF-1.4 acte')})
         self.assertRedirects(r, reverse('espace_confirmation'))
+        # Retour sur la demande : l'étudiant retrouve ce qu'il a saisi
+        self.assertContains(self.client.get(reverse('espace_dossier')), 'value="628 99 88 77"')
         d = DemandeEtudiant.objects.get()
         self.assertEqual((d.type, d.statut, d.contacts['telephone']), ('inscription', 'en_attente', '622 11 22 33'))
         self.assertEqual((d.boursier, d.type_formation), ('boursier', 'initiale'))      # cochés par défaut
@@ -1394,7 +1413,8 @@ class GpedTests(TestCase):
         img = io.BytesIO()
         Image.new('RGB', (900, 1200), (180, 150, 120)).save(img, 'JPEG')
         self.client.post(reverse('espace_dossier'), {'telephone': '622 11 22 33', 'email': 'awa.bah@exemple.com',
-                                                     'tuteur': 'Mariam CAMARA',
+                                                     'adresse': 'Petel/Mamou', 'tuteur': 'Mariam CAMARA',
+                                                     'contact_de_tuteur': '628 99 88 77',
                                                      'photo': SimpleUploadedFile('moi.jpg', img.getvalue(), 'image/jpeg')})
         r = self.client.get(reverse('espace_dossier'))
         self.assertContains(r, reverse('espace_photo'))
@@ -1462,7 +1482,9 @@ class GpedTests(TestCase):
         self.assertContains(r, 'value="boursier" class="btn-check" id="id_boursier_0" required checked')   # par défaut
         self.assertContains(r, 'value="initiale" class="btn-check" id="id_type_formation_0" required checked')
         r = self.client.post(reverse('espace_dossier'), {
-            'telephone': '622 00 00 01', 'licence': self.l3.pk, 'boursier': 'payante', 'type_formation': 'continue',
+            'telephone': '622 00 00 01', 'email': 'ali.sow@exemple.com', 'adresse': 'Horé Fello/Mamou',
+            'tuteur': 'Mamadou SOW', 'contact_de_tuteur': '664 00 00 02', 'licence': self.l3.pk,
+            'boursier': 'payante', 'type_formation': 'continue',
             'piece_releve_notes': SimpleUploadedFile('releve.pdf', b'%PDF-1.4 releve')})
         self.assertRedirects(r, reverse('espace_confirmation'))
         d = DemandeEtudiant.objects.get(type='reinscription')

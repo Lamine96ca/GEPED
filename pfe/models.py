@@ -454,7 +454,7 @@ class DemandeEtudiant(models.Model):
     TYPES = [(INSCRIPTION, 'Inscription'), (REINSCRIPTION, 'Réinscription')]
     EN_ATTENTE, VALIDEE, REFUSEE = 'en_attente', 'validee', 'refusee'
     STATUTS = [(EN_ATTENTE, 'En attente'), (VALIDEE, 'Validée'), (REFUSEE, 'Refusée')]
-    CHAMPS_CONTACTS = ['telephone', 'email', 'adresse', 'ville', 'tuteur', 'contact_de_tuteur']
+    CHAMPS_CONTACTS = ['telephone', 'email', 'adresse', 'tuteur', 'contact_de_tuteur']   # la ville n'est pas demandée
 
     etudiant = models.ForeignKey(Etudiant, on_delete=models.CASCADE, related_name='demandes', verbose_name='Étudiant')
     type = models.CharField('Demande', max_length=15, choices=TYPES)
