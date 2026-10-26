@@ -1502,6 +1502,13 @@ class GpedTests(TestCase):
         self.assertNotContains(r, f'<option value="{self.l2.pk}"')                # pas d'autre niveau
         self.assertContains(r, 'value="boursier" class="btn-check" id="id_boursier_0" required checked')   # par défaut
         self.assertContains(r, 'value="initiale" class="btn-check" id="id_type_formation_0" required checked')
+        # Relevé de notes de la dernière année : obligatoire pour une réinscription
+        sans_releve = {'telephone': '622 00 00 01', 'email': 'ali.sow@exemple.com', 'adresse': 'Horé Fello/Mamou',
+                       'tuteur': 'Mamadou SOW', 'contact_de_tuteur': '664 00 00 02', 'licence': self.l3.pk,
+                       'boursier': 'payante', 'type_formation': 'continue', 'photo': photo_jpeg()}
+        r = self.client.post(reverse('espace_dossier'), sans_releve)
+        self.assertContains(r, 'Obligatoire : scannez ou envoyez cette pièce.')
+        self.assertFalse(DemandeEtudiant.objects.filter(type='reinscription').exists())
         r = self.client.post(reverse('espace_dossier'), {
             'telephone': '622 00 00 01', 'email': 'ali.sow@exemple.com', 'adresse': 'Horé Fello/Mamou',
             'tuteur': 'Mamadou SOW', 'contact_de_tuteur': '664 00 00 02', 'licence': self.l3.pk,

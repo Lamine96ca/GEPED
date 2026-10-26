@@ -88,12 +88,12 @@
   </section>
 
   <section class="verif-carte mb-3">
-    <h2 class="h6 text-uppercase text-secondary"><i class="bi bi-folder2-open"></i> Pièces du dossier <span class="fw-normal text-lowercase">(facultatives)</span></h2>
+    <h2 class="h6 text-uppercase text-secondary"><i class="bi bi-folder2-open"></i> Pièces du dossier {% if reinscription %}<span class="fw-normal text-lowercase">(<span class="text-danger">*</span> obligatoire)</span>{% else %}<span class="fw-normal text-lowercase">(facultatives)</span>{% endif %}</h2>
     <p class="small text-secondary">Scannez chaque pièce avec l'appareil photo (une photo par page) ou envoyez un PDF. Les fichiers sont compressés automatiquement.</p>
     <div class="row g-3">
-      {% for code, libelle, deposee, erreur in pieces %}
+      {% for code, libelle, deposee, erreur, obligatoire in pieces %}
         <div class="col-md-6">
-          <div class="fw-semibold mb-1" style="color:var(--encre)">{{ libelle }}
+          <div class="fw-semibold mb-1" style="color:var(--encre)">{{ libelle }}{% if obligatoire %} <span class="text-danger">*</span>{% endif %}
             {% if deposee %}<span class="pill pill-succes ms-1"><i class="bi bi-check2"></i> déposée le {{ deposee.date|date:"d/m/Y" }}</span>{% endif %}</div>
           {% include 'pfe/_depot_piece.html' with nom='piece_'|add:code %}
           {% if deposee %}<div class="small text-secondary mt-1">Un nouvel envoi remplacera la pièce déjà déposée.</div>{% endif %}

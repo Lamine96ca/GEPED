@@ -47,6 +47,9 @@ def securise(vue):
     return enveloppe
 
 
+# Pièces obligatoires : le relevé de notes de la dernière année pour une réinscription
+OBLIGATOIRES = {DemandeEtudiant.REINSCRIPTION: [PieceDossier.RELEVE_NOTES]}
+
 PIECES = {
     DemandeEtudiant.INSCRIPTION: [PieceDossier.ACTE_NAISSANCE, PieceDossier.DIPLOME_BAC, PieceDossier.RELEVE_BAC],
     DemandeEtudiant.REINSCRIPTION: [PieceDossier.RELEVE_NOTES],
@@ -152,6 +155,11 @@ def espace_dossier(request):
                     preparees[t] = fichiers
                 except ValidationError as e:
                     erreurs_pieces[t] = ' '.join(e.messages)
+        # Pièce obligatoire : envoyée maintenant, ou déjà déposée pour cette session
+        for t in OBLIGATOIRES.get(type_demande, []):
+            if t not in preparees and t not in erreurs_pieces and not etudiant.pieces.filter(
+                    type=t, session=session).exists():
+                erreurs_pieces[t] = "Obligatoire : scannez ou envoyez cette pièce."
         if not erreurs_pieces:
             with transaction.atomic():
                 if demande is None:
@@ -183,6 +191,8 @@ def espace_dossier(request):
             return redirect('espace_confirmation')
 
     deposees = {p.type: p for p in etudiant.pieces.filter(type__in=PIECES[type_demande], par_etudiant=True)}
+    if PieceDossier.RELEVE_NOTES in deposees and deposees[PieceDossier.RELEVE_NOTES].session_id != session.pk:
+        del deposees[PieceDossier.RELEVE_NOTES]           # relevé d'une autre année : à redéposer
     return render(request, 'pfe/espace/dossier.html', {
         'session': session, 'etudiant': etudiant, 'insc': insc, 'form': form, 'demande': demande,
         'reinscription': reinscription,
@@ -193,7 +203,8 @@ def espace_dossier(request):
         'photo_requise': not ((demande and demande.photo) or url_photo(etudiant)),
         'departement': _nom_departement(insc.filiere) if insc.filiere else '',
         'programme': _nom_programme(insc.filiere) if insc.filiere else '',
-        'pieces': [(t, dict(PieceDossier.TYPES)[t], deposees.get(t), erreurs_pieces.get(t)) for t in PIECES[type_demande]],
+        'pieces': [(t, dict(PieceDossier.TYPES)[t], deposees.get(t), erreurs_pieces.get(t),
+                    t in OBLIGATOIRES.get(type_demande, [])) for t in PIECES[type_demande]],
         'expire_minutes': max(1, int((a['expire'] - __import__('time').time()) // 60)),
     })
 
