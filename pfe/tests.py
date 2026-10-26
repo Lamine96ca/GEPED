@@ -1384,6 +1384,8 @@ class GpedTests(TestCase):
         r = self.client.get(reverse('espace_dossier'))
         self.assertContains(r, 'Awa BAH')
         self.assertContains(r, 'class="bloc-photo')                             # même bloc photo que la scolarité
+        self.assertContains(r, '<div class="lib">Département</div>')               # département et programme
+        self.assertContains(r, '<div class="lib">Programme</div>')
         self.assertContains(r, 'Prendre ou charger une photo')
         self.assertNotContains(r, 'name="licence"')                       # pas de choix de niveau à l'inscription
         # Envoi : coordonnées + acte de naissance (PDF) → demande en attente, fiche inchangée

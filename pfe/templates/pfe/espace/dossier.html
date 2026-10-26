@@ -55,6 +55,7 @@
         <li><i class="bi bi-people"></i><div><div class="lib">Promotion</div><div class="val">{{ insc.promotion|default:"—" }}</div></div></li>
         <li><i class="bi bi-bar-chart-steps"></i><div><div class="lib">Dernier niveau</div><div class="val">{{ insc.licence }} ({{ insc.session }})</div></div></li>
       {% else %}
+        <li><i class="bi bi-building"></i><div><div class="lib">Département</div><div class="val">{{ departement|default:"—" }}</div></div></li>
         <li><i class="bi bi-diagram-3"></i><div><div class="lib">Programme</div><div class="val">{{ programme|default:"—" }}</div></div></li>
         <li><i class="bi bi-bar-chart-steps"></i><div><div class="lib">Niveau</div><div class="val">{{ insc.licence }}</div></div></li>
         <li><i class="bi bi-people"></i><div><div class="lib">Promotion</div><div class="val">{{ insc.promotion|default:"—" }}</div></div></li>
