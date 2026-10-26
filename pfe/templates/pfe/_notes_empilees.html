@@ -1,0 +1,42 @@
+{# Toutes les notes d'un étudiant, année par année (voir views_demandes.notes_empilees) : `annees`, `seuil_rouge`. #}
+{# Notes inférieures au seuil sur fond rouge clair. Utilisé par « Demandes en ligne » et « Réinscrire un étudiant ». #}
+<div class="card carte-gped liste">
+  <div class="card-header d-flex flex-wrap align-items-center gap-2">
+    <h3 class="titre-stat me-auto mb-0"><i class="bi bi-journal-text"></i> Notes de l'étudiant, année par année</h3>
+    <span class="small"><span class="note-rouge px-2 rounded">&nbsp;&lt; {{ seuil_rouge }}&nbsp;</span> note inférieure à {{ seuil_rouge }}</span>
+  </div>
+  {% for a in annees %}
+    <div class="bloc-annee">
+      <div class="entete-annee d-flex flex-wrap align-items-center gap-2">
+        <strong>{{ a.inscription.session }} · {{ a.inscription.licence }}</strong>
+        <span class="text-secondary small">{{ a.inscription.filiere }}{% if a.inscription.redouble %} · redoublant{% endif %}</span>
+        <span class="ms-auto small">
+          {% if a.resultat and a.resultat.moyenne is not None %}Moyenne <strong>{{ a.resultat.moyenne|floatformat:2 }}</strong>/10 · {{ a.resultat.credits_valides }}/{{ a.resultat.credits_total }} cr.{% if a.resultat.mention %} · {{ a.resultat.mention }}{% endif %}{% else %}<span class="text-secondary">Résultat non calculé</span>{% endif %}
+          {% if a.nb_rouges %} · <span class="text-danger fw-semibold">{{ a.nb_rouges }} note{{ a.nb_rouges|pluralize }} &lt; {{ seuil_rouge }}</span>{% endif %}
+          {% if a.nb_manquantes %} · <span class="text-secondary">{{ a.nb_manquantes }} sans note</span>{% endif %}
+        </span>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sm table-notes-empilees mb-0">
+          <thead><tr><th>Semestre</th><th>Matière</th><th class="text-end">Crédits</th><th class="text-end">Note /10</th></tr></thead>
+          <tbody>
+          {% for semestre, lignes in a.semestres %}
+            {% for l in lignes %}
+              <tr class="{% if l.rouge %}note-rouge{% endif %}">
+                <td class="text-secondary">{% if forloop.first %}{{ semestre }}{% endif %}</td>
+                <td>{{ l.matiere.nom }}</td>
+                <td class="text-end">{{ l.matiere.credit }}</td>
+                <td class="text-end fw-semibold">{% if l.finale is not None %}{{ l.finale|floatformat:2 }}{% if l.note.par_session %} <span class="pill pill-accent">Session</span>{% endif %}{% else %}<span class="text-secondary">—</span>{% endif %}</td>
+              </tr>
+            {% endfor %}
+          {% empty %}
+            <tr><td colspan="4" class="text-secondary small">Aucune matière enregistrée pour cette année.</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  {% empty %}
+    <div class="etat-vide"><i class="bi bi-journal-x"></i><div class="fw-semibold text-body">Aucune note</div><div class="small">L'étudiant n'a aucune note enregistrée.</div></div>
+  {% endfor %}
+</div>

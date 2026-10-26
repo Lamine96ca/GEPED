@@ -27,7 +27,8 @@ from .forms import (AttestationFinEtudesForm, AttestationInscriptionForm, Attest
                     InscriptionForm, MatiereForm, MotDePasseForm)
 from .import_matieres import OBLIGATOIRES as OBLIGATOIRES_MATIERES, importer_matieres, modele_matieres_xlsx
 from .importer import OBLIGATOIRES, importer_etudiants, modele_import_xlsx
-from .models import Attestation, Etudiant, Inscription, Licence, Promotion, Semestre, Service, Session
+from .models import (Attestation, Etudiant, Inscription, Licence, Promotion, Promotion_Licence_Session, Semestre,
+                     Service, Session)
 from .photos import compresser, enregistrer_photo, retirer_photo, url_photo
 from .roles import (acces_requis, gestion_matieres_requise, get_profil, inscriptions_visibles, matieres_visibles,
                     programmes_du_profil, scolarite_requise)
@@ -489,12 +490,56 @@ def inscription_creer(request):
             return redirect(f"{reverse('etudiant_fiche', args=[inscription.pk])}?imprimer=1")
     else:
         form_etu = EtudiantForm(instance=etudiant, prefix='etu')
-        form_insc = InscriptionForm(prefix='insc')
-    return render(request, 'pfe/inscription_form.html', {
+        form_insc = InscriptionForm(prefix='insc', initial=_prevision_reinscription(etudiant))
+    contexte = {
         'form_etu': form_etu, 'form_insc': form_insc, 'etudiant': etudiant,
         'titre': 'Réinscrire un étudiant' if etudiant else 'Inscrire un étudiant',
-        'actif': 'inscrire',
-    })
+        'actif': 'inscrire', 'promotions_prevues': _promotions_prevues(),
+    }
+    if etudiant:
+        # Réinscription : toutes ses notes, année par année, pour décider ; inscription déjà faite ?
+        from .views_demandes import SEUIL_ROUGE, notes_empilees
+        session = liste.session_par_defaut()
+        contexte.update(annees=notes_empilees(etudiant), seuil_rouge=SEUIL_ROUGE,
+                        derniere=_derniere_inscription(etudiant),
+                        deja_inscrit=etudiant.etudiant_inscription.filter(session=session).select_related('licence').first()
+                        if session else None)
+    return render(request, 'pfe/inscription_form.html', contexte)
+
+
+def _derniere_inscription(etudiant):
+    return (etudiant.etudiant_inscription.select_related('session', 'licence', 'filiere', 'promotion')
+            .order_by('-session__annee', '-licence__nom').first())
+
+
+def _prevision_reinscription(etudiant):
+    """
+    Réinscription : inscription de la session en cours préremplie d'après la dernière inscription
+    (programme, promotion, cycle) et le niveau prévu pour la promotion dans la session
+    (Promotion_Licence_Session). Tout reste modifiable.
+    """
+    if etudiant is None:
+        return {}
+    from .espace_etudiant import niveaux_prevus
+    session = liste.session_par_defaut()
+    d = _derniere_inscription(etudiant)
+    if d is None or session is None or d.session_id == session.pk:
+        return {}
+    niveaux = niveaux_prevus(d, session)
+    licence = niveaux[0] if niveaux else None
+    return {k: v for k, v in {
+        'session': session.pk, 'cycle': d.cycle, 'filiere': d.filiere_id, 'promotion': d.promotion_id,
+        'licence': licence.pk if licence else None, 'redouble': bool(licence and licence.pk == d.licence_id),
+    }.items() if v not in (None, '')}
+
+
+def _promotions_prevues():
+    """{session: {licence: promotion}} d'après Promotion_Licence_Session (promotion placée selon le niveau)."""
+    prevues = {}
+    for session_id, licence_id, promotion_id in Promotion_Licence_Session.objects.values_list(
+            'session_id', 'licence_id', 'promotion_id'):
+        prevues.setdefault(str(session_id), {}).setdefault(str(licence_id), promotion_id)
+    return prevues
 
 
 @login_required

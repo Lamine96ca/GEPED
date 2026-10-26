@@ -1598,6 +1598,32 @@ class GpedTests(TestCase):
         # Photo d'un autre étudiant : inaccessible (seulement celle de l'étudiant identifié, sinon 404)
         self.assertEqual(self.client.get(reverse('espace_photo')).status_code, 404)
 
+    def test_reinscrire_un_etudiant_prerempli_avec_ses_notes(self):
+        """Page « Réinscrire un étudiant » : inscription de la session préremplie et toutes ses notes."""
+        from .models import Matiere, Note
+        s1, _ = self._semestres()
+        e = Etudiant.objects.create(matricule='R9', prenom='Ali', nom='SOW', email='sow9@t.local')
+        Inscription.objects.create(etudiant=e, session=self.s2425, licence=self.l2, filiere=self.info,
+                                   promotion=self.p18, cycle='Licence')
+        m = Matiere.objects.create(nom='Réseaux', filiere=self.info, semestre=s1, licence=self.l2, session=self.s2425,
+                                   credit=6)
+        Note.objects.create(etudiant=e, matiere=m, moyenne=4, moyenne_deposee=True)
+        self.connecter('scol')
+        r = self.client.get(reverse('inscription_creer'), {'etudiant': e.pk})
+        for attendu in (f'<option value="{self.session.pk}" selected>', f'<option value="{self.l3.pk}" selected>',
+                        f'<option value="{self.p18.pk}" selected>', f'<option value="{self.info.pk}" selected>',
+                        '<option value="Licence" selected>', 'Inscription préremplie', 'Réseaux', 'class="note-rouge"',
+                        'id="promotions-prevues"'):
+            self.assertContains(r, attendu)
+        self.assertNotContains(r, 'id="id_insc-redouble" checked')
+        # Déjà inscrit pour la session : signalé, rien de prérempli
+        Inscription.objects.create(etudiant=e, session=self.session, licence=self.l3, filiere=self.info)
+        r = self.client.get(reverse('inscription_creer'), {'etudiant': e.pk})
+        self.assertContains(r, 'Déjà inscrit(e) pour')
+        # Nouvel étudiant : pas de notes ni de préremplissage
+        r = self.client.get(reverse('inscription_creer'))
+        self.assertNotContains(r, 'Notes de l')
+
     def test_personnel_chef_seulement_scolarite_ou_departement(self):
         from .forms import PersonnelForm
         admin = User.objects.create_superuser('admin_chef', 'a@t.local', 'x')

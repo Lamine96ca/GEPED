@@ -11,6 +11,11 @@
   {% if form_etu.errors or form_insc.errors %}
     <div class="alert alert-danger py-2 d-flex gap-2 align-items-center"><i class="bi bi-exclamation-circle"></i> Veuillez corriger les champs signalés.</div>
   {% endif %}
+  {% if deja_inscrit %}
+    <div class="alert alert-warning py-2 d-flex gap-2 align-items-center"><i class="bi bi-exclamation-triangle"></i> Déjà inscrit(e) pour {{ deja_inscrit.session }} en {{ deja_inscrit.licence }}.</div>
+  {% elif derniere and not form_insc.is_bound %}
+    <div class="alert alert-info py-2 d-flex gap-2 align-items-center small"><i class="bi bi-magic"></i> Inscription préremplie d'après sa dernière inscription ({{ derniere.licence }}, {{ derniere.session }}, promotion {{ derniere.promotion|default:"—" }}) et le niveau prévu pour sa promotion cette année. Vérifiez ses notes ci-dessous avant d'enregistrer.</div>
+  {% endif %}
 
   <div class="row g-3">
     <div class="col-xl-8 d-flex flex-column gap-3">
@@ -161,6 +166,9 @@
     </div>
   </div>
 </form>
+{% if annees is not None %}
+  <div class="mt-3">{% include 'pfe/_notes_empilees.html' %}</div>
+{% endif %}
 {% endblock %}
 {% block scripts %}
 {% include 'pfe/_modal_photo.html' %}
@@ -173,6 +181,26 @@
     function maj() { details.hidden = !caseHandicap.checked; }
     caseHandicap.addEventListener('change', maj);
     maj();
+  })();
+</script>
+{{ promotions_prevues|json_script:"promotions-prevues" }}
+<script>
+  (function () {
+    // Niveau ou session changés : promotion prévue (Promotion_Licence_Session) ; redoublant si même niveau
+    var prevues = JSON.parse(document.getElementById('promotions-prevues').textContent);
+    var session = document.getElementById('{{ form_insc.session.id_for_label }}');
+    var niveau = document.getElementById('{{ form_insc.licence.id_for_label }}');
+    var promotion = document.getElementById('{{ form_insc.promotion.id_for_label }}');
+    var redouble = document.getElementById('{{ form_insc.redouble.id_for_label }}');
+    var precedent = '{{ derniere.licence_id|default:"" }}';
+    if (!session || !niveau || !promotion) return;
+    function maj() {
+      var p = (prevues[session.value] || {})[niveau.value];
+      if (p) promotion.value = String(p);
+      if (redouble && precedent) redouble.checked = (niveau.value === precedent);
+    }
+    niveau.addEventListener('change', maj);
+    session.addEventListener('change', maj);
   })();
 </script>
 {% endblock %}

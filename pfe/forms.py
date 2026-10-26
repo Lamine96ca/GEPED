@@ -114,7 +114,7 @@ class InscriptionForm(BootstrapMixin, forms.ModelForm):
         self.fields['session'].queryset = Session.objects.order_by('-annee')
         self.fields['cycle'].choices = [('', '— Aucun —')] + Inscription.CYCLE_CHOICES
         # default=0 sur le modèle : la case serait cochée par défaut
-        self.initial['redouble'] = bool(self.instance.redouble)
+        self.initial['redouble'] = bool(self.initial.get('redouble'))          # valeur préremplie, sinon décochée
         if not self.instance.pk:
             session = Session.objects.filter(en_cours=True).first()
             if session:
