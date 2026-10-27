@@ -312,7 +312,7 @@ def importer_notes(fichier, profil, utilisateur=None, simulation=False, pdf_ense
                         rapport.erreur(numero, f"{etu.matricule} · {matiere.nom} ({matiere.session}) : année écoulée, "
                                                f"la note déjà enregistrée ne peut être modifiée que par un chef")
                         continue
-                    if not pdf_enseignant:
+                    if not pdf_enseignant and not profil.superuser:       # super utilisateur : dispensé
                         rapport.erreur(numero, f"{etu.matricule} · {matiere.nom} : note déjà enregistrée, joignez le "
                                                f"PDF de l'enseignant pour la modifier")
                         continue

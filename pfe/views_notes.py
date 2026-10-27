@@ -20,8 +20,8 @@ from .forms import ImportNotesForm
 from .import_notes import OBLIGATOIRES as OBLIGATOIRES_NOTES, importer_notes, modele_notes_xlsx
 from .models import (Deliberation, Etudiant, ImportNotes, Inscription, Licence, Matiere, Note, Resultat, Semestre,
                      Session)
-from .notes import (CHAMPS_SAISIE, en_note, enregistrer_notes, est_delibere, peut_modifier, recalculer, regles,
-                    saisie_de, semestres_delibres, session_ecoulee, verifier_pdf)
+from .notes import (CHAMPS_SAISIE, MOTIF_SUPER_UTILISATEUR, en_note, enregistrer_notes, est_delibere, peut_modifier,
+                    recalculer, regles, saisie_de, semestres_delibres, session_ecoulee, verifier_pdf)
 from .roles import gestion_matieres_requise, get_profil, matieres_visibles, programmes_du_profil, scolarite_requise
 
 LIBELLES = {'controle': 'Contrôle', 'tp': 'TP', 'examen': 'Examen', 'moyenne': 'Moyenne', 'rattrapage': 'Rattrapage'}
@@ -177,9 +177,17 @@ def notes_saisie(request, pk):
             if note is not None and saisie_de(note) == valeurs:
                 continue
             changements.append((note, etu, matiere, valeurs))
-        # Modifier une note déjà saisie : motif et justificatif PDF obligatoires (gardés dans l'historique)
+        # Modifier une note déjà saisie : motif et justificatif PDF obligatoires (gardés dans l'historique),
+        # sauf pour le super utilisateur (facultatifs ; un PDF joint doit quand même en être un)
         justificatif = request.FILES.get('justificatif')
-        if any(note is not None for note, _, _, _ in changements):
+        if profil.superuser:
+            if justificatif:
+                try:
+                    verifier_pdf(justificatif)
+                except ValueError as e:
+                    erreur_motif = str(e)
+            motif = motif or MOTIF_SUPER_UTILISATEUR
+        elif any(note is not None for note, _, _, _ in changements):
             if not motif:
                 erreur_motif = "Vous modifiez des notes déjà saisies : indiquez le motif et joignez le justificatif PDF."
             else:

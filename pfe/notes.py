@@ -93,6 +93,10 @@ def est_delibere(matiere):
 TAILLE_MAX_PDF = 10 * 1024 * 1024
 
 
+# Le super utilisateur modifie les notes sans motif ni justificatif : l'historique garde cette mention
+MOTIF_SUPER_UTILISATEUR = "Modification par le super utilisateur (sans justificatif)"
+
+
 def verifier_pdf(fichier, quoi='Le justificatif'):
     """Justificatif ou fiche de l'enseignant : un vrai PDF (pas un fichier renommé), 10 Mo au plus."""
     if not fichier:

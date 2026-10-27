@@ -12,7 +12,8 @@
     <div class="alert {% if profil.est_scolarite %}alert-warning{% else %}alert-secondary{% endif %} d-flex gap-2 align-items-start">
       <i class="bi bi-lock-fill mt-1"></i>
       <div><strong>Note verrouillée</strong>{% if soutenance.verrouillee_le %} le {{ soutenance.verrouillee_le|date:"d/m/Y à H:i" }}{% if soutenance.verrouillee_par %} par {{ soutenance.verrouillee_par.get_full_name|default:soutenance.verrouillee_par.username }}{% endif %}{% endif %}.
-        {% if profil.est_scolarite %}Vous pouvez la modifier : indiquez le motif et joignez le justificatif ; la modification est tracée.
+        {% if profil.superuser %}Vous pouvez la modifier ; en tant que super utilisateur, le motif et le justificatif sont facultatifs. La modification est tracée.
+        {% elif profil.est_scolarite %}Vous pouvez la modifier : indiquez le motif et joignez le justificatif ; la modification est tracée.
         {% else %}Seule la scolarité peut la modifier. Le projet de soutenance reste modifiable.{% endif %}</div>
     </div>
   {% endif %}

@@ -876,7 +876,7 @@ class ImportNotesForm(ImportMatieresForm):
     def __init__(self, *args, profil=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.profil = profil
-        if profil is not None and not profil.est_scolarite:
+        if profil is not None and not profil.est_scolarite and not profil.superuser:
             self.fields['pdf_enseignant'].required = True
 
     def clean_pdf_enseignant(self):
@@ -1000,7 +1000,7 @@ class SoutenanceForm(BootstrapMixin, forms.ModelForm):
                                      f"{projet.promotion} : choisissez le même programme, la même session et "
                                      f"la même promotion.")
         if self.note_verrouillee and self.avant != {c: d.get(c) for c in ('note', 'note_session')} \
-                and not (d.get('motif') or '').strip():
+                and not (d.get('motif') or '').strip() and not self.profil.superuser:
             self.add_error('motif', "Note verrouillée : indiquez le motif de la modification (et joignez le "
                                     "justificatif).")
         self.etudiant = etudiant
@@ -1018,7 +1018,11 @@ class SoutenanceForm(BootstrapMixin, forms.ModelForm):
                 setattr(s, c, v)
         s.save()
         if self.avant is not None:
-            enregistrer_notes([(s, nouvelles)], utilisateur, motif=(self.cleaned_data.get('motif') or '').strip(),
+            from .notes import MOTIF_SUPER_UTILISATEUR
+            motif = (self.cleaned_data.get('motif') or '').strip()
+            if not motif and self.note_verrouillee and self.profil.superuser:
+                motif = MOTIF_SUPER_UTILISATEUR
+            enregistrer_notes([(s, nouvelles)], utilisateur, motif=motif,
                               justificatif=self.cleaned_data.get('justificatif'))
             s.refresh_from_db()
         return s

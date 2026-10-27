@@ -1286,6 +1286,39 @@ class GpedTests(TestCase):
         h = NoteHistorique.objects.filter(apres_deliberation=True).get()
         self.assertEqual((h.motif, h.apres['examen']), ('PV du jury', 10))
 
+    def test_super_utilisateur_modifie_les_notes_sans_justificatif(self):
+        from django.contrib.auth.models import User
+        from .forms import ImportNotesForm
+        from .models import Note, NoteHistorique
+        from .notes import MOTIF_SUPER_UTILISATEUR
+        from .roles import Profil, SCOLARITE
+        s1, algo, _ = self._preparer_notes()
+        e0 = Etudiant.objects.get(matricule='M0')
+        Note.objects.create(etudiant=e0, matiere=algo, examen=6)
+        url = reverse('notes_saisie', args=[algo.pk])
+        # Scolarité : motif et PDF toujours obligatoires
+        self.connecter('scol')
+        self.assertContains(self.client.post(url, {f'examen_{e0.pk}': '8'}), 'indiquez le motif')
+        # Super utilisateur : ni motif ni PDF, modification tracée avec la mention
+        User.objects.create_superuser('admin', password='x')
+        self.client.login(username='admin', password='x')
+        self.assertContains(self.client.get(url), 'sont <strong>facultatifs</strong> pour vous')
+        self.assertRedirects(self.client.post(url, {f'examen_{e0.pk}': '8'}), url)
+        h = NoteHistorique.objects.get()
+        self.assertEqual((h.avant['examen'], h.apres['examen'], h.motif, h.justificatif.name),
+                         (6, 8, MOTIF_SUPER_UTILISATEUR, ''))
+        # Un fichier joint doit quand même être un vrai PDF
+        r = self.client.post(url, {f'examen_{e0.pk}': '9', 'justificatif': SimpleUploadedFile('pv.txt', b'texte')})
+        self.assertContains(r, 'doit être un fichier PDF')
+        # Import : PDF de l'enseignant facultatif pour lui seul, même pour modifier une note enregistrée
+        from .import_notes import importer_notes
+        self.assertFalse(ImportNotesForm(profil=Profil(SCOLARITE, superuser=True)).fields['pdf_enseignant'].required)
+        modif = fichier_xlsx([['matricule', 'matiere', 'session', 'controle', 'tp', 'examen', 'moyenne', 'rattrapage'],
+                              ['M0', 'Algorithmique', '2025-2026', None, None, 7, None, None]])
+        r = importer_notes(modif, Profil(SCOLARITE, superuser=True), User.objects.get(username='admin'))
+        self.assertEqual((r.mises_a_jour, r.erreurs), (1, []))
+        self.assertEqual(Note.objects.get(etudiant=e0, matiere=algo).examen, 7)
+
     def test_saisie_cascade_et_un_seul_etudiant(self):
         from urllib.parse import quote
         from .models import Note

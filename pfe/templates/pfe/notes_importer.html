@@ -28,7 +28,7 @@
           <div class="mb-3">
             <label class="form-label small mb-1" for="{{ form.pdf_enseignant.id_for_label }}"><i class="bi bi-file-earmark-pdf"></i> {{ form.pdf_enseignant.label }}{% if form.pdf_enseignant.field.required %} <span class="text-danger">*</span>{% endif %}</label>
             {{ form.pdf_enseignant }}
-            <div class="small text-secondary mt-1">{% if form.pdf_enseignant.field.required %}Obligatoire : la fiche déposée par l'enseignant.{% else %}Obligatoire si l'import modifie des notes déjà enregistrées.{% endif %} Gardée avec l'import, jamais publiée.</div>
+            <div class="small text-secondary mt-1">{% if form.pdf_enseignant.field.required %}Obligatoire : la fiche déposée par l'enseignant.{% elif profil.superuser %}Facultatif pour vous (super utilisateur), même si l'import modifie des notes déjà enregistrées.{% else %}Obligatoire si l'import modifie des notes déjà enregistrées.{% endif %} Gardée avec l'import, jamais publiée.</div>
             {% for err in form.pdf_enseignant.errors %}<div class="invalid-feedback d-block">{{ err }}</div>{% endfor %}
           </div>
           <label class="option-import mb-3" for="{{ form.simulation.id_for_label }}">

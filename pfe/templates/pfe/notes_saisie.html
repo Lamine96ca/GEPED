@@ -82,7 +82,11 @@
       <div class="pied-tableau">
         {% if nb_notes or erreur_motif %}
           <div class="row g-2 mb-3">
-            <div class="col-12 small text-secondary"><i class="bi bi-info-circle"></i> Pour <strong>modifier</strong> une note déjà saisie, le motif et le justificatif PDF sont obligatoires (gardés dans l'historique avec votre nom). Saisir une note vide n'en demande pas.</div>
+            {% if profil.superuser %}
+              <div class="col-12 small text-secondary"><i class="bi bi-shield-check"></i> <strong>Super utilisateur</strong> : le motif et le justificatif sont <strong>facultatifs</strong> pour vous. Chaque modification reste tracée dans l'historique avec votre nom.</div>
+            {% else %}
+              <div class="col-12 small text-secondary"><i class="bi bi-info-circle"></i> Pour <strong>modifier</strong> une note déjà saisie, le motif et le justificatif PDF sont obligatoires (gardés dans l'historique avec votre nom). Saisir une note vide n'en demande pas.</div>
+            {% endif %}
             <div class="col-md-7">
               <label class="form-label small mb-1" for="motif">Motif de la modification</label>
               <textarea id="motif" name="motif" rows="2" class="form-control{% if erreur_motif %} is-invalid{% endif %}" placeholder="Ex. : erreur de report constatée par le jury, PV n° …">{{ motif }}</textarea>
