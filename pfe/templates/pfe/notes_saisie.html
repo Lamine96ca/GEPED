@@ -1,11 +1,21 @@
 {% extends 'pfe/base.html' %}
 {% block titre %}Notes · {{ matiere.nom }}{% endblock %}
-{% block titre_page %}<a href="{% url 'notes_matieres' %}?session={{ matiere.session_id }}&programme={{ matiere.filiere_id }}&semestre={{ matiere.semestre_id }}" class="text-decoration-none text-secondary me-1" title="Retour aux matières"><i class="bi bi-arrow-left"></i></a> {{ matiere.nom }}{% endblock %}
+{% block titre_page %}<a href="{% if retour %}{{ retour }}{% else %}{% url 'notes_matieres' %}?session={{ matiere.session_id }}&programme={{ matiere.filiere_id }}&licence={{ matiere.licence_id }}&semestre={{ matiere.semestre_id }}{% endif %}" class="text-decoration-none text-secondary me-1" title="{% if retour %}Retour à la liste des notes{% else %}Retour aux matières{% endif %}"><i class="bi bi-arrow-left"></i></a> {{ matiere.nom }}{% endblock %}
 {% block sous_titre %}<div class="sous-titre">{{ matiere.filiere }} · {{ matiere.licence.nom }} · {{ matiere.semestre.nom }} · {{ matiere.session.annee }} · {{ matiere.credit }} crédits{% if matiere.code %} · {{ matiere.code }}{% endif %}</div>{% endblock %}
 {% block actions %}
   <a href="{% url 'notes_resultats' %}?session={{ matiere.session_id }}&programme={{ matiere.filiere_id }}&semestre={{ matiere.semestre_id }}" class="btn btn-light"><i class="bi bi-bar-chart"></i> <span class="d-none d-sm-inline">Résultats du semestre</span></a>
 {% endblock %}
 {% block contenu %}
+
+{% if seul %}
+  <div class="alert alert-info d-flex flex-wrap gap-2 align-items-center">
+    <i class="bi bi-person-check"></i>
+    <div class="me-auto">Modification de la note de <strong>{% if seul_etudiant %}{{ seul_etudiant.prenom }} {{ seul_etudiant.nom }}{% else %}cet étudiant{% endif %}</strong> en {{ matiere.nom }}{% if retour %} : après l'enregistrement, vous revenez à la liste des notes{% endif %}.</div>
+    <a class="btn btn-sm btn-light" href="{% url 'notes_saisie' matiere.pk %}"><i class="bi bi-people"></i> Voir toute la matière</a>
+  </div>
+{% else %}
+  <div class="card carte-gped liste mb-3">{% include 'pfe/_cascade_matiere.html' %}</div>
+{% endif %}
 
 {% if ecoulee %}
   <div class="alert {% if modifiable %}alert-warning{% else %}alert-secondary{% endif %} d-flex gap-2 align-items-start">
@@ -63,7 +73,7 @@
             <td class="text-nowrap" data-mention>{{ l.note.mention }}{% if l.note.par_session %} <span class="pill pill-accent">Session</span>{% endif %}</td>
           </tr>
         {% empty %}
-          <tr><td colspan="9"><div class="etat-vide"><i class="bi bi-people"></i>Aucun étudiant inscrit en {{ matiere.licence.nom }} · {{ matiere.filiere }} · {{ matiere.session.annee }}.</div></td></tr>
+          <tr><td colspan="9"><div class="etat-vide"><i class="bi bi-people"></i>{% if seul %}Cet étudiant n'est pas (ou plus) inscrit dans cette matière : {% endif %}Aucun étudiant inscrit en {{ matiere.licence.nom }} · {{ matiere.filiere }} · {{ matiere.session.annee }}.</div></td></tr>
         {% endfor %}
         </tbody>
       </table>

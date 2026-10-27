@@ -2,13 +2,13 @@
 {% load humanize %}
 {% block titre %}Saisie des notes{% endblock %}
 {% block titre_page %}Saisie des notes{% endblock %}
-{% block sous_titre %}<div class="sous-titre">Choisissez une matière · notes sur 10, matière validée à partir de 5</div>{% endblock %}
+{% block sous_titre %}<div class="sous-titre">Choisissez la session, le programme, la licence, le semestre puis la matière · notes sur 10, matière validée à partir de 5</div>{% endblock %}
 {% block actions %}
   <a href="{% url 'notes_importer' %}" class="btn btn-or"><i class="bi bi-upload"></i> <span class="d-none d-sm-inline">Importer des notes</span></a>
 {% endblock %}
 {% block contenu %}
 <div class="card carte-gped liste">
-  {% include 'pfe/_filtres_notes.html' with avec_licence=True avec_recherche=True %}
+  {% include 'pfe/_cascade_matiere.html' %}
   <div class="table-responsive">
     <table class="table table-etudiants mb-0">
       <thead><tr><th>Matière</th><th>Programme</th><th>Licence</th><th>Semestre</th><th>Session</th><th class="text-end">Crédits</th><th>Avancement</th><th class="text-end"></th></tr></thead>

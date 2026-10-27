@@ -41,7 +41,7 @@
           <td class="text-center">{% if n.rattrapage is not None %}{{ n.rattrapage|floatformat:"-2" }}{% else %}<span class="text-secondary">—</span>{% endif %}</td>
           <td class="text-center"><span class="resultat-moy {% if n.moyenne_finale is not None %}{% if n.moyenne_finale >= seuil %}ok{% else %}ko{% endif %}{% endif %}">{% if n.moyenne_finale is not None %}{{ n.moyenne_finale|floatformat:"-2" }}{% else %}—{% endif %}</span></td>
           <td class="text-nowrap">{{ n.mention|default:"—" }}{% if n.par_session %} <span class="pill pill-accent">Session</span>{% endif %}</td>
-          <td class="text-end"><a class="btn btn-icone" href="{% url 'notes_saisie' n.matiere_id %}" title="Ouvrir la saisie de cette matière"><i class="bi bi-pencil"></i></a></td>
+          <td class="text-end"><a class="btn btn-icone" href="{% url 'notes_saisie' n.matiere_id %}?etudiant={{ n.etudiant_id }}&amp;retour={{ request.get_full_path|urlencode:'' }}" title="Modifier la note de cet étudiant"><i class="bi bi-pencil"></i></a></td>
         </tr>
       {% empty %}
         <tr><td colspan="13"><div class="etat-vide"><i class="bi bi-123"></i>Aucune note avec ces filtres.</div></td></tr>

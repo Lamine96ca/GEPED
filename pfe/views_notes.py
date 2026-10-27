@@ -13,11 +13,13 @@ from django.db.models import Count, Q
 from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
 from .forms import ImportNotesForm
 from .import_notes import OBLIGATOIRES as OBLIGATOIRES_NOTES, importer_notes, modele_notes_xlsx
-from .models import Deliberation, ImportNotes, Inscription, Matiere, Note, Resultat, Semestre, Session
+from .models import (Deliberation, Etudiant, ImportNotes, Inscription, Licence, Matiere, Note, Resultat, Semestre,
+                     Session)
 from .notes import (CHAMPS_SAISIE, en_note, enregistrer_notes, est_delibere, peut_modifier, recalculer, regles,
                     saisie_de, semestres_delibres, session_ecoulee, verifier_pdf)
 from .roles import gestion_matieres_requise, get_profil, matieres_visibles, programmes_du_profil, scolarite_requise
@@ -55,6 +57,35 @@ def _contexte_filtres(f, sessions, programmes):
             'semestres': Semestre.objects.select_related('licence').order_by('licence_id', 'id')}
 
 
+def _cascade(profil, f):
+    """Choix en cascade session → programme → licence → semestre → matière (saisie des notes).
+
+    Chaque liste ne propose que ce qui existe sous les choix du dessus, parmi les matières visibles
+    du profil ; un choix qui n'y figure plus (programme changé…) est vidé, ainsi que ceux du dessous.
+    """
+    qs = matieres_visibles(profil)
+    if f.get('session'):
+        qs = qs.filter(session_id=f['session'])
+    programmes = list(programmes_du_profil(profil))
+    licences, semestres, matieres = [], [], []
+    if f.get('programme') not in {p.pk for p in programmes}:
+        f['programme'] = None
+    if f['programme']:
+        qs = qs.filter(filiere_id=f['programme'])
+        licences = list(Licence.objects.filter(pk__in=qs.values('licence_id')).order_by('id'))
+    if f.get('licence') not in {l.pk for l in licences}:
+        f['licence'] = None
+    if f['licence']:
+        qs = qs.filter(licence_id=f['licence'])
+        semestres = list(Semestre.objects.filter(pk__in=qs.values('semestre_id')).order_by('id'))
+    if f.get('semestre') not in {s.pk for s in semestres}:
+        f['semestre'] = None
+    if f['semestre']:
+        matieres = list(qs.filter(semestre_id=f['semestre']).select_related('session').order_by('nom', '-session__annee'))
+    return {'cascade': f, 'c_sessions': Session.objects.order_by('-annee'), 'c_programmes': programmes,
+            'c_licences': licences, 'c_semestres': semestres, 'c_matieres': matieres}
+
+
 def inscrits_de(matiere):
     """Étudiants inscrits (pas préinscrits) dans le programme, la session et la licence de la matière."""
     return (Inscription.objects.filter(filiere_id=matiere.filiere_id, session_id=matiere.session_id,
@@ -67,16 +98,18 @@ def inscrits_de(matiere):
 @login_required
 @gestion_matieres_requise
 def notes_matieres(request):
-    """Choix de la matière à saisir, avec l'avancement (notes saisies / inscrits)."""
+    """Choix de la matière à saisir (cascade), avec l'avancement (notes saisies / inscrits) des matières filtrées."""
     profil = get_profil(request)
-    f, sessions, programmes = _filtres(request, profil)
+    choisie = _entier(request.GET.get('matiere'))
+    if choisie and matieres_visibles(profil).filter(pk=choisie).exists():     # sans JavaScript : bouton « Charger »
+        return redirect('notes_saisie', pk=choisie)
+    f, _, _ = _filtres(request, profil)
+    cascade = _cascade(profil, f)
     qs = matieres_visibles(profil).select_related('filiere', 'licence', 'semestre', 'session')
     for champ, cle in (('session_id', 'session'), ('filiere_id', 'programme'), ('licence_id', 'licence'),
                        ('semestre_id', 'semestre')):
         if f[cle]:
             qs = qs.filter(**{champ: f[cle]})
-    if f['q']:
-        qs = qs.filter(Q(nom__icontains=f['q']) | Q(code__icontains=f['q']))
     qs = qs.annotate(nb_notes=Count('notes', filter=Q(notes__moyenne_finale__isnull=False)))
     page = Paginator(qs.order_by('filiere__nom', 'licence_id', 'semestre_id', 'nom'), 50).get_page(request.GET.get('page'))
     matieres = list(page)
@@ -95,8 +128,7 @@ def notes_matieres(request):
     params = request.GET.copy()
     params.pop('page', None)
     return render(request, 'pfe/notes_matieres.html', {
-        'page': page, 'matieres': matieres, 'params': params.urlencode(), 'actif': 'notes_saisie',
-        **_contexte_filtres(f, sessions, programmes),
+        'page': page, 'matieres': matieres, 'params': params.urlencode(), 'actif': 'notes_saisie', **cascade,
     })
 
 
@@ -109,7 +141,15 @@ def notes_saisie(request, pk):
                                 pk=pk)
     delibere = est_delibere(matiere)
     modifiable = peut_modifier(profil, matiere, delibere)
-    inscrits = list(inscrits_de(matiere))
+    inscrits = inscrits_de(matiere)
+    # Depuis la liste des notes (crayon) : seulement cet étudiant, puis retour à la liste après l'enregistrement
+    seul = _entier(request.GET.get('etudiant'))
+    if seul:
+        inscrits = inscrits.filter(etudiant_id=seul)
+    inscrits = list(inscrits)
+    retour = request.GET.get('retour') or ''
+    if not url_has_allowed_host_and_scheme(retour, allowed_hosts={request.get_host()}) or not retour.startswith('/'):
+        retour = ''
     notes = {n.etudiant_id: n for n in Note.objects.filter(matiere=matiere)}
     erreurs, valeurs_postees, erreur_motif = {}, {}, ''
 
@@ -156,7 +196,7 @@ def notes_saisie(request, pk):
                 messages.success(request, f"Notes enregistrées : {creees} nouvelle(s), {modifiees} modifiée(s).")
             else:
                 messages.info(request, "Aucune modification.")
-            return redirect('notes_saisie', pk=matiere.pk)
+            return redirect(retour or request.get_full_path())
 
     lignes = []
     for insc in inscrits:
@@ -178,6 +218,9 @@ def notes_saisie(request, pk):
                                                     semestre_id=matiere.semestre_id).select_related('par').first(),
         'erreurs': bool(erreurs), 'erreur_motif': erreur_motif, 'motif': request.POST.get('motif', ''),
         'nb_notes': nb_notes, 'regles': regles(), 'actif': 'notes_saisie',
+        'seul': seul, 'seul_etudiant': Etudiant.objects.filter(pk=seul).first() if seul else None, 'retour': retour,
+        **_cascade(profil, {'session': matiere.session_id, 'programme': matiere.filiere_id,
+                            'licence': matiere.licence_id, 'semestre': matiere.semestre_id, 'matiere': matiere.pk}),
     })
 
 

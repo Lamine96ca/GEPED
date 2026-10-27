@@ -1286,6 +1286,56 @@ class GpedTests(TestCase):
         h = NoteHistorique.objects.filter(apres_deliberation=True).get()
         self.assertEqual((h.motif, h.apres['examen']), ('PV du jury', 10))
 
+    def test_saisie_cascade_et_un_seul_etudiant(self):
+        from urllib.parse import quote
+        from .models import Note
+        s1, algo, anglais = self._preparer_notes()
+        e0, e1 = Etudiant.objects.get(matricule='M0'), Etudiant.objects.get(matricule='M1')
+        self.connecter('info')
+        # Cascade : licence proposée une fois le programme choisi, matières une fois le semestre choisi
+        base = reverse('notes_matieres')
+        r = self.client.get(base, {'session': self.session.pk, 'programme': self.info.pk})
+        self.assertEqual([l.pk for l in r.context['c_licences']], [self.licence.pk])
+        self.assertEqual(r.context['c_matieres'], [])
+        r = self.client.get(base, {'session': self.session.pk, 'programme': self.info.pk, 'licence': self.licence.pk,
+                                   'semestre': s1.pk})
+        self.assertEqual([m.nom for m in r.context['c_matieres']], ['Algorithmique', 'Anglais'])
+        self.assertContains(r, f'data-url="{reverse("notes_saisie", args=[algo.pk])}"')
+        # Programme d'un autre service ou licence sans matière : choix vidés
+        r = self.client.get(base, {'programme': self.gc.pk, 'licence': self.l2.pk})
+        self.assertEqual((r.context['cascade']['programme'], r.context['cascade']['licence']), (self.info.pk, None))
+        # Sans JavaScript : la matière choisie ouvre la saisie (seulement une matière visible)
+        self.assertRedirects(self.client.get(base, {'matiere': algo.pk}), reverse('notes_saisie', args=[algo.pk]))
+        gc = self._matiere('Topographie', self.gc, s1)
+        self.assertEqual(self.client.get(base, {'matiere': gc.pk}).status_code, 200)
+        # La grille montre la cascade préremplie
+        r = self.client.get(reverse('notes_saisie', args=[algo.pk]))
+        self.assertEqual(r.context['cascade']['matiere'], algo.pk)
+        self.assertContains(r, 'id="cascade-matiere"')
+
+        # Crayon de la liste des notes : seulement cet étudiant, puis retour à la liste
+        Note.objects.create(etudiant=e0, matiere=algo, examen=6)
+        Note.objects.create(etudiant=e1, matiere=algo, examen=7)
+        liste = reverse('notes_liste') + '?session=' + str(self.session.pk) + '&page=1'
+        r = self.client.get(liste)
+        lien = f'{reverse("notes_saisie", args=[algo.pk])}?etudiant={e0.pk}&amp;retour={quote(liste, safe="")}'
+        self.assertContains(r, lien)
+        url = f'{reverse("notes_saisie", args=[algo.pk])}?etudiant={e0.pk}&retour={quote(liste, safe="")}'
+        r = self.client.get(url)
+        self.assertEqual([l['etudiant'].pk for l in r.context['lignes']], [e0.pk])
+        self.assertContains(r, 'Modification de la note de')
+        self.assertNotContains(r, f'examen_{e1.pk}')
+        # Saisie d'une nouvelle note (Anglais, pas de justificatif) : retour à la liste
+        r = self.client.post(f'{reverse("notes_saisie", args=[anglais.pk])}?etudiant={e1.pk}&retour={quote(liste, safe="")}',
+                             {f'examen_{e1.pk}': '8', f'examen_{e0.pk}': '2'})
+        self.assertRedirects(r, liste, fetch_redirect_response=False)
+        self.assertEqual(list(Note.objects.filter(matiere=anglais).values_list('etudiant_id', flat=True)), [e1.pk])
+        # Adresse de retour extérieure ignorée : on reste sur la saisie
+        r = self.client.post(f'{reverse("notes_saisie", args=[anglais.pk])}?etudiant={e1.pk}&retour=https://pirate.example/',
+                             {f'examen_{e1.pk}': '8'})
+        self.assertRedirects(r, f'{reverse("notes_saisie", args=[anglais.pk])}?etudiant={e1.pk}&retour=https://pirate.example/',
+                             fetch_redirect_response=False)
+
     def test_notes_annee_ecoulee_reservees_aux_chefs(self):
         from .models import Matiere, Note, Personnel
         s1, _ = self._semestres()

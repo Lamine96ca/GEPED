@@ -1,0 +1,61 @@
+{# Choix de la matière en cascade : session → programme → licence → semestre → matière (saisie des notes). #}
+<form method="get" action="{% url 'notes_matieres' %}" class="barre-filtres border-bottom" id="cascade-matiere">
+  <div class="row g-2 align-items-end">
+    <div class="col-6 col-md-4 col-lg-2">
+      <label class="form-label small text-secondary mb-1" for="c-session">Session</label>
+      <select id="c-session" name="session" class="form-select" data-niveau="1">
+        <option value="">Toutes</option>
+        {% for s in c_sessions %}<option value="{{ s.pk }}" {% if cascade.session == s.pk %}selected{% endif %}>{{ s.annee }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-6 col-md-4 col-lg-3">
+      <label class="form-label small text-secondary mb-1" for="c-programme">Programme</label>
+      <select id="c-programme" name="programme" class="form-select" data-niveau="2">
+        {% if c_programmes|length != 1 %}<option value="">Choisir…</option>{% endif %}
+        {% for p in c_programmes %}<option value="{{ p.pk }}" {% if cascade.programme == p.pk %}selected{% endif %}>{{ p.nom }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+      <label class="form-label small text-secondary mb-1" for="c-licence">Licence</label>
+      <select id="c-licence" name="licence" class="form-select" data-niveau="3" {% if not c_licences %}disabled{% endif %}>
+        <option value="">{% if cascade.programme %}{% if c_licences %}Choisir…{% else %}Aucune matière{% endif %}{% else %}Choisir le programme{% endif %}</option>
+        {% for l in c_licences %}<option value="{{ l.pk }}" {% if cascade.licence == l.pk %}selected{% endif %}>{{ l.nom }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+      <label class="form-label small text-secondary mb-1" for="c-semestre">Semestre</label>
+      <select id="c-semestre" name="semestre" class="form-select" data-niveau="4" {% if not c_semestres %}disabled{% endif %}>
+        <option value="">{% if c_semestres %}Choisir…{% else %}Choisir la licence{% endif %}</option>
+        {% for s in c_semestres %}<option value="{{ s.pk }}" {% if cascade.semestre == s.pk %}selected{% endif %}>{{ s.nom }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-12 col-md-8 col-lg-3">
+      <label class="form-label small text-secondary mb-1" for="c-matiere">Matière</label>
+      <div class="d-flex gap-2">
+        <select id="c-matiere" name="matiere" class="form-select" data-niveau="5" {% if not c_matieres %}disabled{% endif %}>
+          <option value="">{% if c_matieres %}Choisir la matière…{% else %}Choisir le semestre{% endif %}</option>
+          {% for m in c_matieres %}<option value="{{ m.pk }}" data-url="{% url 'notes_saisie' m.pk %}" {% if cascade.matiere == m.pk %}selected{% endif %}>{{ m.nom }}{% if m.code %} ({{ m.code }}){% endif %}{% if not cascade.session %} · {{ m.session.annee }}{% endif %}</option>{% endfor %}
+        </select>
+        <noscript><button class="btn btn-primary">Charger</button></noscript>
+      </div>
+    </div>
+  </div>
+</form>
+<script>
+  (function () {
+    // Un choix vide ceux du dessous puis recharge les listes ; la matière ouvre directement la saisie
+    var form = document.getElementById('cascade-matiere');
+    var listes = Array.prototype.slice.call(form.querySelectorAll('select[data-niveau]'));
+    listes.forEach(function (s, i) {
+      s.addEventListener('change', function () {
+        if (s.name === 'matiere') {
+          var o = s.selectedOptions[0];
+          if (o && o.dataset.url) window.location.href = o.dataset.url;
+          return;
+        }
+        listes.slice(i + 1).forEach(function (b) { b.removeAttribute('name'); });
+        form.submit();
+      });
+    });
+  })();
+</script>
