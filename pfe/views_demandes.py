@@ -17,7 +17,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
 from . import espace_etudiant as espace
-from .attestations import _nom_departement, _nom_programme
+from .attestations import _nom_departement
 from .models import DemandeEtudiant, Etudiant, Inscription, Matiere, Note, Resultat, Session
 from .photos import url_photo
 from .roles import scolarite_requise
@@ -138,7 +138,7 @@ def demande_detail(request, pk):
         'demande': demande, 'etudiant': e, 'changements': changements, 'photo_url': url_photo(e),
         'derniere': d, 'insc_session': insc_session,
         'departement': _nom_departement(d.filiere) if d and d.filiere else '',
-        'programme': _nom_programme(d.filiere) if d and d.filiere else '',
+        'programme': d.filiere.nom if d and d.filiere else '',   # nom réel : la description porte souvent le département
         'pieces': e.pieces.select_related('session'),
         'annees': notes_empilees(e) if demande.type == DemandeEtudiant.REINSCRIPTION else None,
         'seuil_rouge': SEUIL_ROUGE, 'actif': 'demandes',

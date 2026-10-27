@@ -1800,7 +1800,11 @@ class GpedTests(TestCase):
         insc = Inscription.objects.create(etudiant=p, session=self.session, licence=self.licence, filiere=self.info,
                                           promotion=self.p20)
         self.client.post(reverse('espace_accueil'), {'mode': 'inscription', 'i-ine': 'INESG1', 'i-pvbac': '321'})
+        # Programme : son vrai nom, jamais la description (qui porte souvent le nom du département)
+        Service.objects.filter(pk=self.info.pk).update(description='Génie Informatique', departement=self.dep)
         r = self.client.get(reverse('espace_dossier'))
+        self.assertContains(r, '<div class="lib">Programme</div><div class="val">Informatique</div>', html=False)
+        self.assertNotContains(r, 'Génie Informatique')
         self.assertContains(r, 'Certification et signature')
         self.assertContains(r, 'class="toile-signature"')
         base = {'telephone': '622 11 22 33', 'email': 'awa.sg@exemple.com', 'adresse': 'Petel/Mamou',

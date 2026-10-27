@@ -17,7 +17,7 @@ from django.views.decorators.http import require_POST
 
 from . import espace_etudiant as espace
 from . import pieces as dossier
-from .attestations import _nom_departement, _nom_programme
+from .attestations import _nom_departement
 from .forms import DossierEtudiantForm, IdentificationInscriptionForm, IdentificationReinscriptionForm
 from .models import DemandeEtudiant, Etudiant, Inscription, PieceDossier
 from .photos import url_photo
@@ -222,7 +222,7 @@ def espace_dossier(request):
         'photo_en_attente': bool(demande and demande.photo),
         'photo_requise': not ((demande and demande.photo) or url_photo(etudiant)),
         'departement': _nom_departement(insc.filiere) if insc.filiere else '',
-        'programme': _nom_programme(insc.filiere) if insc.filiere else '',
+        'programme': insc.filiere.nom if insc.filiere else '',        # nom réel : la description porte souvent le département
         'pieces': [(t, dict(PieceDossier.TYPES)[t], deposees.get(t), erreurs_pieces.get(t),
                     t in OBLIGATOIRES.get(type_demande, [])) for t in PIECES[type_demande]],
         'expire_minutes': max(1, int((a['expire'] - __import__('time').time()) // 60)),
