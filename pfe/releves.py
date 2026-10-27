@@ -165,7 +165,7 @@ def releve_existant(type_, etudiant, filiere, session=None, licence=None, semest
 
 def infos_publiques_releve(releve):
     """Page publique (QR) : titre et informations IMPRIMÉES sur le relevé, pour comparaison."""
-    from .attestations import _nom_departement, _nom_programme
+    from .attestations import _nom_departement
     c = contenu(releve)
     e = releve.etudiant
     if releve.type == ReleveNote.SEMESTRE:
@@ -175,7 +175,7 @@ def infos_publiques_releve(releve):
     else:
         titre = "Extrait du livret universitaire"
     infos = [('Étudiant(e)', f"{e.prenom.upper()} {e.nom.upper()}"), ('Matricule', e.matricule or '—'),
-             ('Département', _nom_departement(releve.filiere)), ('Programme', _nom_programme(releve.filiere))]
+             ('Département', _nom_departement(releve.filiere)), ('Programme', releve.filiere.nom)]
     if c.get('session'):
         infos.append(('Année universitaire', c['session']))
     if releve.type == ReleveNote.EXTRAIT:

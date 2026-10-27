@@ -19,7 +19,7 @@ from reportlab.lib.utils import ImageReader
 from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.pdfgen.canvas import Canvas
 
-from .attestations import _image, _nom_departement, _nom_programme, signature_disponible
+from .attestations import _image, _nom_departement, signature_disponible
 from .entete import dessiner_entete
 
 LARGEUR, HAUTEUR = A4
@@ -80,7 +80,7 @@ def _entete(c, releve, contenu, url_verification):
         c.setFillColorRGB(0, 0, 0)
     # Identité
     e = releve.etudiant
-    programme = _nom_programme(releve.filiere)
+    programme = releve.filiere.nom          # nom réel : la description porte souvent le département
     lignes = [('Prénoms et Nom :', f"{e.prenom.upper()} {e.nom.upper()}"), ('Matricule :', e.matricule or '—')]
     if e.ine:
         lignes.append(('INE :', e.ine))
