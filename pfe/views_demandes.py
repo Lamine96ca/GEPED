@@ -193,6 +193,20 @@ def demande_photo(request, pk):
     return reponse
 
 
+@login_required
+@scolarite_requise
+def demande_signature(request, pk):
+    """Signature de l'étudiant (image privée), pour la fiche de la demande."""
+    from .models import stockage_prive
+    demande = get_object_or_404(DemandeEtudiant, pk=pk)
+    if not demande.signature:
+        raise Http404
+    reponse = FileResponse(stockage_prive().open(demande.signature.name, 'rb'), content_type='image/png')
+    reponse['Cache-Control'] = 'private, no-store'
+    reponse['X-Content-Type-Options'] = 'nosniff'
+    return reponse
+
+
 def nb_demandes_en_attente():
     session = espace.session_cible()
     if not session:

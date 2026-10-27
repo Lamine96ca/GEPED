@@ -31,6 +31,19 @@ def photo_jpeg(nom='moi.jpg'):
     return SimpleUploadedFile(nom, flux.getvalue(), 'image/jpeg')
 
 
+def signer(vide=False):
+    """Certification + signature dessinée (data URL PNG, comme le cadre de signature de l'espace)."""
+    import base64
+    from PIL import Image, ImageDraw
+    img = Image.new('RGBA', (600, 180), (255, 255, 255, 0))
+    if not vide:
+        d = ImageDraw.Draw(img)
+        d.line([(40, 120), (120, 40), (200, 130), (300, 50), (420, 120), (540, 60)], fill=(17, 24, 39, 255), width=5)
+    flux = io.BytesIO()
+    img.save(flux, 'PNG')
+    return {'certifie': 'on', 'signature': 'data:image/png;base64,' + base64.b64encode(flux.getvalue()).decode()}
+
+
 class GpedTests(TestCase):
     @classmethod
     def setUpTestData(cls):
@@ -1413,7 +1426,7 @@ class GpedTests(TestCase):
             'tuteur': 'Mariam CAMARA', 'contact_de_tuteur': '+224 622 11 22 33'})
         self.assertContains(r, 'différent de votre propre numéro')
         complet = {'telephone': '622 11 22 33', 'email': 'awa.bah@exemple.com', 'adresse': '  Petel /Mamou ',
-                   'tuteur': 'Mariam CAMARA', 'contact_de_tuteur': '628 99 88 77'}
+                   'tuteur': 'Mariam CAMARA', 'contact_de_tuteur': '628 99 88 77', **signer()}
         # Photo obligatoire (l'étudiant n'en a pas encore) : refusé sans photo
         r = self.client.post(reverse('espace_dossier'), complet)
         self.assertContains(r, 'elle est obligatoire')
@@ -1442,7 +1455,7 @@ class GpedTests(TestCase):
         Image.new('RGB', (900, 1200), (180, 150, 120)).save(img, 'JPEG')
         self.client.post(reverse('espace_dossier'), {'telephone': '622 11 22 33', 'email': 'awa.bah@exemple.com',
                                                      'adresse': 'Petel/Mamou', 'tuteur': 'Mariam CAMARA',
-                                                     'contact_de_tuteur': '628 99 88 77',
+                                                     'contact_de_tuteur': '628 99 88 77', **signer(),
                                                      'photo': SimpleUploadedFile('moi.jpg', img.getvalue(), 'image/jpeg')})
         r = self.client.get(reverse('espace_dossier'))
         self.assertContains(r, reverse('espace_photo'))
@@ -1512,14 +1525,14 @@ class GpedTests(TestCase):
         # Relevé de notes de la dernière année : obligatoire pour une réinscription
         sans_releve = {'telephone': '622 00 00 01', 'email': 'ali.sow@exemple.com', 'adresse': 'Horé Fello/Mamou',
                        'tuteur': 'Mamadou SOW', 'contact_de_tuteur': '664 00 00 02', 'licence': self.l3.pk,
-                       'boursier': 'payante', 'type_formation': 'continue', 'photo': photo_jpeg()}
+                       'boursier': 'payante', 'type_formation': 'continue', 'photo': photo_jpeg(), **signer()}
         r = self.client.post(reverse('espace_dossier'), sans_releve)
         self.assertContains(r, 'Obligatoire : scannez ou envoyez cette pièce.')
         self.assertFalse(DemandeEtudiant.objects.filter(type='reinscription').exists())
         r = self.client.post(reverse('espace_dossier'), {
             'telephone': '622 00 00 01', 'email': 'ali.sow@exemple.com', 'adresse': 'Horé Fello/Mamou',
             'tuteur': 'Mamadou SOW', 'contact_de_tuteur': '664 00 00 02', 'licence': self.l3.pk,
-            'boursier': 'payante', 'type_formation': 'continue',
+            'boursier': 'payante', 'type_formation': 'continue', **signer(),
             'photo': photo_jpeg(), 'piece_releve_notes': SimpleUploadedFile('releve.pdf', b'%PDF-1.4 releve')})
         self.assertRedirects(r, reverse('espace_confirmation'))
         d = DemandeEtudiant.objects.get(type='reinscription')
@@ -1727,6 +1740,74 @@ class GpedTests(TestCase):
                            pdf_enseignant=SimpleUploadedFile('f.pdf', b'%PDF-1.4 f'), simulation=True)
         self.assertIn("faites inscrire l'étudiant par la scolarité", r.erreurs[0][1])
         self.assertEqual(r.inscriptions_creees, [])
+
+    def test_espace_etudiant_signature_obligatoire(self):
+        from .models import DemandeEtudiant
+        self._espace()
+        Session.objects.filter(pk=self.session.pk).update(inscriptions_ouvertes=True)
+        p = Etudiant.objects.create(matricule='SG1', prenom='Awa', nom='BAH', email='sg1@etudiant.gped', ine='INESG1',
+                                    pvbac='321', preinscrit=True)
+        insc = Inscription.objects.create(etudiant=p, session=self.session, licence=self.licence, filiere=self.info,
+                                          promotion=self.p20)
+        self.client.post(reverse('espace_accueil'), {'mode': 'inscription', 'i-ine': 'INESG1', 'i-pvbac': '321'})
+        r = self.client.get(reverse('espace_dossier'))
+        self.assertContains(r, 'Certification et signature')
+        self.assertContains(r, 'class="toile-signature"')
+        base = {'telephone': '622 11 22 33', 'email': 'awa.sg@exemple.com', 'adresse': 'Petel/Mamou',
+                'tuteur': 'Mariam CAMARA', 'contact_de_tuteur': '628 99 88 77'}
+        pieces = lambda: {'photo': photo_jpeg(), 'piece_acte_naissance': SimpleUploadedFile('a.pdf', b'%PDF-1.4 a'),   # noqa: E731
+                          'piece_diplome_bac': SimpleUploadedFile('d.pdf', b'%PDF-1.4 d'),
+                          'piece_releve_bac': SimpleUploadedFile('r.pdf', b'%PDF-1.4 r')}
+        # Sans certification ni signature, puis signature vide ou falsifiée : refusé
+        r = self.client.post(reverse('espace_dossier'), {**base, **pieces()})
+        self.assertContains(r, 'Cochez la case pour certifier')
+        self.assertContains(r, 'Signez dans le cadre')
+        r = self.client.post(reverse('espace_dossier'), {**base, **pieces(), **signer(vide=True)})
+        self.assertContains(r, 'Signature trop courte ou vide')
+        r = self.client.post(reverse('espace_dossier'), {**base, **pieces(), 'certifie': 'on',
+                                                         'signature': 'data:image/png;base64,PHN2Zz4='})
+        self.assertContains(r, 'Signature illisible')
+        self.assertFalse(DemandeEtudiant.objects.exists())
+        # Signée : enregistrée (image, date, appareil, empreinte)
+        r = self.client.post(reverse('espace_dossier'), {**base, **pieces(), **signer()}, HTTP_USER_AGENT='Téléphone essai')
+        self.assertRedirects(r, reverse('espace_confirmation'))
+        d = DemandeEtudiant.objects.get()
+        self.assertTrue(d.signature.name.startswith('demandes/signatures/'))
+        self.assertEqual((d.signature_appareil, len(d.empreinte)), ('Téléphone essai', 64))
+        self.assertIsNotNone(d.signee_le)
+        # Retour sur la page : informations modifiables, récapitulatif, signature enregistrée affichée
+        r = self.client.get(reverse('espace_dossier'))
+        self.assertContains(r, 'value="628 99 88 77"')
+        self.assertContains(r, 'class="recap-demande')
+        self.assertContains(r, 'Signature enregistrée le')
+        self.assertEqual(self.client.get(reverse('espace_signature'))['Content-Type'], 'image/png')
+        # Demande envoyée avant la signature : « Signature : à ajouter », puis signée en la renvoyant
+        DemandeEtudiant.objects.update(signature='', signee_le=None)
+        r = self.client.get(reverse('espace_dossier'))
+        self.assertContains(r, 'Signature : à ajouter')
+        self.assertContains(r, "pas encore signée")
+        r = self.client.post(reverse('espace_dossier'), {**base, 'tuteur': 'Mamadou BAH', **signer()},
+                             HTTP_USER_AGENT='Téléphone essai')
+        self.assertRedirects(r, reverse('espace_confirmation'))           # photo et pièces déjà fournies
+        d.refresh_from_db()
+        self.assertTrue(d.signature)
+        self.assertEqual(d.contacts['tuteur'], 'Mamadou BAH')
+        # Scolarité : signature visible sur la demande ; fiche d'inscription PDF avec la signature
+        self.connecter('scol')
+        self.assertContains(self.client.get(reverse('demande_detail', args=[d.pk])), 'Signée le')
+        r = self.client.get(reverse('demande_signature', args=[d.pk]))
+        self.assertEqual((r.status_code, r['Content-Type']), (200, 'image/png'))
+        self.client.post(reverse('valider_preinscriptions'), {'ids': [insc.pk]})
+        from . import fiche_inscription
+        dessins = []
+        original = fiche_inscription._signature_etudiant
+        fiche_inscription._signature_etudiant = lambda c, i, x, y: (dessins.append(i.pk), original(c, i, x, y))
+        try:
+            r = self.client.get(reverse('inscription_fiche_pdf', args=[insc.pk]))
+        finally:
+            fiche_inscription._signature_etudiant = original
+        self.assertEqual((r.status_code, dessins), (200, [insc.pk]))
+        self.assertGreaterEqual(r.content.count(b'/Subtype /Image'), 1)
 
     def test_personnel_chef_seulement_scolarite_ou_departement(self):
         from .forms import PersonnelForm

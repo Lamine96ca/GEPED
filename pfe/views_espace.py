@@ -192,13 +192,28 @@ def espace_dossier(request):
                         f.seek(0)
                     dossier.enregistrer(etudiant, t, fichiers, par_etudiant=True,
                                         session=session if t == PieceDossier.RELEVE_NOTES else None)
+                _signer(request, demande, d['signature'])
             return redirect('espace_confirmation')
 
     # Pièces déjà dans le dossier (déposées par l'étudiant ou par la scolarité) : affichées « déposée »
     deposees = {p.type: p for p in etudiant.pieces.filter(type__in=PIECES[type_demande]).order_by('date')}
     if PieceDossier.RELEVE_NOTES in deposees and deposees[PieceDossier.RELEVE_NOTES].session_id != session.pk:
         del deposees[PieceDossier.RELEVE_NOTES]           # relevé d'une autre année : à redéposer
+    # Demande déjà envoyée (en attente ou refusée) : ce qui est fourni et ce qui reste à fournir
+    recapitulatif = []
+    if demande:
+        contacts = demande.contacts or {}
+        recapitulatif.append(('Coordonnées', all(contacts.get(c) for c in DemandeEtudiant.CHAMPS_CONTACTS)))
+        if reinscription:
+            recapitulatif.append((f"Niveau demandé : {demande.licence}" if demande.licence else 'Niveau demandé',
+                                  bool(demande.licence_id)))
+        recapitulatif.append(("Photo d'identité", bool(demande.photo) or bool(url_photo(etudiant))))
+        recapitulatif += [(dict(PieceDossier.TYPES)[t], t in deposees) for t in PIECES[type_demande]]
+        recapitulatif.append(('Signature', bool(demande.signature)))
     return render(request, 'pfe/espace/dossier.html', {
+        'recapitulatif': recapitulatif,
+        'signature_url': (f"{reverse('espace_signature')}?v={int(demande.signee_le.timestamp())}"
+                          if demande and demande.signature and demande.signee_le else None),
         'session': session, 'etudiant': etudiant, 'insc': insc, 'form': form, 'demande': demande,
         'reinscription': reinscription,
         # Photo visible par l'étudiant : la nouvelle en attente, sinon l'actuelle (servie par espace_photo)
@@ -212,6 +227,40 @@ def espace_dossier(request):
                     t in OBLIGATOIRES.get(type_demande, [])) for t in PIECES[type_demande]],
         'expire_minutes': max(1, int((a['expire'] - __import__('time').time()) // 60)),
     })
+
+
+def _empreinte(demande):
+    """SHA-256 de ce que l'étudiant a signé : identité, demande, coordonnées, photo et pièces du dossier."""
+    import hashlib
+    import json
+    e = demande.etudiant
+    pieces = sorted((p.type, p.fichier.name, p.taille) for p in e.pieces.filter(type__in=PIECES[demande.type]))
+    contenu = {
+        'etudiant': [e.pk, e.matricule, e.ine, e.prenom, e.nom], 'demande': [demande.type, demande.session_id],
+        'contacts': demande.contacts, 'niveau': demande.licence_id, 'bourse': demande.boursier,
+        'formation': demande.type_formation, 'photo': demande.photo.name if demande.photo else '', 'pieces': pieces,
+        'signee_le': demande.signee_le.isoformat(),
+    }
+    return hashlib.sha256(json.dumps(contenu, sort_keys=True, ensure_ascii=False).encode('utf-8')).hexdigest()
+
+
+def _signer(request, demande, png):
+    """Enregistre la signature (image privée), la date, l'appareil et l'empreinte des informations signées."""
+    from django.core.files.base import ContentFile
+    from django.utils import timezone
+    from .models import stockage_prive
+    stockage = stockage_prive()
+    if demande.signature:
+        stockage.delete(demande.signature.name)
+    demande.signature = stockage.save(
+        f"demandes/signatures/{timezone.now():%Y}/{demande.etudiant.matricule or demande.etudiant_id}_{demande.type}.png",
+        ContentFile(png))
+    demande.signee_le = timezone.now()
+    demande.signature_ip = (request.META.get('REMOTE_ADDR') or '')[:45]
+    demande.signature_appareil = (request.META.get('HTTP_USER_AGENT') or '')[:255]
+    demande.empreinte = _empreinte(demande)
+    demande.save(update_fields=['signature', 'signee_le', 'signature_ip', 'signature_appareil', 'empreinte',
+                                'date_maj'])
 
 
 @securise
@@ -252,6 +301,24 @@ def espace_photo(request):
     reponse = FileResponse(fichier, content_type='image/jpeg')
     reponse['Cache-Control'] = 'private, no-store'
     reponse['X-Content-Type-Options'] = 'nosniff'
+    return reponse
+
+
+@securise
+@never_cache
+def espace_signature(request):
+    """Signature déjà enregistrée avec la demande de l'étudiant identifié (sinon 404)."""
+    from django.http import FileResponse, Http404
+    from .models import stockage_prive
+    a = espace.acces(request)
+    if a is None:
+        raise Http404
+    demande = (DemandeEtudiant.objects.filter(etudiant_id=a['etudiant'], session=espace.session_cible(), type=a['type'])
+               .exclude(signature='').first())
+    if demande is None:
+        raise Http404
+    reponse = FileResponse(stockage_prive().open(demande.signature.name, 'rb'), content_type='image/png')
+    reponse['Cache-Control'] = 'private, no-store'
     return reponse
 
 

@@ -478,6 +478,13 @@ class DemandeEtudiant(models.Model):
     traitee_par = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
                                     verbose_name='Traitée par')
     motif_refus = models.TextField('Motif du refus', blank=True)
+    # Signature électronique simple de l'étudiant (dessinée), obligatoire à chaque envoi : image, date,
+    # appareil et empreinte des informations signées ; reprise sur la fiche d'inscription
+    signature = models.FileField('Signature', upload_to='demandes/signatures/%Y', storage=stockage_prive, blank=True)
+    signee_le = models.DateTimeField('Signée le', null=True, blank=True)
+    signature_ip = models.CharField('Adresse IP', max_length=45, blank=True)
+    signature_appareil = models.CharField('Appareil', max_length=255, blank=True)
+    empreinte = models.CharField('Empreinte des informations signées', max_length=64, blank=True)
 
     class Meta:
         ordering = ['-date_maj']

@@ -52,6 +52,21 @@
     </div></div>
 
     <div class="card carte-gped"><div class="card-body">
+      <div class="entete-carte"><span class="icone-carte"><i class="bi bi-pen"></i></span><div><h3>Certification et signature</h3><p>Signature électronique simple de l'étudiant</p></div></div>
+      {% if demande.signature %}
+        <img class="signature-demande mb-2" src="{% url 'demande_signature' demande.pk %}" alt="Signature de {{ etudiant.prenom }} {{ etudiant.nom }}">
+        <div class="small text-secondary">
+          <div><i class="bi bi-check2-square"></i> A certifié l'exactitude des informations et s'est engagé(e) à respecter le règlement intérieur.</div>
+          <div><i class="bi bi-clock"></i> Signée le {{ demande.signee_le|date:"d/m/Y à H:i:s" }} · adresse {{ demande.signature_ip|default:"—" }}</div>
+          <div class="text-truncate" title="{{ demande.signature_appareil }}"><i class="bi bi-phone"></i> {{ demande.signature_appareil|default:"—" }}</div>
+          <div class="text-truncate" title="Empreinte SHA-256 des informations signées"><i class="bi bi-fingerprint"></i> {{ demande.empreinte|default:"—" }}</div>
+        </div>
+      {% else %}
+        <div class="small text-secondary"><i class="bi bi-info-circle"></i> Pas de signature (demande déposée avant la signature en ligne).</div>
+      {% endif %}
+    </div></div>
+
+    <div class="card carte-gped"><div class="card-body">
       <div class="entete-carte"><span class="icone-carte"><i class="bi bi-folder2-open"></i></span><div><h3>Pièces du dossier</h3><p>Déposées par l'étudiant ou la scolarité</p></div></div>
       <div class="liste-pieces">
         {% for p in pieces %}

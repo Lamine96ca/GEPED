@@ -14,6 +14,7 @@ urlpatterns = [
     path('scolarite/demandes/', views_demandes.demandes_liste, name='demandes_liste'),
     path('scolarite/demandes/<int:pk>/', views_demandes.demande_detail, name='demande_detail'),
     path('scolarite/demandes/<int:pk>/photo/', views_demandes.demande_photo, name='demande_photo'),
+    path('scolarite/demandes/<int:pk>/signature/', views_demandes.demande_signature, name='demande_signature'),
     path('scolarite/pieces/<int:pk>/supprimer/', views.piece_supprimer, name='piece_supprimer'),
     path('mon-compte/photo/', views.mon_compte_photo, name='mon_compte_photo'),
     path('preinscriptions/', views.preinscriptions_liste, name='preinscriptions_liste'),

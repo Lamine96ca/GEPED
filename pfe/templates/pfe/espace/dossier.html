@@ -40,8 +40,15 @@
     {% if demande %}
       <div class="alert {% if demande.statut == 'refusee' %}alert-danger{% else %}alert-info{% endif %} py-2 small">
         {% if demande.statut == 'refusee' %}<i class="bi bi-x-octagon"></i> Votre demande a été <strong>refusée</strong>{% if demande.motif_refus %} : {{ demande.motif_refus }}{% endif %}. Vous pouvez la corriger et la renvoyer.
-        {% else %}<i class="bi bi-hourglass-split"></i> Demande déposée le {{ demande.date_depot|date:"d/m/Y à H:i" }}, <strong>en attente</strong> de validation par la scolarité. Vous pouvez encore la modifier.{% endif %}
+        {% else %}<i class="bi bi-hourglass-split"></i> Demande déposée le {{ demande.date_depot|date:"d/m/Y à H:i" }}{% if demande.date_maj > demande.date_depot %} (mise à jour le {{ demande.date_maj|date:"d/m/Y à H:i" }}){% endif %}, <strong>en attente</strong> de validation par la scolarité. Tant qu'elle n'est pas validée, vous pouvez <strong>modifier vos informations</strong> ci-dessous, puis signer et renvoyer.{% endif %}
       </div>
+      {% if recapitulatif %}
+        <div class="recap-demande mb-3">
+          {% for libelle, fourni in recapitulatif %}
+            <span class="{% if fourni %}fourni{% else %}manque{% endif %}"><i class="bi {% if fourni %}bi-check-circle-fill{% else %}bi-exclamation-circle-fill{% endif %}"></i> {{ libelle }}{% if not fourni %} : à ajouter{% endif %}</span>
+          {% endfor %}
+        </div>
+      {% endif %}
     {% endif %}
 
     <h2 class="h6 text-uppercase text-secondary mt-2"><i class="bi bi-lock"></i> Vos informations <span class="fw-normal text-lowercase">(modifiables seulement par la scolarité)</span></h2>
@@ -103,6 +110,34 @@
     </div>
   </section>
 
+  <section class="verif-carte mb-3">
+    <h2 class="h6 text-uppercase text-secondary"><i class="bi bi-pen"></i> Certification et signature <span class="fw-normal text-lowercase">(<span class="text-danger">*</span> obligatoires)</span></h2>
+    <label class="option-import mb-3" for="{{ form.certifie.id_for_label }}">
+      {{ form.certifie }}
+      <div><strong>Je certifie</strong><span>{{ form.certifie.label }}</span></div>
+    </label>
+    {% for err in form.certifie.errors %}<div class="invalid-feedback d-block mb-2">{{ err }}</div>{% endfor %}
+    <div class="cadre-signature" data-signature>
+      <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+        <span class="small fw-semibold" style="color:var(--encre)">Votre signature <span class="text-danger">*</span></span>
+        <span class="small text-secondary me-auto" data-signature-etat>Signez au doigt ou à la souris dans le cadre blanc.</span>
+        <button type="button" class="btn btn-sm btn-light" data-signature-effacer><i class="bi bi-eraser"></i> Effacer</button>
+      </div>
+      <canvas class="toile-signature" aria-label="Cadre de signature"></canvas>
+      <div class="small text-secondary mt-1"><i class="bi bi-shield-check"></i> Votre signature est enregistrée avec la date et l'heure, et reprise sur votre fiche d'inscription.</div>
+      {% if signature_url %}
+        <div class="d-flex flex-wrap align-items-center gap-2 mt-2 small text-secondary">
+          <img class="signature-demande" src="{{ signature_url }}" alt="Votre signature enregistrée">
+          <span>Signature enregistrée le {{ demande.signee_le|date:"d/m/Y à H:i" }}. Pour renvoyer votre demande (même modifiée), <strong>signez de nouveau</strong> ci-dessus.</span>
+        </div>
+      {% elif demande %}
+        <div class="small text-danger mt-1"><i class="bi bi-exclamation-circle"></i> Votre demande n'est pas encore signée : signez ci-dessus puis renvoyez-la.</div>
+      {% endif %}
+    </div>
+    {{ form.signature }}
+    {% for err in form.signature.errors %}<div class="invalid-feedback d-block">{{ err }}</div>{% endfor %}
+  </section>
+
   {% if form.errors %}<div class="alert alert-danger py-2"><i class="bi bi-exclamation-circle"></i> Corrigez les champs signalés.</div>{% endif %}
   <div class="d-flex flex-wrap gap-2 align-items-center">
     <button class="btn btn-primary btn-lg"><i class="bi bi-send"></i> {% if demande %}Mettre à jour ma demande{% else %}Envoyer ma demande{% endif %}</button>
@@ -115,4 +150,5 @@
 {% include 'pfe/_modal_photo.html' %}
 {% include 'pfe/_modal_recadrage.html' %}
 <script src="{% static 'pfe/js/gped-pieces.js' %}?v={{ version_statique }}" defer></script>
+<script src="{% static 'pfe/js/gped-signature.js' %}?v={{ version_statique }}" defer></script>
 {% endblock %}

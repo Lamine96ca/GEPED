@@ -88,6 +88,31 @@ def _case(c, x, y, libelle, largeur_libelle, cochee=False):
         c.setLineJoin(0)
 
 
+def _signature_etudiant(c, inscription, x, y_bas):
+    """
+    Signature déposée par l'étudiant avec sa demande en ligne de la session (espace étudiant), dans la
+    case « L'ÉTUDIANT(E) » : image (150 × 55 pt au plus) et date de signature. Rien sinon (signature à la main).
+    """
+    from .models import DemandeEtudiant, stockage_prive
+    demande = (DemandeEtudiant.objects.filter(etudiant_id=inscription.etudiant_id, session_id=inscription.session_id)
+               .exclude(signature='').order_by('-signee_le').first())
+    if demande is None:
+        return
+    try:
+        with stockage_prive().open(demande.signature.name, 'rb') as f:
+            image = ImageReader(io.BytesIO(f.read()))
+    except (OSError, ValueError):
+        return                                    # fichier absent : la case reste à signer à la main
+    largeur, hauteur = image.getSize()
+    echelle = min(150 / largeur, 55 / hauteur)
+    c.drawImage(image, x, y_bas, largeur * echelle, hauteur * echelle)
+    c.setFont('Helvetica', 6.5)
+    c.setFillColorRGB(0.45, 0.45, 0.45)
+    from django.utils import timezone
+    c.drawString(x, y_bas - 9, f"Signé en ligne le {timezone.localtime(demande.signee_le):%d/%m/%Y à %H:%M}")
+    c.setFillColorRGB(0, 0, 0)
+
+
 def pdf_fiche_inscription(inscription):
     e, conf = inscription.etudiant, settings.GPED_ATTESTATION
     flux = io.BytesIO()
@@ -183,6 +208,7 @@ def pdf_fiche_inscription(inscription):
     c.setFont('Helvetica-BoldOblique', 9.5)
     c.drawString(G + 10, y, "L'ÉTUDIANT(E)")
     c.drawRightString(D - 10, y, conf['fonction'].upper())
+    _signature_etudiant(c, inscription, G + 10, y - 66)
     c.setFont('Helvetica', 9.5)
     c.drawRightString(D - 10, y - 70, conf['signataire'])
 

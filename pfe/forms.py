@@ -1169,6 +1169,13 @@ class DossierEtudiantForm(BootstrapMixin, forms.Form):
                                  widget=forms.RadioSelect(attrs={'class': 'btn-check'}))
     type_formation = forms.ChoiceField(label='Type de formation', choices=Etudiant.TYPE_FORMATION_CHOICES,
                                        required=False, widget=forms.RadioSelect(attrs={'class': 'btn-check'}))
+    # Signature électronique simple : certification + signature dessinée, obligatoires à chaque envoi
+    certifie = forms.BooleanField(
+        label="Je certifie l'exactitude des informations fournies et m'engage à respecter le règlement intérieur "
+              "de l'Institut Supérieur de Technologie de Mamou.",
+        error_messages={'required': "Cochez la case pour certifier vos informations."})
+    signature = forms.CharField(widget=forms.HiddenInput(attrs={'data-signature-valeur': ''}), max_length=400_000,
+                                error_messages={'required': "Signez dans le cadre avant d'envoyer votre demande."})
 
     def __init__(self, *args, reinscription=False, niveaux=(), etudiant=None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -1224,3 +1231,54 @@ class DossierEtudiantForm(BootstrapMixin, forms.Form):
             except ValidationError as e:
                 raise forms.ValidationError(e.messages)
         return None
+
+    def clean_signature(self):
+        """Signature dessinée (image PNG en data URL) → PNG noir et blanc, rognée, légère ; refusée si vide."""
+        try:
+            return preparer_signature(self.cleaned_data['signature'])
+        except ValueError as e:
+            raise forms.ValidationError(str(e))
+
+
+def preparer_signature(data_url):
+    """
+    « data:image/png;base64,… » envoyée par le cadre de signature → octets PNG en niveaux de gris,
+    rognés autour du tracé (fond blanc). Lève ValueError si l'image est illisible, trop grande ou vide.
+    """
+    import base64
+    import binascii
+    import io as _io
+    from PIL import Image, ImageOps, UnidentifiedImageError
+    entete, _, donnees = (data_url or '').partition(',')
+    if entete != 'data:image/png;base64' or not donnees:
+        raise ValueError("Signature illisible : signez de nouveau dans le cadre.")
+    try:
+        brut = base64.b64decode(donnees, validate=True)
+    except (binascii.Error, ValueError):
+        raise ValueError("Signature illisible : signez de nouveau dans le cadre.")
+    if len(brut) > 300 * 1024:
+        raise ValueError("Signature trop lourde : signez de nouveau dans le cadre.")
+    try:
+        img = Image.open(_io.BytesIO(brut))
+        if img.width * img.height > 4_000_000:
+            raise ValueError("Signature trop grande : signez de nouveau dans le cadre.")
+        img.load()
+    except (UnidentifiedImageError, OSError, Image.DecompressionBombError):
+        raise ValueError("Signature illisible : signez de nouveau dans le cadre.")
+    # Fond blanc sous la transparence, niveaux de gris, encre = pixels sombres
+    fond = Image.new('RGB', img.size, (255, 255, 255))
+    fond.paste(img.convert('RGBA'), mask=img.convert('RGBA').split()[-1])
+    gris = fond.convert('L')
+    encre = gris.point(lambda v: 255 if v < 160 else 0)
+    zone = encre.getbbox()
+    nb_points = sum(encre.histogram()[255:])
+    if not zone or nb_points < 120 or (zone[2] - zone[0]) < 40:
+        raise ValueError("Signature trop courte ou vide : signez lisiblement dans le cadre.")
+    marge = 8
+    zone = (max(0, zone[0] - marge), max(0, zone[1] - marge), min(gris.width, zone[2] + marge),
+            min(gris.height, zone[3] + marge))
+    signee = ImageOps.autocontrast(gris.crop(zone))
+    signee.thumbnail((900, 300))
+    flux = _io.BytesIO()
+    signee.save(flux, 'PNG', optimize=True)
+    return flux.getvalue()
