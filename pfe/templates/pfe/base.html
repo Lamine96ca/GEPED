@@ -84,8 +84,10 @@
       </div>
 
       <!-- 2. Attestations -->
-      {% if profil.est_scolarite %}
+      {% if profil.gere_attestations %}
         <a class="nav-link {% if actif == 'attestations' %}active{% endif %}" href="{% url 'attestations' %}"><i class="bi bi-file-earmark-text"></i> Attestations</a>
+      {% endif %}
+      {% if profil.est_scolarite %}
         <a class="nav-link {% if actif == 'releves' %}active{% endif %}" href="{% url 'releves' %}"><i class="bi bi-file-earmark-spreadsheet"></i> Relevés de notes</a>
         {% if user.is_superuser %}
           <a class="nav-link {% if actif == 'personnel' %}active{% endif %}" href="{% url 'personnel_liste' %}"><i class="bi bi-person-badge"></i> Personnel</a>

@@ -30,8 +30,8 @@ from .importer import OBLIGATOIRES, importer_etudiants, modele_import_xlsx
 from .models import (Attestation, Etudiant, Inscription, Licence, Promotion, Promotion_Licence_Session, Semestre,
                      Service, Session)
 from .photos import compresser, enregistrer_photo, retirer_photo, url_photo
-from .roles import (acces_requis, gestion_matieres_requise, get_profil, inscriptions_visibles, matieres_visibles,
-                    programmes_du_profil, scolarite_requise)
+from .roles import (acces_requis, attestations_requise, attestations_visibles, gestion_matieres_requise, get_profil,
+                    inscriptions_visibles, matieres_visibles, programmes_du_profil, scolarite_requise)
 
 TAILLES_PAGE = (25, 50, 100, 250, 500)
 
@@ -914,12 +914,16 @@ COMPLEMENT_ATTESTATION = {'orientation': "d'orientation", 'inscription': "d'insc
 
 
 @login_required
-@scolarite_requise
+@attestations_requise
 def attestations(request, type_url='inscription'):
     """
     Attestations d'un type : formulaire (ajout ou modification, bouton « Enregistrer »),
     aide à la recherche d'un étudiant, et liste des attestations enregistrées.
+    Scolarité : toutes ; directeur de Master : seulement celles des étudiants de ses programmes de Master.
     """
+    profil = get_profil(request)
+    masters = None if profil.est_scolarite else profil.masters_diriges      # None : aucune limite
+    visibles = attestations_visibles(profil)
     types = {t[0]: t for t in TYPES_ATTESTATION}
     if type_url not in types:
         raise Http404
@@ -928,11 +932,16 @@ def attestations(request, type_url='inscription'):
     # Formulaire : ajout, ou modification avec ?modifier=<id>
     instance = None
     if disponible and request.GET.get('modifier'):
-        instance = get_object_or_404(Attestation, pk=request.GET['modifier'], type=code)
+        instance = get_object_or_404(visibles, pk=request.GET['modifier'], type=code)
     form = None
     if disponible:
         if request.method == 'POST':
             form = FORMULAIRES_ATTESTATION[code](request.POST, instance=instance)
+            if form.is_valid() and masters is not None:
+                origine = getattr(form, 'soutenance', None) or getattr(form, 'inscription', None)
+                if origine is None or origine.filiere_id not in masters:
+                    form.add_error(None, "Cet étudiant n'est pas inscrit dans un Master que vous dirigez : "
+                                         "adressez-vous à la scolarité.")
             if form.is_valid():
                 attestation = form.save(session_actuelle=liste.session_par_defaut())
                 if getattr(form, 'manquants', None):
@@ -953,6 +962,8 @@ def attestations(request, type_url='inscription'):
     if disponible and q_etudiant and code == Attestation.SOUTENANCE:
         from .models import Soutenance
         qs = Soutenance.objects.select_related('etudiant', 'session', 'filiere')
+        if masters is not None:
+            qs = qs.filter(filiere_id__in=masters)
         for terme in q_etudiant.split()[:4]:
             qs = qs.filter(Q(etudiant__matricule__icontains=terme) | Q(etudiant__nom__icontains=terme)
                            | Q(etudiant__prenom__icontains=terme) | Q(etudiant__ine__icontains=terme))
@@ -963,6 +974,8 @@ def attestations(request, type_url='inscription'):
             c.attestation = existantes.get((c.etudiant_id, c.cycle))
     elif disponible and q_etudiant:
         qs = Inscription.objects.select_related('etudiant', 'licence', 'session', 'filiere')
+        if masters is not None:
+            qs = qs.filter(filiere_id__in=masters)
         for terme in q_etudiant.split()[:4]:
             qs = qs.filter(Q(etudiant__matricule__icontains=terme) | Q(etudiant__nom__icontains=terme)
                            | Q(etudiant__prenom__icontains=terme) | Q(etudiant__ine__icontains=terme))
@@ -988,7 +1001,7 @@ def attestations(request, type_url='inscription'):
 
     # Attestations enregistrées
     q = (request.GET.get('q') or '').strip()
-    enregistrees = Attestation.objects.filter(type=code).select_related('etudiant', 'licence', 'session', 'filiere')
+    enregistrees = visibles.filter(type=code).select_related('etudiant', 'licence', 'session', 'filiere')
     if q:
         enregistrees = enregistrees.filter(Q(num_ref__icontains=q) | Q(etudiant__matricule__icontains=q)
                                            | Q(etudiant__nom__icontains=q) | Q(etudiant__prenom__icontains=q))
@@ -996,7 +1009,7 @@ def attestations(request, type_url='inscription'):
 
     imprimer = None
     if request.GET.get('imprimer', '').isdigit():
-        imprimer = Attestation.objects.filter(pk=request.GET['imprimer'], type=code).first()
+        imprimer = visibles.filter(pk=request.GET['imprimer'], type=code).first()
 
     return render(request, 'pfe/attestations.html', {
         'types': TYPES_ATTESTATION, 'type_url': type_url, 'libelle': libelle, 'disponible': disponible,
@@ -1009,11 +1022,11 @@ def attestations(request, type_url='inscription'):
 
 
 @login_required
-@scolarite_requise
+@attestations_requise
 @require_POST
 def attestation_supprimer(request, pk):
     """Supprime une attestation. Son numéro n'est jamais réattribué (numérotation continue)."""
-    attestation = get_object_or_404(Attestation, pk=pk)
+    attestation = get_object_or_404(attestations_visibles(get_profil(request)), pk=pk)
     type_url = next((t[0] for t in TYPES_ATTESTATION if t[1] == attestation.type), 'inscription')
     num = attestation.num_ref
     attestation.delete()
@@ -1022,10 +1035,10 @@ def attestation_supprimer(request, pk):
 
 
 @login_required
-@scolarite_requise
+@attestations_requise
 def attestation_pdf(request, pk):
     attestation = get_object_or_404(
-        Attestation.objects.select_related('etudiant', 'licence', 'session', 'filiere'), pk=pk)
+        attestations_visibles(get_profil(request)).select_related('etudiant', 'licence', 'session', 'filiere'), pk=pk)
     if attestation.type not in CONTENUS_ATTESTATION:
         raise Http404("Ce type d'attestation n'est pas encore disponible.")
     # Fin d'études : cachet et signature numérisés UNIQUEMENT pour un super utilisateur qui le demande.

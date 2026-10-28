@@ -57,6 +57,18 @@ class Profil:
             return set()
         return {s.id for s in self.tous_services if s.programme and s.departement_id == s.id}
 
+    @property
+    def masters_diriges(self):
+        """Programmes de Master dont le profil est chef (directeur du Master) : il gère leurs attestations."""
+        if not self.est_chef:
+            return set()
+        return {s.id for s in self.tous_services if s.programme and (s.cycle or '') == 'Master'}
+
+    @property
+    def gere_attestations(self):
+        """Scolarité (toutes les attestations), ou directeur de Master (celles de ses programmes)."""
+        return self.est_scolarite or bool(self.masters_diriges)
+
     def est_chef_de(self, filiere):
         """Chef pour ce programme : chef de la scolarité, ou chef du département du programme."""
         return self.est_chef_scolarite or bool(filiere and filiere.departement_effectif.id in self.departements_diriges)
@@ -172,6 +184,25 @@ def acces_requis(vue):
             raise PermissionDenied("Votre compte n'est rattaché à aucun service.")
         return vue(request, *args, **kwargs)
     return wrapper
+
+
+def attestations_requise(vue):
+    """Scolarité, ou directeur d'un Master (les chefs de département n'y ont pas accès)."""
+    @wraps(vue)
+    def wrapper(request, *args, **kwargs):
+        if not get_profil(request).gere_attestations:
+            raise PermissionDenied("Attestations réservées à la scolarité et aux directeurs de Master.")
+        return vue(request, *args, **kwargs)
+    return wrapper
+
+
+def attestations_visibles(profil):
+    """Attestations que le profil gère : toutes (scolarité), celles de ses Masters (directeur), sinon aucune."""
+    from .models import Attestation
+    qs = Attestation.objects.all()
+    if profil.est_scolarite:
+        return qs
+    return qs.filter(filiere_id__in=profil.masters_diriges) if profil.masters_diriges else qs.none()
 
 
 def scolarite_requise(vue):

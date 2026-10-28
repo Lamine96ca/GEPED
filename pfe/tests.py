@@ -1522,6 +1522,50 @@ class GpedTests(TestCase):
         cache.clear()
         return dossier
 
+    def test_attestations_directeur_de_master(self):
+        from .models import Attestation
+        master = Service.objects.create(nom='MASTER EN ENERGIE', code='M03', programme=True, cycle='Master')
+        m1 = Licence.objects.create(nom='MASTER 1')
+        # Directeur du Master : chef rattaché au programme de Master
+        u = User.objects.create_user('directeur', password='x')
+        p = Personnel.objects.create(utilisateur=u, prenom='Awa', nom='Bah', telephone='901', email='dir@t.local',
+                                     fonc='Directeur du Master', chef=True)
+        p.service.add(master)
+        etu = Etudiant.objects.create(matricule='MM1', prenom='Ali', nom='SOW', email='mm1@t.local')
+        Inscription.objects.create(etudiant=etu, session=self.session, licence=m1, filiere=master, cycle='Master')
+        url = reverse('attestations_type', args=['inscription'])
+        # Chef de département (programme qui est son propre département) : toujours refusé
+        Service.objects.filter(pk=self.info.pk).update(departement=self.info)
+        Personnel.objects.filter(utilisateur__username='info').update(chef=True)
+        self.connecter('info')
+        self.assertEqual(self.client.get(url).status_code, 403)
+        self.assertNotContains(self.client.get(reverse('tableau_de_bord')), 'bi-file-earmark-text')
+        # Scolarité : une attestation d'un étudiant de Licence
+        self.connecter('scol')
+        self.client.post(url, {'matricule': 'M0', 'licence': self.licence.pk})
+        autre = Attestation.objects.get(etudiant__matricule='M0')
+        # Directeur : le menu, ses étudiants seulement
+        self.client.login(username='directeur', password='x')
+        self.assertContains(self.client.get(reverse('tableau_de_bord')), 'bi-file-earmark-text')
+        r = self.client.get(url, {'etudiant': 'SOW'})
+        self.assertEqual([c.etudiant.matricule for c in r.context['candidats']], ['MM1'])
+        self.assertEqual(self.client.get(url, {'etudiant': 'N0'}).context['candidats'], [])
+        r = self.client.post(url, {'matricule': 'M1', 'licence': self.licence.pk})
+        self.assertContains(r, "pas inscrit dans un Master que vous dirigez")
+        self.assertFalse(Attestation.objects.filter(etudiant__matricule='M1').exists())
+        r = self.client.post(url, {'matricule': 'MM1', 'licence': m1.pk})
+        a = Attestation.objects.get(etudiant=etu)
+        self.assertEqual(a.filiere, master)
+        r = self.client.get(url)
+        self.assertEqual([x.pk for x in r.context['page']], [a.pk])                   # pas celle de la scolarité
+        self.assertEqual(self.client.get(reverse('attestation_pdf', args=[a.pk]))['Content-Type'], 'application/pdf')
+        self.assertEqual(self.client.get(reverse('attestation_pdf', args=[autre.pk])).status_code, 404)
+        self.assertEqual(self.client.post(reverse('attestation_supprimer', args=[autre.pk])).status_code, 404)
+        self.assertEqual(self.client.get(url, {'modifier': autre.pk}).status_code, 404)
+        self.assertEqual(self.client.get(reverse('releves')).status_code, 403)      # relevés : scolarité seule
+        self.client.post(reverse('attestation_supprimer', args=[a.pk]))
+        self.assertFalse(Attestation.objects.filter(pk=a.pk).exists())
+
     def test_commande_demo_master(self):
         import re
         from io import StringIO
