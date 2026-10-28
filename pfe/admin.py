@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Licence, Personnel, Promotion, Semestre, Service, Session
+from .models import Licence, Personnel, Promotion, ReglageAffichage, Semestre, Service, Session
 
 admin.site.site_header = "gePed · Paramétrage"
 admin.site.site_title = "gePed"
@@ -45,3 +45,15 @@ class SemestreAdmin(admin.ModelAdmin):
 
 admin.site.register(Licence)
 admin.site.register(Promotion)
+
+
+@admin.register(ReglageAffichage)
+class ReglageAffichageAdmin(admin.ModelAdmin):
+    """Une seule ligne de réglages : on la modifie, on n'en ajoute ni n'en supprime."""
+    list_display = ('__str__', 'nb_releves')
+
+    def has_add_permission(self, request):
+        return super().has_add_permission(request) and not ReglageAffichage.objects.exists()
+
+    def has_delete_permission(self, request, obj=None):
+        return False

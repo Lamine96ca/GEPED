@@ -947,3 +947,25 @@ class OrientationFinale(models.Model):
             f"-> {self.filiere.nom}"
         )
 
+
+class ReglageAffichage(models.Model):
+    """
+    Réglages d'affichage communs à tous les comptes, modifiables seulement dans l'espace admin.
+    Une seule ligne ; tant qu'elle n'existe pas, les valeurs par défaut s'appliquent.
+    """
+    nb_releves = models.PositiveSmallIntegerField(
+        'Relevés délivrés affichés', default=50, validators=[MinValueValidator(1), MaxValueValidator(500)],
+        help_text="Nombre de relevés (les plus récents) affichés dans la liste « Relevés délivrés » "
+                  "pour tout le monde. Les autres ne sont trouvés que par la recherche.")
+
+    class Meta:
+        verbose_name = "Réglage d'affichage"
+        verbose_name_plural = "Réglages d'affichage"
+
+    def __str__(self):
+        return "Réglages d'affichage"
+
+    @classmethod
+    def actuel(cls):
+        return cls.objects.first() or cls()
+

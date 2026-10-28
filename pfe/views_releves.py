@@ -15,7 +15,7 @@ from django.utils.text import slugify
 from django.views.decorators.http import require_POST
 
 from .forms import ReleveForm
-from .models import Etudiant, Inscription, ReleveNote, Semestre, Service
+from .models import Etudiant, Inscription, ReglageAffichage, ReleveNote, Semestre, Service
 from .pdf_releves import pdf_releve
 from .releves import a_des_notes, contenu, parcours, perimetres_notes, recherche, releve_existant
 from .roles import scolarite_requise
@@ -72,10 +72,17 @@ def releves(request):
 
     r = (request.GET.get('r') or '').strip()
     delivres = ReleveNote.objects.select_related('etudiant', 'filiere', 'session', 'licence', 'semestre')
+    total = ReleveNote.objects.count()
     if r:
+        # La recherche porte sur tous les relevés, même ceux que la liste n'affiche pas
         delivres = delivres.filter(Q(num_ref__icontains=r) | Q(etudiant__matricule__icontains=r)
                                    | Q(etudiant__nom__icontains=r) | Q(etudiant__prenom__icontains=r))
-    page = Paginator(delivres, 25).get_page(request.GET.get('page'))
+        page = Paginator(delivres, 25).get_page(request.GET.get('page'))
+        limite = None
+    else:
+        # Sans recherche : les N derniers seulement, N fixé dans l'espace admin (Réglages d'affichage)
+        limite = ReglageAffichage.actuel().nb_releves
+        page = Paginator(delivres[:limite], limite).get_page(1)
     imprimer = None
     if _entier(request.GET.get('imprimer')):
         imprimer = ReleveNote.objects.select_related('etudiant', 'filiere', 'session', 'semestre', 'licence').filter(
@@ -83,7 +90,7 @@ def releves(request):
     return render(request, 'pfe/releves.html', {
         'form': form, 'q': q, 'r': r, 'etudiant': etudiant, 'candidats': candidats, 'inscriptions': inscriptions,
         'programmes': programmes, 'page': page, 'prochaine_ref': ReleveNote.prochaine_reference(),
-        'imprimer': imprimer, 'actif': 'releves',
+        'imprimer': imprimer, 'actif': 'releves', 'total': total, 'limite': limite,
         'semestres_par_licence': {str(s.pk): str(s.licence_id) for s in Semestre.objects.all()},
     })
 

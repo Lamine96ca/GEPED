@@ -1286,6 +1286,36 @@ class GpedTests(TestCase):
         h = NoteHistorique.objects.filter(apres_deliberation=True).get()
         self.assertEqual((h.motif, h.apres['examen']), ('PV du jury', 10))
 
+    def test_releves_delivres_nombre_affiche_regle_dans_l_admin(self):
+        from django.contrib.auth.models import User
+        from .models import ReglageAffichage, ReleveNote
+        e = Etudiant.objects.get(matricule='M0')
+        rel = [ReleveNote.objects.create(type='E', etudiant=e, filiere=self.info) for _ in range(3)]
+        self.connecter('scol')
+        # Sans réglage : 50 par défaut, tout est affiché
+        r = self.client.get(reverse('releves'))
+        self.assertEqual(len(r.context['page']), 3)
+        # Réglage à 2 dans l'admin : les 2 derniers seulement, pour tout le monde
+        User.objects.create_superuser('admin', password='x')
+        self.client.login(username='admin', password='x')
+        url_admin = reverse('admin:pfe_reglageaffichage_add')
+        self.client.post(url_admin, {'nb_releves': '2'})
+        self.assertEqual(ReglageAffichage.actuel().nb_releves, 2)
+        self.assertEqual(self.client.get(url_admin).status_code, 403)              # une seule ligne
+        reglage = ReglageAffichage.objects.get()
+        self.assertEqual(self.client.get(reverse('admin:pfe_reglageaffichage_delete', args=[reglage.pk])).status_code,
+                         403)
+        self.connecter('scol')
+        r = self.client.get(reverse('releves'))
+        self.assertEqual([x.pk for x in r.context['page']], [rel[2].pk, rel[1].pk])
+        self.assertContains(r, '2 relevés affichés sur 3')
+        # La recherche trouve aussi celui qui n'est pas affiché
+        r = self.client.get(reverse('releves'), {'r': rel[0].num_ref})
+        self.assertEqual([x.pk for x in r.context['page']], [rel[0].pk])
+        # Hors de l'espace admin : la scolarité n'a pas accès au réglage
+        self.assertNotEqual(self.client.get(reverse('admin:pfe_reglageaffichage_change', args=[reglage.pk])).status_code,
+                            200)
+
     def test_super_utilisateur_modifie_les_notes_sans_justificatif(self):
         from django.contrib.auth.models import User
         from .forms import ImportNotesForm
