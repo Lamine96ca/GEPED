@@ -74,10 +74,14 @@
         <div class="collapse sous-menu {{ etu_ouvert }}" id="sous-menu-etudiants">
           <a class="nav-link {% if actif == 'etudiants' %}active{% endif %}" href="{% url 'etudiants_liste' %}">Liste</a>
           <a class="nav-link {% if actif == 'preinscriptions' %}active{% endif %}" href="{% url 'preinscriptions_liste' %}">Préinscription{% if nb_preinscrits %}<span class="compteur" title="Préinscrits en attente">{{ nb_preinscrits }}</span>{% endif %}</a>
-          {% if profil.est_scolarite %}
+          {% if profil.gere_etudiants %}
             <a class="nav-link {% if actif == 'inscrire' %}active{% endif %}" href="{% url 'inscription_creer' %}">Inscription</a>
+          {% endif %}
+          {% if profil.est_scolarite %}
             <a class="nav-link {% if actif == 'importer' %}active{% endif %}" href="{% url 'importer' %}">Importer une liste</a>
-            <a class="nav-link {% if actif == 'demandes' %}active{% endif %}" href="{% url 'demandes_liste' %}">Demandes en ligne{% if nb_demandes %}<span class="compteur" title="Demandes en attente">{{ nb_demandes }}</span>{% endif %}</a>
+          {% endif %}
+          {% if profil.gere_etudiants %}
+            <a class="nav-link {% if actif == 'demandes' %}active{% endif %}" href="{% url 'demandes_liste' %}">Demandes en ligne{% if nb_demandes and profil.est_scolarite %}<span class="compteur" title="Demandes en attente">{{ nb_demandes }}</span>{% endif %}</a>
           {% endif %}
           <a class="nav-link {% if actif == 'statistiques' %}active{% endif %}" href="{% url 'statistiques' %}">Statistiques</a>
         </div>
@@ -87,7 +91,7 @@
       {% if profil.gere_attestations %}
         <a class="nav-link {% if actif == 'attestations' %}active{% endif %}" href="{% url 'attestations' %}"><i class="bi bi-file-earmark-text"></i> Attestations</a>
       {% endif %}
-      {% if profil.est_scolarite %}
+      {% if profil.gere_etudiants %}
         <a class="nav-link {% if actif == 'releves' %}active{% endif %}" href="{% url 'releves' %}"><i class="bi bi-file-earmark-spreadsheet"></i> Relevés de notes</a>
         {% if user.is_superuser %}
           <a class="nav-link {% if actif == 'personnel' %}active{% endif %}" href="{% url 'personnel_liste' %}"><i class="bi bi-person-badge"></i> Personnel</a>

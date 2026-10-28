@@ -69,6 +69,15 @@ class Profil:
         """Scolarité (toutes les attestations), ou directeur de Master (celles de ses programmes)."""
         return self.est_scolarite or bool(self.masters_diriges)
 
+    @property
+    def gere_etudiants(self):
+        """
+        Fiches, dossiers, inscriptions, relevés : la scolarité (tous les étudiants), ou le directeur de Master
+        (les étudiants de ses programmes de Master). Valider ou invalider une inscription, importer une
+        liste et délibérer restent à la scolarité.
+        """
+        return self.est_scolarite or bool(self.masters_diriges)
+
     def est_chef_de(self, filiere):
         """Chef pour ce programme : chef de la scolarité, ou chef du département du programme."""
         return self.est_chef_scolarite or bool(filiere and filiere.departement_effectif.id in self.departements_diriges)
@@ -194,6 +203,32 @@ def attestations_requise(vue):
             raise PermissionDenied("Attestations réservées à la scolarité et aux directeurs de Master.")
         return vue(request, *args, **kwargs)
     return wrapper
+
+
+def etudiants_requise(vue):
+    """Scolarité, ou directeur d'un Master (pour les étudiants de ses programmes de Master)."""
+    @wraps(vue)
+    def wrapper(request, *args, **kwargs):
+        if not get_profil(request).gere_etudiants:
+            raise PermissionDenied("Réservé à la scolarité et aux directeurs de Master.")
+        return vue(request, *args, **kwargs)
+    return wrapper
+
+
+def inscriptions_gerees(profil):
+    """Inscriptions que le profil gère : toutes (scolarité), celles de ses Masters (directeur), sinon aucune."""
+    qs = Inscription.objects.all()
+    if profil.est_scolarite:
+        return qs
+    return qs.filter(filiere_id__in=profil.masters_diriges) if profil.masters_diriges else qs.none()
+
+
+def etudiants_geres(profil):
+    """Étudiants que le profil gère : tous (scolarité), ceux inscrits dans ses Masters (directeur)."""
+    from .models import Etudiant
+    if profil.est_scolarite:
+        return Etudiant.objects.all()
+    return Etudiant.objects.filter(pk__in=inscriptions_gerees(profil).values('etudiant_id'))
 
 
 def attestations_visibles(profil):

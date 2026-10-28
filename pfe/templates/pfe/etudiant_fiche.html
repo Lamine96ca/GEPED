@@ -4,7 +4,7 @@
 {% block titre_page %}<a href="{% url 'etudiants_liste' %}" class="text-decoration-none text-secondary me-1" title="Retour à la liste"><i class="bi bi-arrow-left"></i></a> Fiche étudiant{% endblock %}
 {% block contenu %}
 
-{% if request.GET.imprimer and profil.est_scolarite and not etudiant.preinscrit %}
+{% if request.GET.imprimer and gere and not etudiant.preinscrit %}
   <div class="alert alert-success d-flex flex-wrap align-items-center gap-2">
     <i class="bi bi-printer fs-5"></i>
     <div class="me-auto">Inscription enregistrée : imprimez la fiche à faire signer par l'étudiant.</div>
@@ -35,9 +35,9 @@
     {% if inscription.redouble %}<span class="puce"><i class="bi bi-arrow-repeat"></i> Redoublant</span>{% else %}<span class="puce"><i class="bi bi-check2-circle"></i> Passant</span>{% endif %}
     {% if etudiant.preinscrit %}<span class="puce"><i class="bi bi-hourglass-split"></i> Préinscrit</span>{% endif %}
   </div>
-  {% if profil.est_scolarite %}
+  {% if gere %}
     <div class="actions">
-      {% if etudiant.preinscrit %}
+      {% if etudiant.preinscrit and profil.est_scolarite %}
         <form method="post" action="{% url 'valider_preinscriptions' %}" class="d-inline">
           {% csrf_token %}
           <input type="hidden" name="ids" value="{{ inscription.pk }}">

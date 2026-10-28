@@ -1562,9 +1562,95 @@ class GpedTests(TestCase):
         self.assertEqual(self.client.get(reverse('attestation_pdf', args=[autre.pk])).status_code, 404)
         self.assertEqual(self.client.post(reverse('attestation_supprimer', args=[autre.pk])).status_code, 404)
         self.assertEqual(self.client.get(url, {'modifier': autre.pk}).status_code, 404)
-        self.assertEqual(self.client.get(reverse('releves')).status_code, 403)      # relevés : scolarité seule
+        self.assertEqual(self.client.get(reverse('releves')).status_code, 200)      # relevés de ses étudiants
         self.client.post(reverse('attestation_supprimer', args=[a.pk]))
         self.assertFalse(Attestation.objects.filter(pk=a.pk).exists())
+
+    def test_directeur_de_master_gere_ses_etudiants(self):
+        from .models import DemandeEtudiant, PieceDossier, ReleveNote
+        master = Service.objects.create(nom='MASTER EN ENERGIE', code='M03', programme=True, cycle='Master')
+        m1 = Licence.objects.create(nom='MASTER 1')
+        u = User.objects.create_user('directeur', password='x')
+        p = Personnel.objects.create(utilisateur=u, prenom='Awa', nom='Bah', telephone='901', email='dir@t.local',
+                                     fonc='Directeur du Master', chef=True)
+        p.service.add(master)
+        etu = Etudiant.objects.create(matricule='MM1', prenom='Ali', nom='SOW', email='mm1@t.local')
+        insc = Inscription.objects.create(etudiant=etu, session=self.session, licence=m1, filiere=master,
+                                          cycle='Master')
+        autre = Inscription.objects.get(etudiant__matricule='M0')               # Licence, programme Informatique
+        self.client.login(username='directeur', password='x')
+        # Fiche, fiche PDF, modification : ses étudiants seulement ; handicap et « Préinscrit » réservés
+        r = self.client.get(reverse('etudiant_fiche', args=[insc.pk]))
+        self.assertContains(r, reverse('inscription_modifier', args=[insc.pk]))
+        self.assertNotContains(r, reverse('inscription_supprimer', args=[insc.pk]))
+        self.assertEqual(self.client.get(reverse('etudiant_fiche', args=[autre.pk])).status_code, 404)
+        self.assertEqual(self.client.get(reverse('inscription_fiche_pdf', args=[insc.pk]))['Content-Type'],
+                         'application/pdf')
+        self.assertEqual(self.client.get(reverse('inscription_fiche_pdf', args=[autre.pk])).status_code, 404)
+        self.assertEqual(self.client.get(reverse('inscription_modifier', args=[autre.pk])).status_code, 404)
+        r = self.client.get(reverse('inscription_modifier', args=[insc.pk]))
+        self.assertNotContains(r, 'Situation de handicap')
+        self.assertTrue(r.context['form_etu'].fields['preinscrit'].disabled)
+        self.assertEqual(list(r.context['form_insc'].fields['filiere'].queryset), [master])
+        donnees = {'etu-prenom': 'Ali', 'etu-nom': 'SOW', 'etu-sexe': 'M', 'etu-email': 'mm1@t.local',
+                   'etu-adresse': 'Petel', 'etu-preinscrit': 'on', 'insc-session': self.session.pk,
+                   'insc-licence': m1.pk, 'insc-filiere': master.pk, 'insc-cycle': 'Master'}
+        self.assertEqual(self.client.post(reverse('inscription_modifier', args=[insc.pk]), donnees).status_code, 302)
+        etu.refresh_from_db()
+        self.assertEqual((etu.adresse, etu.preinscrit), ('Petel', False))           # « Préinscrit » ignoré
+        r = self.client.post(reverse('inscription_modifier', args=[insc.pk]), {**donnees, 'insc-filiere': self.info.pk})
+        self.assertEqual(r.status_code, 200)                                        # autre programme : refusé
+        insc.refresh_from_db()
+        self.assertEqual(insc.filiere, master)
+        # Nouvelle inscription : dans son Master, et préinscrite (la scolarité validera)
+        r = self.client.post(reverse('inscription_creer'), {
+            'etu-prenom': 'Fanta', 'etu-nom': 'KABA', 'etu-sexe': 'F', 'etu-email': 'fanta@t.local',
+            'insc-session': self.session.pk, 'insc-licence': m1.pk, 'insc-filiere': master.pk})
+        nouvelle = Inscription.objects.get(etudiant__email='fanta@t.local')
+        self.assertRedirects(r, reverse('etudiant_fiche', args=[nouvelle.pk]))
+        self.assertEqual((nouvelle.filiere, nouvelle.etudiant.preinscrit), (master, True))
+        # Réservé à la scolarité : valider, supprimer, importer, délibérer
+        self.assertEqual(self.client.post(reverse('valider_preinscriptions'), {'ids': [nouvelle.pk]}).status_code, 403)
+        self.assertEqual(self.client.post(reverse('inscription_supprimer', args=[insc.pk])).status_code, 403)
+        self.assertEqual(self.client.get(reverse('importer')).status_code, 403)
+        # Pièces du dossier (dossier privé temporaire)
+        self._espace()
+        r = self.client.post(reverse('piece_ajouter', args=[etu.pk]), {
+            'type': PieceDossier.ACTE_NAISSANCE, 'pages': SimpleUploadedFile('a.pdf', b'%PDF-1.4 acte')})
+        self.assertEqual(PieceDossier.objects.filter(etudiant=etu).count(), 1)
+        self.client.post(reverse('piece_ajouter', args=[autre.etudiant_id]), {
+            'type': PieceDossier.ACTE_NAISSANCE, 'pages': SimpleUploadedFile('a.pdf', b'%PDF-1.4 acte')})
+        self.assertFalse(PieceDossier.objects.filter(etudiant=autre.etudiant).exists())
+        # Relevés : ses étudiants seulement
+        self.assertEqual(self.client.get(reverse('releves'), {'etudiant': etu.pk}).status_code, 200)
+        self.assertEqual(self.client.get(reverse('releves'), {'etudiant': autre.etudiant_id}).status_code, 404)
+        self.assertEqual(self.client.post(reverse('releve_creer'), {
+            'type': 'E', 'etudiant': autre.etudiant_id, 'programme': self.info.pk}).status_code, 404)
+        r = self.client.get(reverse('releves'), {'q': 'N0'})
+        self.assertEqual(r.context['candidats'], [])
+        rel_autre = ReleveNote.objects.create(type='E', etudiant=autre.etudiant, filiere=self.info)
+        self.assertEqual(self.client.get(reverse('releve_pdf', args=[rel_autre.pk])).status_code, 404)
+        # Demandes en ligne : celles de son Master, en lecture ; décider reste à la scolarité
+        d_master = DemandeEtudiant.objects.create(etudiant=nouvelle.etudiant, session=self.session,
+                                                  type=DemandeEtudiant.INSCRIPTION)          # préinscrite en Master
+        Etudiant.objects.filter(pk=autre.etudiant_id).update(preinscrit=True)
+        d_autre = DemandeEtudiant.objects.create(etudiant=autre.etudiant, session=self.session,
+                                                 type=DemandeEtudiant.INSCRIPTION)
+        r = self.client.get(reverse('demandes_liste'), {'type': 'inscription'})
+        self.assertEqual([d.pk for d in r.context['demandes']], [d_master.pk])
+        self.assertNotContains(r, 'name="ouverture"')
+        r = self.client.get(reverse('demande_detail', args=[d_master.pk]))
+        self.assertContains(r, 'seule la scolarité')
+        self.assertNotContains(r, 'value="valider"')
+        self.assertEqual(self.client.post(reverse('demande_detail', args=[d_master.pk]),
+                                          {'action': 'valider'}).status_code, 403)
+        self.assertEqual(self.client.get(reverse('demande_detail', args=[d_autre.pk])).status_code, 404)
+        self.assertEqual(self.client.post(reverse('demandes_liste'),
+                                          {'ouverture': 'inscriptions_ouvertes', 'valeur': '1'}).status_code, 403)
+        # Chef de programme hors Master : toujours rien de tout cela
+        self.connecter('info')
+        for url in (reverse('releves'), reverse('demandes_liste'), reverse('inscription_creer')):
+            self.assertEqual(self.client.get(url).status_code, 403)
 
     def test_commande_demo_master(self):
         import re

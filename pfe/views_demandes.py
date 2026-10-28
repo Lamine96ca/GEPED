@@ -6,12 +6,15 @@ Demandes déposées dans l'espace étudiant (scolarité) : « Demandes en ligne 
     réinscription, TOUTES les notes de l'étudiant empilées par année (notes < 5 sur fond rouge clair),
     puis « Valider » (applique la demande, crée l'inscription) ou « Refuser » (avec motif).
 Le choix revient à l'agent : rien n'est validé automatiquement.
+Directeur de Master : il voit les demandes de ses programmes de Master et imprime leur fiche ; valider,
+refuser et ouvrir / fermer les dépôts restent à la scolarité.
 """
 from collections import defaultdict
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.db.models import Count, Q
+from django.core.exceptions import PermissionDenied
+from django.db.models import Count, F, Q
 from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
@@ -20,7 +23,28 @@ from . import espace_etudiant as espace
 from .attestations import _nom_departement
 from .models import DemandeEtudiant, Etudiant, Inscription, Matiere, Note, Resultat, Session
 from .photos import url_photo
-from .roles import scolarite_requise
+from .roles import etudiants_requise, get_profil
+
+def demandes_gerees(profil):
+    """Toutes les demandes (scolarité), sinon celles des étudiants des Masters dirigés."""
+    qs = DemandeEtudiant.objects.all()
+    if profil.est_scolarite:
+        return qs
+    masters = profil.masters_diriges
+    if not masters:
+        return qs.none()
+    inscriptions = DemandeEtudiant.objects.filter(
+        type=DemandeEtudiant.INSCRIPTION, etudiant__etudiant_inscription__session_id=F('session_id'),
+        etudiant__etudiant_inscription__filiere_id__in=masters).values('pk')
+    reinscriptions = DemandeEtudiant.objects.filter(type=DemandeEtudiant.REINSCRIPTION,
+                                                    derniere_inscription__filiere_id__in=masters).values('pk')
+    return qs.filter(Q(pk__in=inscriptions) | Q(pk__in=reinscriptions))
+
+
+def _decision_scolarite(request):
+    if not get_profil(request).est_scolarite:
+        raise PermissionDenied("Seule la scolarité valide, refuse ou ouvre les demandes en ligne.")
+
 
 LIBELLES_CONTACTS = {'telephone': 'Téléphone', 'email': 'E-mail', 'adresse': 'Adresse', 'ville': 'Ville / Commune',
                      'tuteur': 'Tuteur', 'contact_de_tuteur': 'Contact du tuteur'}
@@ -28,9 +52,11 @@ SEUIL_ROUGE = 5
 
 
 @login_required
-@scolarite_requise
+@etudiants_requise
 def demandes_liste(request):
     session = espace.session_cible()
+    if request.method == 'POST':
+        _decision_scolarite(request)
     if request.method == 'POST' and session:
         champ = request.POST.get('ouverture')
         if champ in ('inscriptions_ouvertes', 'reinscriptions_ouvertes'):
@@ -45,7 +71,7 @@ def demandes_liste(request):
     statut = request.GET.get('statut') if request.GET.get('statut') in dict(DemandeEtudiant.STATUTS) \
         else DemandeEtudiant.EN_ATTENTE
     espace.cloturer_traitees_ailleurs(session)          # déjà validées ailleurs : quittent la liste « En attente »
-    base = DemandeEtudiant.objects.filter(session=session)
+    base = demandes_gerees(get_profil(request)).filter(session=session)
     compteurs = {(c['type'], c['statut']): c['n'] for c in base.values('type', 'statut').annotate(n=Count('id'))}
     demandes = (base.filter(type=type_demande, statut=statut)
                 .select_related('etudiant', 'licence', 'derniere_inscription__licence', 'derniere_inscription__filiere')
@@ -91,11 +117,13 @@ def notes_empilees(etudiant):
 
 
 @login_required
-@scolarite_requise
+@etudiants_requise
 def demande_detail(request, pk):
-    demande = get_object_or_404(DemandeEtudiant.objects.select_related(
+    demande = get_object_or_404(demandes_gerees(get_profil(request)).select_related(
         'etudiant', 'session', 'licence', 'derniere_inscription__licence', 'derniere_inscription__filiere',
         'derniere_inscription__promotion', 'derniere_inscription__session', 'traitee_par'), pk=pk)
+    if request.method == 'POST':
+        _decision_scolarite(request)
     if demande.statut == DemandeEtudiant.EN_ATTENTE and espace.cloturer_traitees_ailleurs(demande.session):
         demande.refresh_from_db()
     e = demande.etudiant
@@ -216,12 +244,12 @@ def inscription_de_la_fiche(demande):
 
 
 @login_required
-@scolarite_requise
+@etudiants_requise
 def demande_fiche_pdf(request, pk):
     """Fiche d'inscription / de réinscription de la demande, à imprimer directement."""
     from .fiche_inscription import reponse_fiche
-    demande = get_object_or_404(DemandeEtudiant.objects.select_related('etudiant', 'session', 'licence',
-                                                                       'derniere_inscription'), pk=pk)
+    demande = get_object_or_404(demandes_gerees(get_profil(request)).select_related(
+        'etudiant', 'session', 'licence', 'derniere_inscription'), pk=pk)
     inscription, photo = inscription_de_la_fiche(demande)
     if inscription is None:
         messages.error(request, "Fiche impossible à imprimer : demande refusée, ou niveau / inscription introuvable "
@@ -231,11 +259,11 @@ def demande_fiche_pdf(request, pk):
 
 
 @login_required
-@scolarite_requise
+@etudiants_requise
 def demande_photo(request, pk):
     """Nouvelle photo proposée par l'étudiant (en attente)."""
     from .models import stockage_prive
-    demande = get_object_or_404(DemandeEtudiant, pk=pk)
+    demande = get_object_or_404(demandes_gerees(get_profil(request)), pk=pk)
     if not demande.photo:
         raise Http404
     reponse = FileResponse(stockage_prive().open(demande.photo.name, 'rb'), content_type='image/jpeg')
@@ -244,11 +272,11 @@ def demande_photo(request, pk):
 
 
 @login_required
-@scolarite_requise
+@etudiants_requise
 def demande_signature(request, pk):
     """Signature de l'étudiant (image privée), pour la fiche de la demande."""
     from .models import stockage_prive
-    demande = get_object_or_404(DemandeEtudiant, pk=pk)
+    demande = get_object_or_404(demandes_gerees(get_profil(request)), pk=pk)
     if not demande.signature:
         raise Http404
     reponse = FileResponse(stockage_prive().open(demande.signature.name, 'rb'), content_type='image/png')

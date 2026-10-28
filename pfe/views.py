@@ -30,8 +30,9 @@ from .importer import OBLIGATOIRES, importer_etudiants, modele_import_xlsx
 from .models import (Attestation, Etudiant, Inscription, Licence, Promotion, Promotion_Licence_Session, Semestre,
                      Service, Session)
 from .photos import compresser, enregistrer_photo, retirer_photo, url_photo
-from .roles import (acces_requis, attestations_requise, attestations_visibles, gestion_matieres_requise, get_profil,
-                    inscriptions_visibles, matieres_visibles, programmes_du_profil, scolarite_requise)
+from .roles import (acces_requis, attestations_requise, attestations_visibles, etudiants_geres, etudiants_requise,
+                    gestion_matieres_requise, get_profil, inscriptions_gerees, inscriptions_visibles, matieres_visibles,
+                    programmes_du_profil, scolarite_requise)
 
 TAILLES_PAGE = (25, 50, 100, 250, 500)
 
@@ -305,16 +306,18 @@ def etudiant_fiche(request, pk):
                                                        ).order_by('-session__annee')
     from .models import PieceDossier
     profil = get_profil(request)
+    # Scolarité, ou directeur de Master pour une inscription dans un de ses Masters
+    gere = inscriptions_gerees(profil).filter(pk=inscription.pk).exists()
     return render(request, 'pfe/etudiant_fiche.html', {
         'inscription': inscription,
         'etudiant': inscription.etudiant,
         'historique': historique,
         'actif': 'etudiants',
+        'gere': gere,
         'photo_url': url_photo(inscription.etudiant),
         'peut_changer_photo': _peut_changer_photo(request, inscription.etudiant),
-        # Dossier (pièces) : scolarité seulement (documents personnels)
-        'pieces': (inscription.etudiant.pieces.select_related('session', 'utilisateur')
-                   if profil.est_scolarite else None),
+        # Dossier (pièces) : documents personnels, pour ceux qui gèrent l'étudiant
+        'pieces': (inscription.etudiant.pieces.select_related('session', 'utilisateur') if gere else None),
         'types_pieces': PieceDossier.TYPES,
     })
 
@@ -330,13 +333,13 @@ def _retour_fiche(request, etudiant):
 
 
 @login_required
-@scolarite_requise
+@etudiants_requise
 @require_POST
 def piece_ajouter(request, pk):
     """Ajoute une pièce au dossier (scan ou fichier), compressée en PDF ; remplace celle du même type."""
     from . import pieces
     from .models import PieceDossier
-    etudiant = get_object_or_404(Etudiant, pk=pk)
+    etudiant = get_object_or_404(etudiants_geres(get_profil(request)), pk=pk)
     type_piece = request.POST.get('type')
     if type_piece not in dict(PieceDossier.TYPES):
         messages.error(request, "Choisissez le type de pièce.")
@@ -353,12 +356,13 @@ def piece_ajouter(request, pk):
 
 
 @login_required
-@scolarite_requise
+@etudiants_requise
 def piece_voir(request, pk):
     from django.http import FileResponse
     from . import pieces
     from .models import PieceDossier
-    piece = get_object_or_404(PieceDossier.objects.select_related('etudiant'), pk=pk)
+    piece = get_object_or_404(PieceDossier.objects.select_related('etudiant').filter(
+        etudiant__in=etudiants_geres(get_profil(request))), pk=pk)
     nom = f"{piece.type}_{piece.etudiant.matricule or piece.etudiant.pk}.pdf"
     reponse = FileResponse(pieces.ouvrir(piece), content_type='application/pdf', filename=nom)
     reponse['Content-Disposition'] = f'inline; filename="{nom}"'
@@ -368,12 +372,13 @@ def piece_voir(request, pk):
 
 
 @login_required
-@scolarite_requise
+@etudiants_requise
 @require_POST
 def piece_supprimer(request, pk):
     from . import pieces
     from .models import PieceDossier
-    piece = get_object_or_404(PieceDossier.objects.select_related('etudiant'), pk=pk)
+    piece = get_object_or_404(PieceDossier.objects.select_related('etudiant').filter(
+        etudiant__in=etudiants_geres(get_profil(request))), pk=pk)
     etudiant, libelle = piece.etudiant, piece.get_type_display()
     pieces.supprimer(piece)
     messages.success(request, f"{libelle} retiré du dossier.")
@@ -409,9 +414,11 @@ def media_protege(request, chemin):
 
 
 def _peut_changer_photo(request, etudiant):
-    """La scolarité, ou l'étudiant lui-même (compte lié à sa fiche)."""
-    return get_profil(request).est_scolarite or (
-        etudiant.utilisateur_id is not None and etudiant.utilisateur_id == request.user.id)
+    """La scolarité (ou le directeur de Master de l'étudiant), ou l'étudiant lui-même (compte lié à sa fiche)."""
+    profil = get_profil(request)
+    return profil.est_scolarite or (
+        etudiant.utilisateur_id is not None and etudiant.utilisateur_id == request.user.id) or (
+        profil.gere_etudiants and etudiants_geres(profil).filter(pk=etudiant.pk).exists())
 
 
 def _changer_photo(request, obj, base_nom):
@@ -454,13 +461,16 @@ def mon_compte_photo(request):
 
 # ------------------------------------------------------------------ scolarité
 
-def _enregistrer(request, form_etu, form_insc, etudiant_existant=None):
+def _enregistrer(request, form_etu, form_insc, etudiant_existant=None, preinscrire=False):
+    """`preinscrire` : inscription faite par un directeur de Master, à valider par la scolarité."""
     if not (form_etu.is_valid() and form_insc.is_valid()):
         return None
     if not form_insc.valider_unicite(form_etu.instance):
         return None
     try:
         with transaction.atomic():
+            if preinscrire:
+                form_etu.instance.preinscrit = True
             etudiant = form_etu.save()
             inscription = form_insc.save(commit=False)
             inscription.etudiant = etudiant
@@ -472,25 +482,39 @@ def _enregistrer(request, form_etu, form_insc, etudiant_existant=None):
 
 
 @login_required
-@scolarite_requise
+@etudiants_requise
 def inscription_creer(request):
     # ?etudiant=<id> : réinscription d'un étudiant existant (nouvelle session / licence)
+    # Directeur de Master : ses programmes de Master seulement ; l'inscription reste « Préinscrit »
+    # jusqu'à la validation par la scolarité.
+    profil = get_profil(request)
+    scolarite = profil.est_scolarite
+    programmes = None if scolarite else profil.masters_diriges
     etudiant = None
     if request.GET.get('etudiant'):
-        etudiant = get_object_or_404(Etudiant, pk=request.GET['etudiant'])
+        etudiant = get_object_or_404(etudiants_geres(profil), pk=request.GET['etudiant'])
     if request.method == 'POST':
-        form_etu = EtudiantForm(request.POST, request.FILES, instance=etudiant, prefix='etu')
-        form_insc = InscriptionForm(request.POST, prefix='insc')
-        inscription = _enregistrer(request, form_etu, form_insc)
+        form_etu = EtudiantForm(request.POST, request.FILES, instance=etudiant, prefix='etu', scolarite=scolarite)
+        form_insc = InscriptionForm(request.POST, prefix='insc', programmes=programmes)
+        inscription = _enregistrer(request, form_etu, form_insc, preinscrire=not scolarite)
         if inscription:
+            if not scolarite:
+                messages.success(request, f"{inscription.etudiant.prenom} {inscription.etudiant.nom} est préinscrit(e) "
+                                          f"en {inscription.filiere} : la scolarité validera l'inscription.")
+                return redirect('etudiant_fiche', pk=inscription.pk)
             messages.success(request, f"{inscription.etudiant.prenom} {inscription.etudiant.nom} a été inscrit(e).")
             if 'continuer' in request.POST:
                 return redirect('inscription_creer')
             # La fiche propose aussitôt d'imprimer la fiche d'inscription
             return redirect(f"{reverse('etudiant_fiche', args=[inscription.pk])}?imprimer=1")
     else:
-        form_etu = EtudiantForm(instance=etudiant, prefix='etu')
-        form_insc = InscriptionForm(prefix='insc', initial=_prevision_reinscription(etudiant))
+        form_etu = EtudiantForm(instance=etudiant, prefix='etu', scolarite=scolarite)
+        initial = _prevision_reinscription(etudiant)
+        if programmes is not None and initial.get('filiere') not in programmes:
+            initial.pop('filiere', None)
+        if programmes is not None and len(programmes) == 1:
+            initial.setdefault('filiere', next(iter(programmes)))
+        form_insc = InscriptionForm(prefix='insc', initial=initial, programmes=programmes)
     contexte = {
         'form_etu': form_etu, 'form_insc': form_insc, 'etudiant': etudiant,
         'titre': 'Réinscrire un étudiant' if etudiant else 'Inscrire un étudiant',
@@ -543,27 +567,31 @@ def _promotions_prevues():
 
 
 @login_required
-@scolarite_requise
+@etudiants_requise
 def inscription_fiche_pdf(request, pk):
     """Fiche d'inscription (ou de réinscription) à imprimer, avec la photo de l'étudiant."""
     from .fiche_inscription import reponse_fiche
-    return reponse_fiche(get_object_or_404(Inscription.objects.select_related(
+    return reponse_fiche(get_object_or_404(inscriptions_gerees(get_profil(request)).select_related(
         'etudiant', 'session', 'licence', 'semestre', 'filiere', 'promotion'), pk=pk))
 
 
 @login_required
-@scolarite_requise
+@etudiants_requise
 def inscription_modifier(request, pk):
-    inscription = get_object_or_404(Inscription.objects.select_related('etudiant'), pk=pk)
+    profil = get_profil(request)
+    scolarite = profil.est_scolarite
+    programmes = None if scolarite else profil.masters_diriges
+    inscription = get_object_or_404(inscriptions_gerees(profil).select_related('etudiant'), pk=pk)
     if request.method == 'POST':
-        form_etu = EtudiantForm(request.POST, request.FILES, instance=inscription.etudiant, prefix='etu')
-        form_insc = InscriptionForm(request.POST, instance=inscription, prefix='insc')
+        form_etu = EtudiantForm(request.POST, request.FILES, instance=inscription.etudiant, prefix='etu',
+                                scolarite=scolarite)
+        form_insc = InscriptionForm(request.POST, instance=inscription, prefix='insc', programmes=programmes)
         if _enregistrer(request, form_etu, form_insc):
             messages.success(request, "Modifications enregistrées.")
             return redirect('etudiant_fiche', pk=inscription.pk)
     else:
-        form_etu = EtudiantForm(instance=inscription.etudiant, prefix='etu')
-        form_insc = InscriptionForm(instance=inscription, prefix='insc')
+        form_etu = EtudiantForm(instance=inscription.etudiant, prefix='etu', scolarite=scolarite)
+        form_insc = InscriptionForm(instance=inscription, prefix='insc', programmes=programmes)
     return render(request, 'pfe/inscription_form.html', {
         'form_etu': form_etu, 'form_insc': form_insc, 'inscription': inscription,
         'titre': 'Modifier l’inscription', 'actif': 'etudiants',

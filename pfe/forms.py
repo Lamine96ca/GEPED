@@ -43,10 +43,16 @@ class EtudiantForm(BootstrapMixin, forms.ModelForm):
             'type_formation': forms.RadioSelect(attrs={'class': 'btn-check'}),
         }
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, scolarite=True, **kwargs):
         super().__init__(*args, **kwargs)
         # default=0 sur le modèle : la case serait cochée par défaut
         self.initial['preinscrit'] = bool(self.instance.preinscrit)
+        # Directeur de Master (scolarite=False) : seule la scolarité valide ou invalide une inscription
+        # (case « Préinscrit ») et voit la situation de handicap
+        self.scolarite = scolarite
+        if not scolarite:
+            for champ in ('preinscrit', 'handicap', 'type_handicap', 'amenagements'):
+                self.fields[champ].disabled = True
         # Inscription en ligne validée : signalée à côté de la case « Préinscrit », qui reste modifiable
         from .models import DemandeEtudiant
         self.inscription_en_ligne = (DemandeEtudiant.objects.filter(
@@ -104,9 +110,13 @@ class InscriptionForm(BootstrapMixin, forms.ModelForm):
         model = Inscription
         fields = ['session', 'cycle', 'licence', 'semestre', 'filiere', 'promotion', 'redouble']
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, programmes=None, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields['filiere'].queryset = Service.objects.filter(programme=True).order_by('nom')
+        # `programmes` : ids des programmes permis (directeur de Master : les siens) ; None : tous
+        filieres = Service.objects.filter(programme=True).order_by('nom')
+        self.fields['filiere'].queryset = filieres if programmes is None else filieres.filter(pk__in=programmes)
+        if programmes is not None:
+            self.fields['filiere'].required = True
         self.fields['semestre'].queryset = Semestre.objects.select_related('licence').order_by('licence__nom', 'nom')
         self.fields['session'].queryset = Session.objects.order_by('-annee')
         self.fields['cycle'].choices = [('', '— Aucun —')] + Inscription.CYCLE_CHOICES

@@ -3,6 +3,7 @@ Relevés de notes (scolarité) : on cherche l'étudiant, on choisit dans son par
 voulu (semestre, année, extrait par programme). Un relevé déjà délivré pour le même objet est
 réimprimé avec son numéro ; sinon un nouveau numéro est attribué (compteur des relevés, annuel).
 Sans cachet ni signature, sauf pour un super utilisateur qui le demande.
+Directeur de Master : les relevés des étudiants de ses programmes de Master seulement.
 """
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -18,19 +19,38 @@ from .forms import ReleveForm
 from .models import Etudiant, Inscription, ReglageAffichage, ReleveNote, Semestre, Service
 from .pdf_releves import pdf_releve
 from .releves import a_des_notes, contenu, parcours, perimetres_notes, recherche, releve_existant
-from .roles import scolarite_requise
+from .roles import etudiants_geres, etudiants_requise, get_profil
 
 
 def _entier(v):
     return int(v) if str(v or '').isdigit() else None
 
 
+def _masters(request):
+    """Programmes permis : None pour la scolarité (tous), sinon les Masters dirigés."""
+    profil = get_profil(request)
+    return None if profil.est_scolarite else profil.masters_diriges
+
+
+def _releves_geres(request):
+    masters = _masters(request)
+    qs = ReleveNote.objects.all()
+    return qs if masters is None else qs.filter(filiere_id__in=masters)
+
+
+HORS_MASTER = "Cet étudiant (ou ce programme) n'est pas dans un Master que vous dirigez : adressez-vous à la scolarité."
+
+
 @login_required
-@scolarite_requise
+@etudiants_requise
 def releves(request):
     # Formulaire « Nouveau relevé » : enregistre (ou reprend) le relevé, puis propose de l'imprimer
+    profil = get_profil(request)
+    masters = _masters(request)
     if request.method == 'POST':
         form = ReleveForm(request.POST)
+        if form.is_valid() and masters is not None and form.cible['filiere'].pk not in masters:
+            form.add_error(None, HORS_MASTER)
         if form.is_valid():
             releve, cree = form.save()
             e = releve.etudiant
@@ -43,20 +63,25 @@ def releves(request):
     else:
         initial = {}
         if _entier(request.GET.get('etudiant')):
-            e = Etudiant.objects.filter(pk=request.GET['etudiant']).first()
+            e = etudiants_geres(profil).filter(pk=request.GET['etudiant']).first()
             initial['matricule'] = e.matricule if e else ''
         form = ReleveForm(initial=initial)
+    if masters is not None:
+        form.fields['programme'].queryset = form.fields['programme'].queryset.filter(pk__in=masters)
 
     q = (request.GET.get('q') or '').strip()
     etudiant, candidats, inscriptions, programmes = None, [], [], []
     if _entier(request.GET.get('etudiant')):
-        etudiant = get_object_or_404(Etudiant, pk=request.GET['etudiant'])
+        etudiant = get_object_or_404(etudiants_geres(profil), pk=request.GET['etudiant'])
     elif q:
-        candidats = list(Etudiant.objects.filter(recherche(q)).order_by('nom', 'prenom')[:30])
+        candidats = list(etudiants_geres(profil).filter(recherche(q)).order_by('nom', 'prenom')[:30])
         if len(candidats) == 1:
             etudiant = candidats[0]
     if etudiant is not None:
         inscriptions, programmes = parcours(etudiant)
+        if masters is not None:                 # directeur de Master : ses programmes seulement
+            inscriptions = [i for i in inscriptions if i.filiere_id in masters]
+            programmes = [p for p in programmes if p.pk in masters]
         deja = {(r.type, r.filiere_id, r.session_id, r.licence_id, r.semestre_id): r
                 for r in ReleveNote.objects.filter(etudiant=etudiant)}
         notes = perimetres_notes(etudiant)                     # boutons grisés là où il n'y a aucune note
@@ -71,7 +96,7 @@ def releves(request):
             p.a_des_notes = any(n[0] == p.pk for n in notes)
 
     r = (request.GET.get('r') or '').strip()
-    delivres = ReleveNote.objects.select_related('etudiant', 'filiere', 'session', 'licence', 'semestre')
+    delivres = _releves_geres(request).select_related('etudiant', 'filiere', 'session', 'licence', 'semestre')
     if r:
         # La recherche porte sur tous les relevés, même ceux que la liste n'affiche pas
         delivres = delivres.filter(Q(num_ref__icontains=r) | Q(etudiant__matricule__icontains=r)
@@ -83,7 +108,7 @@ def releves(request):
         page = Paginator(affiches, max(len(affiches), 1)).get_page(1)
     imprimer = None
     if _entier(request.GET.get('imprimer')):
-        imprimer = ReleveNote.objects.select_related('etudiant', 'filiere', 'session', 'semestre', 'licence').filter(
+        imprimer = _releves_geres(request).select_related('etudiant', 'filiere', 'session', 'semestre', 'licence').filter(
             pk=request.GET['imprimer']).first()
     return render(request, 'pfe/releves.html', {
         'form': form, 'q': q, 'r': r, 'etudiant': etudiant, 'candidats': candidats, 'inscriptions': inscriptions,
@@ -94,7 +119,7 @@ def releves(request):
 
 
 @login_required
-@scolarite_requise
+@etudiants_requise
 @require_POST
 def releve_creer(request):
     """Crée (ou retrouve) le relevé demandé, puis l'ouvre."""
@@ -114,6 +139,9 @@ def releve_creer(request):
                                                   licence=insc.licence)
     else:
         raise Http404()
+    masters = _masters(request)
+    if masters is not None and cible['filiere'].pk not in masters:
+        raise Http404(HORS_MASTER)
     releve = releve_existant(type_, **cible)
     if releve is None:
         if not a_des_notes(**cible):
@@ -127,10 +155,10 @@ def releve_creer(request):
 
 
 @login_required
-@scolarite_requise
+@etudiants_requise
 def releve_pdf(request, pk):
     from .views import url_verification
-    releve = get_object_or_404(ReleveNote.objects.select_related('etudiant', 'filiere', 'session', 'licence',
+    releve = get_object_or_404(_releves_geres(request).select_related('etudiant', 'filiere', 'session', 'licence',
                                                                    'semestre'), pk=pk)
     # Cachet et signature numérisés : UNIQUEMENT un super utilisateur qui le demande
     signee = request.user.is_superuser and request.GET.get('signature') == '1'
@@ -147,10 +175,10 @@ def releve_pdf(request, pk):
 
 
 @login_required
-@scolarite_requise
+@etudiants_requise
 @require_POST
 def releve_supprimer(request, pk):
-    releve = get_object_or_404(ReleveNote, pk=pk)
+    releve = get_object_or_404(_releves_geres(request), pk=pk)
     num = releve.num_ref
     releve.delete()
     messages.success(request, f"Relevé n° {num} supprimé. Ce numéro ne sera pas réutilisé.")

@@ -103,6 +103,7 @@
         </div>
       </div>
 
+      {% if form_etu.scolarite %}
       <div class="card carte-gped">
         <div class="card-body">
           <div class="entete-carte">
@@ -125,6 +126,7 @@
           </div>
         </div>
       </div>
+      {% endif %}
     </div>
 
     <div class="col-xl-4">
@@ -150,7 +152,7 @@
               </label>
               <label class="option-import" for="{{ form_etu.preinscrit.id_for_label }}">
                 {{ form_etu.preinscrit }}
-                <div><strong>Préinscrit</strong><span>Inscription pas encore finalisée.{% if form_etu.inscription_en_ligne %} Inscription en ligne validée le {{ form_etu.inscription_en_ligne.traitee_le|date:"d/m/Y" }}.{% endif %}</span></div>
+                <div><strong>Préinscrit</strong><span>Inscription pas encore finalisée.{% if not form_etu.scolarite %} <i class="bi bi-lock"></i> Seule la scolarité valide ou invalide l'inscription.{% endif %}{% if form_etu.inscription_en_ligne %} Inscription en ligne validée le {{ form_etu.inscription_en_ligne.traitee_le|date:"d/m/Y" }}.{% endif %}</span></div>
               </label>
             </div>
           </div>

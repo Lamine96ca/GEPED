@@ -10,9 +10,9 @@
       <span class="tuile {% if session.inscriptions_ouvertes %}tuile-vert{% else %}tuile-orange{% endif %}"><i class="bi bi-person-plus"></i></span>
       <div class="me-auto"><div class="fw-semibold" style="color:var(--encre)">Inscriptions en ligne (préinscrits)</div>
         <div class="small text-secondary">{% if session.inscriptions_ouvertes %}Ouvertes{% else %}Fermées{% endif %} pour {{ session }}</div></div>
-      <form method="post">{% csrf_token %}<input type="hidden" name="ouverture" value="inscriptions_ouvertes">
+      {% if profil.est_scolarite %}<form method="post">{% csrf_token %}<input type="hidden" name="ouverture" value="inscriptions_ouvertes">
         <input type="hidden" name="valeur" value="{% if session.inscriptions_ouvertes %}0{% else %}1{% endif %}">
-        <button class="btn btn-sm {% if session.inscriptions_ouvertes %}btn-light{% else %}btn-primary{% endif %}">{% if session.inscriptions_ouvertes %}<i class="bi bi-lock"></i> Fermer{% else %}<i class="bi bi-unlock"></i> Ouvrir{% endif %}</button></form>
+        <button class="btn btn-sm {% if session.inscriptions_ouvertes %}btn-light{% else %}btn-primary{% endif %}">{% if session.inscriptions_ouvertes %}<i class="bi bi-lock"></i> Fermer{% else %}<i class="bi bi-unlock"></i> Ouvrir{% endif %}</button></form>{% endif %}
     </div></div>
   </div>
   <div class="col-md-6">
@@ -20,9 +20,9 @@
       <span class="tuile {% if session.reinscriptions_ouvertes %}tuile-vert{% else %}tuile-orange{% endif %}"><i class="bi bi-arrow-repeat"></i></span>
       <div class="me-auto"><div class="fw-semibold" style="color:var(--encre)">Réinscriptions en ligne</div>
         <div class="small text-secondary">{% if session.reinscriptions_ouvertes %}Ouvertes{% else %}Fermées{% endif %} pour {{ session }}</div></div>
-      <form method="post">{% csrf_token %}<input type="hidden" name="ouverture" value="reinscriptions_ouvertes">
+      {% if profil.est_scolarite %}<form method="post">{% csrf_token %}<input type="hidden" name="ouverture" value="reinscriptions_ouvertes">
         <input type="hidden" name="valeur" value="{% if session.reinscriptions_ouvertes %}0{% else %}1{% endif %}">
-        <button class="btn btn-sm {% if session.reinscriptions_ouvertes %}btn-light{% else %}btn-primary{% endif %}">{% if session.reinscriptions_ouvertes %}<i class="bi bi-lock"></i> Fermer{% else %}<i class="bi bi-unlock"></i> Ouvrir{% endif %}</button></form>
+        <button class="btn btn-sm {% if session.reinscriptions_ouvertes %}btn-light{% else %}btn-primary{% endif %}">{% if session.reinscriptions_ouvertes %}<i class="bi bi-lock"></i> Fermer{% else %}<i class="bi bi-unlock"></i> Ouvrir{% endif %}</button></form>{% endif %}
     </div></div>
   </div>
   <div class="col-12"><div class="small text-secondary"><i class="bi bi-link-45deg"></i> Adresse à communiquer aux étudiants : <strong>{{ url_espace }}</strong></div></div>
