@@ -1308,7 +1308,8 @@ class GpedTests(TestCase):
         self.connecter('scol')
         r = self.client.get(reverse('releves'))
         self.assertEqual([x.pk for x in r.context['page']], [rel[2].pk, rel[1].pk])
-        self.assertContains(r, '2 relevés affichés sur 3')
+        self.assertContains(r, '<p>2 relevés</p>')
+        self.assertNotContains(r, 'sur 3')
         # La recherche trouve aussi celui qui n'est pas affiché
         r = self.client.get(reverse('releves'), {'r': rel[0].num_ref})
         self.assertEqual([x.pk for x in r.context['page']], [rel[0].pk])

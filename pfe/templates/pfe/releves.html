@@ -145,7 +145,7 @@
       <div class="card-header d-flex flex-wrap align-items-center gap-3">
         <div class="entete-carte mb-0 me-auto">
           <span class="icone-carte"><i class="bi bi-archive"></i></span>
-          <div><h3>Relevés délivrés</h3><p>{% if limite and total > limite %}{{ limite|intcomma }} derniers sur {{ total|intcomma }}{% else %}{{ page.paginator.count|intcomma }} relevé{{ page.paginator.count|pluralize }}{% endif %}</p></div>
+          <div><h3>Relevés délivrés</h3><p>{{ page.paginator.count|intcomma }} relevé{{ page.paginator.count|pluralize }}</p></div>
         </div>
         <form method="get" style="min-width:220px">
           {% if etudiant %}<input type="hidden" name="etudiant" value="{{ etudiant.pk }}">{% endif %}
@@ -178,9 +178,6 @@
           </tbody>
         </table>
       </div>
-      {% if limite and total > limite %}
-        <div class="pied-tableau small text-secondary"><i class="bi bi-info-circle"></i> {{ limite|intcomma }} relevé{{ limite|pluralize }} affiché{{ limite|pluralize }} sur {{ total|intcomma }} : utilisez la recherche pour retrouver les autres.</div>
-      {% endif %}
       {% if page.has_other_pages %}
         <div class="pied-tableau d-flex justify-content-end">
           <ul class="pagination pagination-sm mb-0">
