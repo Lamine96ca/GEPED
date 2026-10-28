@@ -92,11 +92,17 @@ class Promotion(models.Model):
 
 #SEMESTRE
 class Semestre(models.Model):
-    nom = models.CharField(max_length=100, unique=True, verbose_name="Nom du semestre")
+    # Identifié partout par son id ; le nom n'est unique que dans son niveau (« SEMESTRE 1 » existe en
+    # LICENCE 1 comme en MASTER 1)
+    nom = models.CharField(max_length=100, verbose_name="Nom du semestre")
     abrege = models.CharField(max_length=5, default="")
     description = models.TextField(blank=True, null=True, verbose_name="Description du semestre")
     programme = models.BooleanField(default=False, verbose_name="Programme : Oui/Non")
     licence = models.ForeignKey(Licence, on_delete=models.CASCADE, related_name='licence_semestre', verbose_name="Licence")
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['nom', 'licence'], name='semestre_unique_par_niveau')]
+
     def __str__(self):
         return self.nom
 

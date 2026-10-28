@@ -118,6 +118,7 @@ class InscriptionForm(BootstrapMixin, forms.ModelForm):
         if programmes is not None:
             self.fields['filiere'].required = True
         self.fields['semestre'].queryset = Semestre.objects.select_related('licence').order_by('licence__nom', 'nom')
+        self.fields['semestre'].label_from_instance = lambda s: f"{s.nom} ({s.licence.nom})"
         self.fields['session'].queryset = Session.objects.order_by('-annee')
         self.fields['cycle'].choices = [('', '— Aucun —')] + Inscription.CYCLE_CHOICES
         # default=0 sur le modèle : la case serait cochée par défaut

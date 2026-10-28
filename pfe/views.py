@@ -117,7 +117,7 @@ def _options_filtres(profil):
         'sessions': Session.objects.order_by('-annee'),
         'programmes': programmes,
         'licences': Licence.objects.order_by('nom'),
-        'semestres': Semestre.objects.order_by('nom'),
+        'semestres': Semestre.objects.select_related('licence').order_by('licence__nom', 'nom'),
         'promotions': Promotion.objects.order_by('nom'),
         'cycles': Inscription.CYCLE_CHOICES,
         'cycles_libelles': liste.CYCLE_LIBELLES,

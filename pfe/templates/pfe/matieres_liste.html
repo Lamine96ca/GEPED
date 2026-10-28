@@ -56,7 +56,7 @@
         <label class="form-label small text-secondary mb-1" for="f-semestre">Semestre</label>
         <select id="f-semestre" name="semestre" class="form-select">
           <option value="">Tous</option>
-          {% for s in semestres %}<option value="{{ s.pk }}" data-licence="{{ s.licence_id }}" {% if filtres.semestre == s.pk %}selected{% endif %}>{{ s.nom }}</option>{% endfor %}
+          {% for s in semestres %}<option value="{{ s.pk }}" data-licence="{{ s.licence_id }}" {% if filtres.semestre == s.pk %}selected{% endif %}>{{ s.nom }} ({{ s.licence.nom }})</option>{% endfor %}
         </select>
       </div>
     </div>

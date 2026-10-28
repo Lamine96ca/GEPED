@@ -1522,6 +1522,42 @@ class GpedTests(TestCase):
         cache.clear()
         return dossier
 
+    def test_semestres_de_meme_nom_dans_plusieurs_niveaux(self):
+        from django.contrib.auth.models import User
+        from django.db import IntegrityError, transaction
+        from .import_matieres import importer_matieres
+        from .models import Matiere, Semestre
+        from .roles import get_profil
+        m1 = Licence.objects.create(nom='MASTER 1')
+        s1_l1 = Semestre.objects.create(nom='SEMESTRE 1', abrege='S1', licence=self.licence)
+        s1_m1 = Semestre.objects.create(nom='SEMESTRE 1', abrege='S1', licence=m1)          # même nom, autre niveau
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            Semestre.objects.create(nom='SEMESTRE 1', licence=m1)                         # doublon dans le niveau
+        # Administration : ajout du même nom pour un autre niveau
+        User.objects.create_superuser('admin', password='x')
+        self.client.login(username='admin', password='x')
+        m2 = Licence.objects.create(nom='MASTER 2')
+        self.client.post(reverse('admin:pfe_semestre_add'), {'nom': 'SEMESTRE 1', 'abrege': 'S1', 'licence': m2.pk})
+        self.assertEqual(Semestre.objects.filter(nom='SEMESTRE 1').count(), 3)
+        r = self.client.post(reverse('admin:pfe_semestre_add'), {'nom': 'SEMESTRE 1', 'abrege': 'S1', 'licence': m2.pk})
+        self.assertContains(r, 'existe déjà')
+        # Import des matières : le semestre est cherché dans le niveau de la ligne
+        self.connecter('scol')
+        scol = get_profil(self.client.get(reverse('matieres_liste')).wsgi_request)
+        entetes = ['nom', 'programme', 'licence', 'semestre', 'session', 'credit', 'cycle']
+        r = importer_matieres(fichier_xlsx([entetes, ['Thermique', 'Informatique', 'MASTER 1', 'SEMESTRE 1',
+                                                      self.session.annee, 4, 'Master'],
+                                            ['Algèbre', 'Informatique', 'Licence 1', 'S1', self.session.annee, 4,
+                                             'Licence']]),
+                              scol)
+        self.assertEqual(r.erreurs, [])
+        self.assertEqual(Matiere.objects.get(nom='Thermique').semestre, s1_m1)
+        self.assertEqual(Matiere.objects.get(nom='Algèbre').semestre, s1_l1)
+        Licence.objects.create(nom='MASTER 3')
+        r = importer_matieres(fichier_xlsx([entetes, ['Projet', 'Informatique', 'MASTER 3', 'SEMESTRE 1',
+                                                      self.session.annee, 4, 'Master']]), scol, simulation=True)
+        self.assertIn("créez-le pour MASTER 3", r.erreurs[0][1])
+
     def test_attestations_programme_et_non_departement(self):
         from .attestations import contenu_fin_etudes, contenu_inscription, contenu_niveau, infos_publiques
         from .models import Attestation

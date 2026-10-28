@@ -42,6 +42,8 @@ class SessionAdmin(admin.ModelAdmin):
 class SemestreAdmin(admin.ModelAdmin):
     list_display = ('nom', 'abrege', 'licence')
     list_filter = ('licence',)
+    ordering = ('licence__nom', 'nom')
+    search_fields = ('nom', 'abrege', 'licence__nom')
 
 
 admin.site.register(Licence)

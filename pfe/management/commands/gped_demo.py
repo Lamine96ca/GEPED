@@ -41,7 +41,7 @@ class Command(BaseCommand):
         semestres = {}
         for i, lic in enumerate(licences):
             semestres[lic.id] = [Semestre.objects.get_or_create(
-                nom=f'Semestre {2 * i + k}', defaults={'abrege': f'S{2 * i + k}', 'licence': lic})[0] for k in (1, 2)]
+                nom=f'Semestre {2 * i + k}', licence=lic, defaults={'abrege': f'S{2 * i + k}'})[0] for k in (1, 2)]
         promotions = [Promotion.objects.get_or_create(nom=f'P{n}')[0] for n in (18, 19, 20)]
 
         # Services réels de l'IST (pfe_service) ; ceux de démo seulement si la table est vide

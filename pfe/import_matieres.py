@@ -73,14 +73,21 @@ def en_credit(v):
 
 
 def _index_semestres():
-    """Semestres par nom (« SEMESTRE 1 », « Module 1 ») ou par abrégé (« S1 »), sans espaces ni casse."""
-    index = {}
-    for s in Semestre.objects.select_related('licence'):
-        index[cle_compacte(s.nom)] = s
-    for s in Semestre.objects.select_related('licence'):
+    """
+    Semestres par (niveau, nom) (« SEMESTRE 1 », « Module 1 ») ou (niveau, abrégé) (« S1 »), sans espaces
+    ni casse : un même nom peut exister dans plusieurs niveaux (SEMESTRE 1 en LICENCE 1 et en MASTER 1).
+    Aussi par nom seul, pour signaler un semestre qui existe mais dans un autre niveau.
+    """
+    index, par_nom = {}, {}
+    semestres = list(Semestre.objects.select_related('licence'))
+    for s in semestres:
+        index[(s.licence_id, cle_compacte(s.nom))] = s
+        par_nom.setdefault(cle_compacte(s.nom), s)
+    for s in semestres:
         if s.abrege:
-            index.setdefault(cle_compacte(s.abrege), s)
-    return index
+            index.setdefault((s.licence_id, cle_compacte(s.abrege)), s)
+            par_nom.setdefault(cle_compacte(s.abrege), s)
+    return index, par_nom
 
 
 def importer_matieres(fichier, profil, simulation=False):
@@ -97,7 +104,7 @@ def importer_matieres(fichier, profil, simulation=False):
     autorises = None if profil.est_scolarite else set(profil.programme_ids)
     programmes = _index_programmes()
     licences = {cle_licence(l.nom): l for l in Licence.objects.all()}
-    semestres = _index_semestres()
+    semestres, semestres_par_nom = _index_semestres()
     sessions = {cle_session(s.annee): s for s in Session.objects.all()}
     promotions = {cle_compacte(p.nom): p for p in Promotion.objects.all()}
 
@@ -131,11 +138,13 @@ def importer_matieres(fichier, profil, simulation=False):
             licence = licences.get(cle_licence(ligne['licence']))
             if licence is None:
                 raise ValueError(f"licence inconnue « {texte(ligne['licence'])} »")
-            semestre = semestres.get(cle_compacte(ligne['semestre']))
+            semestre = semestres.get((licence.pk, cle_compacte(ligne['semestre'])))
             if semestre is None:
+                ailleurs = semestres_par_nom.get(cle_compacte(ligne['semestre']))
+                if ailleurs is not None:
+                    raise ValueError(f"{ailleurs.nom} n'appartient pas à {licence.nom} (il est en "
+                                     f"{ailleurs.licence.nom}) : créez-le pour {licence.nom} dans l'administration")
                 raise ValueError(f"semestre inconnu « {texte(ligne['semestre'])} »")
-            if semestre.licence_id != licence.pk:
-                raise ValueError(f"{semestre.nom} n'appartient pas à {licence.nom} (il est en {semestre.licence.nom})")
             session = sessions.get(cle_session(ligne['session']))
             if session is None:
                 raise ValueError(f"session inconnue « {texte(ligne['session'])} »")
