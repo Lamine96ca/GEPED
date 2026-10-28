@@ -1308,7 +1308,6 @@ class GpedTests(TestCase):
         self.connecter('scol')
         r = self.client.get(reverse('releves'))
         self.assertEqual([x.pk for x in r.context['page']], [rel[2].pk, rel[1].pk])
-        self.assertContains(r, '<p>2 relevés</p>')
         self.assertNotContains(r, 'sur 3')
         # La recherche trouve aussi celui qui n'est pas affiché
         r = self.client.get(reverse('releves'), {'r': rel[0].num_ref})
@@ -1317,7 +1316,7 @@ class GpedTests(TestCase):
         nouveau = ReleveNote.objects.create(type='E', etudiant=e, filiere=self.gc)
         r = self.client.get(reverse('releves'))
         self.assertEqual([x.pk for x in r.context['page']], [nouveau.pk, rel[2].pk, rel[1].pk])
-        self.assertContains(r, '<p>3 relevés</p>')
+        self.assertNotContains(r, '3 relevés')                           # nombre masqué pour l'instant
         # Réenregistrer le même nombre ne change rien ; un nouveau nombre fait repartir le décompte
         reglage.save()
         self.assertEqual(len(self.client.get(reverse('releves')).context['page']), 3)
