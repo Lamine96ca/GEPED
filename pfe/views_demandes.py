@@ -180,6 +180,56 @@ def _contexte_decision(demande):
     }
 
 
+def inscription_de_la_fiche(demande):
+    """
+    Inscription à imprimer pour la demande (None si impossible) et la photo proposée à y mettre.
+    Validée : l'inscription réelle de la session, telle qu'elle est maintenant.
+    En attente : rien n'est enregistré ; la fiche montre ce que la demande apporte (contacts, bourse,
+    formation, photo proposée) et, pour une réinscription, le niveau prévu (Promotion_Licence_Session).
+    """
+    if demande.statut == DemandeEtudiant.REFUSEE:
+        return None, None
+    e = demande.etudiant
+    inscriptions = (Inscription.objects.filter(etudiant=e, session=demande.session)
+                    .select_related('etudiant', 'session', 'licence', 'semestre', 'filiere', 'promotion'))
+    if demande.statut == DemandeEtudiant.VALIDEE:
+        if demande.type == DemandeEtudiant.REINSCRIPTION and demande.licence_id:
+            inscriptions = inscriptions.filter(licence_id=demande.licence_id)
+        return inscriptions.first(), None
+    for champ in DemandeEtudiant.CHAMPS_CONTACTS:                 # aperçu, en mémoire seulement
+        if (demande.contacts or {}).get(champ):
+            setattr(e, champ, demande.contacts[champ])
+    e.boursier = demande.boursier or e.boursier or 'boursier'
+    e.type_formation = demande.type_formation or e.type_formation or 'initiale'
+    if demande.type == DemandeEtudiant.REINSCRIPTION:
+        p = espace.prevision_reinscription(demande)
+        if not p['licence']:
+            return None, None
+        inscription = Inscription(etudiant=e, session=demande.session, licence=p['licence'], filiere=p['filiere'],
+                                  promotion=p['promotion'], cycle=p['cycle'], redouble=p['redouble'])
+    else:
+        inscription = inscriptions.first()
+        if inscription is None:
+            return None, None
+        inscription.etudiant = e
+    return inscription, demande.photo.name or None
+
+
+@login_required
+@scolarite_requise
+def demande_fiche_pdf(request, pk):
+    """Fiche d'inscription / de réinscription de la demande, à imprimer directement."""
+    from .fiche_inscription import reponse_fiche
+    demande = get_object_or_404(DemandeEtudiant.objects.select_related('etudiant', 'session', 'licence',
+                                                                       'derniere_inscription'), pk=pk)
+    inscription, photo = inscription_de_la_fiche(demande)
+    if inscription is None:
+        messages.error(request, "Fiche impossible à imprimer : demande refusée, ou niveau / inscription introuvable "
+                                "pour cette session.")
+        return redirect('demande_detail', pk=demande.pk)
+    return reponse_fiche(inscription, photo)
+
+
 @login_required
 @scolarite_requise
 def demande_photo(request, pk):

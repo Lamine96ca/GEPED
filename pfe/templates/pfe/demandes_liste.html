@@ -56,7 +56,10 @@
           <td>{% if d.type == 'reinscription' %}{{ d.derniere_inscription.licence|default:"—" }} <i class="bi bi-arrow-right"></i> <strong>{{ d.licence|default:"—" }}</strong>{% else %}Préinscrit{% endif %}</td>
           <td>{{ d.derniere_inscription.filiere|default:"—" }}</td>
           <td class="text-nowrap">{{ d.date_depot|date:"d/m/Y H:i" }}{% if d.statut == 'validee' and not d.traitee_par_id %}<div class="small text-secondary">validée ailleurs</div>{% endif %}</td>
-          <td class="text-end"><a class="btn btn-sm btn-light" href="{% url 'demande_detail' d.pk %}"><i class="bi bi-eye"></i> Examiner</a></td>
+          <td class="text-end text-nowrap">
+            {% if d.statut != 'refusee' %}<a class="btn btn-sm btn-primary" href="{% url 'demande_fiche_pdf' d.pk %}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Imprimer la fiche {% if d.type == 'reinscription' %}de réinscription{% else %}d'inscription{% endif %}"><i class="bi bi-printer"></i> Fiche</a>{% endif %}
+            <a class="btn btn-sm btn-light" href="{% url 'demande_detail' d.pk %}"><i class="bi bi-eye"></i> Examiner</a>
+          </td>
         </tr>
       {% empty %}
         <tr><td colspan="5"><div class="etat-vide"><i class="bi bi-inbox"></i><div class="fw-semibold text-body">Aucune demande</div><div class="small">Rien dans cette catégorie pour {{ session }}.</div></div></td></tr>

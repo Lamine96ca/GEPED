@@ -1678,6 +1678,18 @@ class GpedTests(TestCase):
         self.assertContains(r, 'value="payante" checked')                      # choix de l'étudiant, coché
         r = self.client.post(reverse('demande_detail', args=[d.pk]), {'action': 'refuser'}, follow=True)
         self.assertContains(r, 'Indiquez le motif')
+        # Fiche de réinscription imprimable avant la validation : niveau prévu, données de la demande, rien d'enregistré
+        from .views_demandes import inscription_de_la_fiche
+        self.assertContains(self.client.get(reverse('demandes_liste')), reverse('demande_fiche_pdf', args=[d.pk]))
+        r = self.client.get(reverse('demande_fiche_pdf', args=[d.pk]))
+        self.assertEqual((r.status_code, r['Content-Type']), (200, 'application/pdf'))
+        self.assertIn('fiche_reinscription_R1', r['Content-Disposition'])
+        apercu, photo = inscription_de_la_fiche(DemandeEtudiant.objects.get(pk=d.pk))
+        self.assertEqual((apercu.pk, apercu.licence, apercu.promotion, apercu.etudiant.telephone, apercu.etudiant.boursier),
+                         (None, self.l3, self.p18, '622 00 00 01', 'payante'))
+        self.assertTrue(photo)                                                    # photo proposée, en attente
+        self.assertFalse(Inscription.objects.filter(etudiant=e, session=self.session).exists())
+        self.assertNotEqual(Etudiant.objects.get(pk=e.pk).telephone, '622 00 00 01')
         # Validation : la scolarité change la formation ; inscription créée, coordonnées et choix appliqués
         # Décision préremplie : niveau prévu pour P18 (Licence 3), sa promotion, son programme et son cycle
         r = self.client.get(reverse('demande_detail', args=[d.pk]))
@@ -1698,6 +1710,12 @@ class GpedTests(TestCase):
                          (self.l3, self.info, self.p18, 'Licence', False))
         e.refresh_from_db()
         self.assertEqual((e.telephone, e.boursier, e.type_formation), ('622 00 00 01', 'payante', 'initiale'))
+        # Validée : la fiche est celle de l'inscription créée ; refusée : pas de fiche
+        self.assertEqual(inscription_de_la_fiche(DemandeEtudiant.objects.get(pk=d.pk))[0], insc)
+        self.assertEqual(self.client.get(reverse('demande_fiche_pdf', args=[d.pk])).status_code, 200)
+        DemandeEtudiant.objects.filter(pk=d.pk).update(statut=DemandeEtudiant.REFUSEE)
+        self.assertRedirects(self.client.get(reverse('demande_fiche_pdf', args=[d.pk])),
+                             reverse('demande_detail', args=[d.pk]))
         # Déjà inscrit pour la session : l'espace le dit
         self.client.logout()
         r = self.client.post(reverse('espace_accueil'), {'mode': 'reinscription', 'r-ine': 'INER1', 'r-matricule': 'R1'})
@@ -1923,6 +1941,11 @@ class GpedTests(TestCase):
         # Scolarité : signature visible sur la demande ; fiche d'inscription PDF avec la signature
         self.connecter('scol')
         self.assertContains(self.client.get(reverse('demande_detail', args=[d.pk])), 'Signée le')
+        # Fiche d'inscription imprimable directement, avant la validation (préinscription de la session)
+        r = self.client.get(reverse('demande_fiche_pdf', args=[d.pk]))
+        self.assertEqual((r.status_code, r['Content-Type']), (200, 'application/pdf'))
+        self.assertIn('fiche_inscription_SG1', r['Content-Disposition'])
+        self.assertGreaterEqual(r.content.count(b'/Subtype /Image'), 2)              # photo et signature
         r = self.client.get(reverse('demande_signature', args=[d.pk]))
         self.assertEqual((r.status_code, r['Content-Type']), (200, 'image/png'))
         self.client.post(reverse('valider_preinscriptions'), {'ids': [insc.pk]})

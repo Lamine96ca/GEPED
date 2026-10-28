@@ -29,13 +29,17 @@ def titre_fiche(licence):
     return "FICHE D'INSCRIPTION" if est_premiere_annee(licence) else "FICHE DE RÉINSCRIPTION"
 
 
-def _photo_allegee(etudiant):
-    """Photo réduite (240 × 320, JPEG) pour garder un PDF léger ; None s'il n'y en a pas."""
-    if not a_une_photo(etudiant):
+def _photo_allegee(etudiant, photo_privee=None):
+    """
+    Photo réduite (240 × 320, JPEG) pour garder un PDF léger ; None s'il n'y en a pas.
+    `photo_privee` : photo proposée dans une demande en ligne (stockage privé), prise à la place.
+    """
+    if not photo_privee and not a_une_photo(etudiant):
         return None
     try:
         from PIL import Image
-        with etudiant.photo.open('rb') as f:
+        from .models import stockage_prive
+        with (stockage_prive().open(photo_privee, 'rb') if photo_privee else etudiant.photo.open('rb')) as f:
             img = Image.open(f)
             img.load()
         img = img.convert('RGB')
@@ -113,7 +117,7 @@ def _signature_etudiant(c, inscription, x, y_bas):
     c.setFillColorRGB(0, 0, 0)
 
 
-def pdf_fiche_inscription(inscription):
+def pdf_fiche_inscription(inscription, photo_privee=None):
     e, conf = inscription.etudiant, settings.GPED_ATTESTATION
     flux = io.BytesIO()
     c = Canvas(flux, pagesize=A4)
@@ -131,7 +135,7 @@ def pdf_fiche_inscription(inscription):
     p_haut = bas - 18
     p_bas = p_haut - haut_photo
     c.rect(G, p_bas, larg_photo, haut_photo)
-    photo = _photo_allegee(e)
+    photo = _photo_allegee(e, photo_privee)
     if photo:
         c.drawImage(photo, G + 3, p_bas + 3, larg_photo - 6, haut_photo - 6, preserveAspectRatio=True, anchor='c')
     else:
@@ -220,3 +224,14 @@ def pdf_fiche_inscription(inscription):
     c.showPage()
     c.save()
     return flux.getvalue()
+
+
+def reponse_fiche(inscription, photo_privee=None):
+    """La fiche en PDF, ouverte dans le navigateur (prête à imprimer), jamais gardée en cache."""
+    from django.http import HttpResponse
+    e = inscription.etudiant
+    nom = 'fiche_inscription' if titre_fiche(inscription.licence) == "FICHE D'INSCRIPTION" else 'fiche_reinscription'
+    reponse = HttpResponse(pdf_fiche_inscription(inscription, photo_privee), content_type='application/pdf')
+    reponse['Content-Disposition'] = f'inline; filename="{nom}_{e.matricule or e.pk}.pdf"'
+    reponse['Cache-Control'] = 'no-store'
+    return reponse

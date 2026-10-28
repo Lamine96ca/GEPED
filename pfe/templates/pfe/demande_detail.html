@@ -2,7 +2,7 @@
 {% block titre %}{{ demande.get_type_display }} · {{ etudiant.nom }}{% endblock %}
 {% block titre_page %}<a href="{% url 'demandes_liste' %}?type={{ demande.type }}" class="text-decoration-none text-secondary me-1" title="Retour aux demandes"><i class="bi bi-arrow-left"></i></a> {{ demande.get_type_display }} en ligne{% endblock %}
 {% block sous_titre %}<div class="sous-titre">{{ etudiant.prenom }} {{ etudiant.nom }} · {{ demande.session }} · déposée le {{ demande.date_depot|date:"d/m/Y à H:i" }}</div>{% endblock %}
-{% block actions %}{% if fiche %}<a class="btn btn-light" href="{% url 'etudiant_fiche' fiche.pk %}"><i class="bi bi-person-vcard"></i> <span class="d-none d-sm-inline">Fiche de l'étudiant</span></a>{% endif %}{% endblock %}
+{% block actions %}{% if demande.statut != 'refusee' %}<a class="btn btn-primary" href="{% url 'demande_fiche_pdf' demande.pk %}" target="_blank" rel="noopener" title="{% if demande.statut == 'en_attente' %}Avec les informations de la demande, sans rien enregistrer{% else %}Fiche de l'inscription validée{% endif %}"><i class="bi bi-printer"></i> <span class="d-none d-sm-inline">Imprimer la fiche</span></a>{% endif %}{% if fiche %}<a class="btn btn-light" href="{% url 'etudiant_fiche' fiche.pk %}"><i class="bi bi-person-vcard"></i> <span class="d-none d-sm-inline">Fiche de l'étudiant</span></a>{% endif %}{% endblock %}
 {% block contenu %}
 
 {% if demande.statut != 'en_attente' %}

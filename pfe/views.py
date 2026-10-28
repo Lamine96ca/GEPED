@@ -546,15 +546,9 @@ def _promotions_prevues():
 @scolarite_requise
 def inscription_fiche_pdf(request, pk):
     """Fiche d'inscription (ou de réinscription) à imprimer, avec la photo de l'étudiant."""
-    from .fiche_inscription import pdf_fiche_inscription, titre_fiche
-    inscription = get_object_or_404(Inscription.objects.select_related(
-        'etudiant', 'session', 'licence', 'semestre', 'filiere', 'promotion'), pk=pk)
-    e = inscription.etudiant
-    nom = 'fiche_inscription' if titre_fiche(inscription.licence) == "FICHE D'INSCRIPTION" else 'fiche_reinscription'
-    reponse = HttpResponse(pdf_fiche_inscription(inscription), content_type='application/pdf')
-    reponse['Content-Disposition'] = f'inline; filename="{nom}_{e.matricule or e.pk}.pdf"'
-    reponse['Cache-Control'] = 'no-store'
-    return reponse
+    from .fiche_inscription import reponse_fiche
+    return reponse_fiche(get_object_or_404(Inscription.objects.select_related(
+        'etudiant', 'session', 'licence', 'semestre', 'filiere', 'promotion'), pk=pk))
 
 
 @login_required
