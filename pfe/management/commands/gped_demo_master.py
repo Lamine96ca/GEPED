@@ -6,21 +6,27 @@ Compte de démonstration du programme MASTER EN ENERGIE (local ou production) :
     python manage.py gped_demo_master --supprimer
 
 Crée, s'ils n'existent pas (la commande peut être relancée sans rien dupliquer) :
-  - le programme MASTER EN ENERGIE (cycle Master, département ÉNERGÉTIQUE), les niveaux MASTER 1
-    et MASTER 2, la promotion PM01 prévue en MASTER 1 pour la session en cours ;
+  - le programme MASTER EN ENERGIE (cycle Master, département ÉNERGÉTIQUE), les niveaux du Master
+    (ceux qui existent déjà : M1 / M2, sinon créés sous ces noms), la promotion PM01 prévue en M1 pour
+    la session en cours ;
   - le compte « demo.master » : chef du programme (il signe les documents de ce Master) ;
-  - une étudiante préinscrite en MASTER 1, pour essayer l'onglet « Master » de l'espace étudiant
+  - une étudiante préinscrite en M1, pour essayer l'onglet « Master » de l'espace étudiant
     (--email-etudiant : une adresse qui reçoit vraiment le lien, en production).
 Le mot de passe du compte est tiré au hasard et affiché UNE fois dans ce terminal (jamais enregistré
 dans le code) ; --nouveau-mot-de-passe en tire un autre. --supprimer retire le compte et l'étudiante
 de démonstration (le programme, les niveaux et la promotion restent).
+Niveaux en double (« MASTER 1 » à côté de « M1 », créés par une ancienne version de cette commande) :
+la démonstration passe sur M1 / M2, et le doublon est retiré s'il ne sert à rien d'autre.
 """
 import secrets
 import string
 
+from django.contrib.admin.utils import NestedObjects
 from django.contrib.auth.models import User
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
+
+from pfe.attestations import annee_master
 
 from pfe.models import (Etudiant, Inscription, Licence, Personnel, Promotion, Promotion_Licence_Session, Service,
                         Session)
@@ -33,6 +39,40 @@ MATRICULE_ETUDIANT = '26M03DEMO01'
 
 def _mot_de_passe():
     return ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(14))
+
+
+def _niveau_master(annee):
+    """Niveau de l'année de Master : « M1 » s'il existe, sinon un équivalent (« MASTER 1 »), sinon créé « M1 »."""
+    equivalents = [l for l in Licence.objects.order_by('pk') if annee_master(l) == annee]
+    return next((l for l in equivalents if l.nom.strip().upper() == f'M{annee}'), None) or \
+        (equivalents[0] if equivalents else Licence.objects.create(nom=f'M{annee}'))
+
+
+def _retirer_doublons(garde, sortie):
+    """
+    Autres niveaux de la même année de Master (« MASTER 1 » à côté de « M1 ») : ce que la démonstration y
+    avait mis passe sur `garde` ; le doublon est supprimé seulement si plus rien n'en dépend.
+    """
+    for doublon in Licence.objects.exclude(pk=garde.pk):
+        if annee_master(doublon) != annee_master(garde):
+            continue
+        Inscription.objects.filter(licence=doublon, etudiant__matricule=MATRICULE_ETUDIANT).update(licence=garde)
+        for pls in Promotion_Licence_Session.objects.filter(licence=doublon, promotion__nom='PM01'):
+            if Promotion_Licence_Session.objects.filter(promotion=pls.promotion, licence=garde,
+                                                        session=pls.session).exists():
+                pls.delete()
+            else:
+                pls.licence = garde
+                pls.save(update_fields=['licence'])
+        liens = NestedObjects(using='default')              # tout ce que la suppression emporterait
+        liens.collect([doublon])
+        autres = [o for groupe in liens.data.values() for o in groupe if o != doublon] + list(liens.protected)
+        if autres:
+            sortie.write(f"Niveau « {doublon.nom} » gardé : {len(autres)} élément(s) en dépendent encore.")
+        else:
+            nom = doublon.nom
+            doublon.delete()
+            sortie.write(f"Niveau en double « {nom} » retiré (rien n'en dépendait).")
 
 
 class Command(BaseCommand):
@@ -57,8 +97,7 @@ class Command(BaseCommand):
             programme, cree = Service.objects.get_or_create(nom='MASTER EN ENERGIE', defaults={
                 'code': 'M03', 'programme': True, 'cycle': 'Master', 'description': 'Master en Énergie',
                 'departement': departement})
-            m1, _ = Licence.objects.get_or_create(nom='MASTER 1')
-            Licence.objects.get_or_create(nom='MASTER 2')
+            m1, m2 = _niveau_master(1), _niveau_master(2)
             promo, _ = Promotion.objects.get_or_create(
                 nom='PM01', defaults={'description': 'Première promotion du Master en Énergie'})
             Promotion_Licence_Session.objects.get_or_create(promotion=promo, licence=m1, session=session)
@@ -93,16 +132,18 @@ class Command(BaseCommand):
                 etudiant.save(update_fields=['email'])
             Inscription.objects.get_or_create(etudiant=etudiant, session=session, defaults={
                 'licence': m1, 'filiere': programme, 'promotion': promo, 'cycle': 'Master'})
+            for garde in (m1, m2):
+                _retirer_doublons(garde, self.stdout)
 
         self.stdout.write(self.style.SUCCESS(
-            f"Programme MASTER EN ENERGIE {'créé' if cree else 'déjà présent'} ; niveaux MASTER 1 / MASTER 2 ; "
-            f"promotion PM01 prévue en MASTER 1 pour {session}."))
+            f"Programme MASTER EN ENERGIE {'créé' if cree else 'déjà présent'} ; niveaux {m1.nom} / {m2.nom} ; "
+            f"promotion PM01 prévue en {m1.nom} pour {session}."))
         self.stdout.write(f"Compte : {IDENTIFIANT} (chef du programme, signe les documents de ce Master)")
         if mot_de_passe:
             self.stdout.write(self.style.WARNING(f"Mot de passe (affiché une seule fois, notez-le) : {mot_de_passe}"))
         else:
             self.stdout.write("Mot de passe inchangé (--nouveau-mot-de-passe pour en tirer un autre).")
-        self.stdout.write(f"Étudiante de démonstration : Mariama DIALLO, préinscrite en MASTER 1 — onglet Master de "
+        self.stdout.write(f"Étudiante de démonstration : Mariama DIALLO, préinscrite en {m1.nom} — onglet Master de "
                           f"/etudiant/ avec l'adresse {etudiant.email}")
         if not (session.inscriptions_ouvertes or session.reinscriptions_ouvertes):
             self.stdout.write(self.style.WARNING("Les inscriptions en ligne sont fermées : ouvrez-les dans « Demandes "

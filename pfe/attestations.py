@@ -264,6 +264,24 @@ def niveau_reel(licence):
     return ' '.join((licence.nom or '').split())
 
 
+ANNEES_MASTER = {1: 'première', 2: 'deuxième'}
+
+
+def annee_master(licence):
+    """1 pour M1 / MASTER 1, 2 pour M2 / MASTER 2 (casse et espaces ignorés), sinon None."""
+    import re
+    m = re.fullmatch(r'M(?:ASTER)?\s*([12])', ' '.join((getattr(licence, 'nom', '') or '').split()).upper())
+    return int(m.group(1)) if m else None
+
+
+def niveau_en_clair(licence):
+    """Master : « première année du Master (M1) » ; les autres niveaux tels qu'ils sont enregistrés."""
+    annee = annee_master(licence)
+    if annee is None:
+        return niveau_reel(licence)
+    return f"{ANNEES_MASTER[annee]} année du Master (M{annee})"
+
+
 def _semestres(licence):
     abreges = [s.abrege or s.nom for s in Semestre.objects.filter(licence=licence).order_by('nom')]
     if not abreges:
@@ -301,8 +319,12 @@ def contenu_inscription(attestation):
     """Titre et paragraphes de l'attestation d'inscription / de réinscription."""
     e, lic = attestation.etudiant, attestation.licence
     semestres = _semestres(lic)
-    niveau = (f"aux <b>{semestres}</b> ({_echap(niveau_reel(lic))})" if semestres
-              else f"en <b>{_echap(niveau_reel(lic))}</b>")
+    if annee_master(lic):
+        niveau = (f"aux <b>{semestres}</b> de la <b>{_echap(niveau_en_clair(lic))}</b>" if semestres
+                  else f"en <b>{_echap(niveau_en_clair(lic))}</b>")
+    else:
+        niveau = (f"aux <b>{semestres}</b> ({_echap(niveau_reel(lic))})" if semestres
+                  else f"en <b>{_echap(niveau_reel(lic))}</b>")
     programme = (f" du Programme <b>{_echap(_programme_reel(attestation.filiere))}</b>"
                  if attestation.filiere else '')
     texte = (
@@ -344,8 +366,13 @@ def contenu_niveau(attestation):
     """Cours suivis (semestres de la licence) dans une année universitaire."""
     e, lic = attestation.etudiant, attestation.licence
     semestres = _semestres(lic)
-    suivi = (f"des {semestres.replace('Semestres ', 'Semestres <b>').replace('Semestre ', 'Semestre <b>')}</b> "
-             f"({_echap(niveau_reel(lic))})" if semestres else f"de la <b>{_echap(niveau_reel(lic))}</b>")
+    en_gras = semestres.replace('Semestres ', 'Semestres <b>').replace('Semestre ', 'Semestre <b>')
+    if annee_master(lic):
+        suivi = (f"des {en_gras}</b> de la <b>{_echap(niveau_en_clair(lic))}</b>" if semestres
+                 else f"de la <b>{_echap(niveau_en_clair(lic))}</b>")
+    else:
+        suivi = (f"des {en_gras}</b> ({_echap(niveau_reel(lic))})" if semestres
+                 else f"de la <b>{_echap(niveau_reel(lic))}</b>")
     departement = (f", du Programme : <b>{_echap(_programme_reel(attestation.filiere))}</b> "
                    f"de {_echap(_conf('etablissement'))}" if attestation.filiere else '')
     texte = (
@@ -542,7 +569,7 @@ def infos_publiques(attestation):
     else:
         if attestation.licence:
             semestres = _semestres(attestation.licence)
-            niveau = niveau_reel(attestation.licence)
+            niveau = niveau_en_clair(attestation.licence)
             infos.append(('Niveau', f"{semestres} ({niveau})" if semestres else niveau))
         if attestation.filiere:
             infos.append(('Programme', _programme_reel(attestation.filiere)))

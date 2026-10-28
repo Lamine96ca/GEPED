@@ -1558,6 +1558,29 @@ class GpedTests(TestCase):
                                                       self.session.annee, 4, 'Master']]), scol, simulation=True)
         self.assertIn("créez-le pour MASTER 3", r.erreurs[0][1])
 
+    def test_attestations_annee_du_master(self):
+        from .attestations import contenu_inscription, contenu_niveau, infos_publiques
+        from .models import Attestation, Semestre
+        master = Service.objects.create(nom='MASTER EN ENERGIE', code='M03', programme=True, cycle='Master')
+        m1, m2 = Licence.objects.create(nom='M1'), Licence.objects.create(nom='M2')
+        e = Etudiant.objects.get(matricule='M0')
+
+        def textes(licence):
+            a = Attestation(etudiant=e, licence=licence, filiere=master, session=self.session, num_ref='ESSAI')
+            return (' '.join(str(x) for x in contenu_inscription(a)[1]),
+                    ' '.join(str(x) for x in contenu_niveau(a)[1]), dict(infos_publiques(a))['Niveau'])
+        inscription, niveau, qr = textes(m1)
+        self.assertIn('a été inscrit·e en <b>première année du Master (M1)</b> du Programme', inscription)
+        self.assertIn('pratiques de la <b>première année du Master (M1)</b> au compte', niveau)
+        self.assertEqual(qr, 'première année du Master (M1)')
+        Semestre.objects.create(nom='SEMESTRE 3', abrege='S3', licence=m2)
+        Semestre.objects.create(nom='SEMESTRE 4', abrege='S4', licence=m2)
+        inscription, niveau, _ = textes(m2)
+        self.assertIn('aux <b>Semestres S3 et S4</b> de la <b>deuxième année du Master (M2)</b>', inscription)
+        self.assertIn('des Semestres <b>S3 et S4</b> de la <b>deuxième année du Master (M2)</b>', niveau)
+        # Licence : inchangé
+        self.assertIn('en <b>Licence 1</b>', textes(self.licence)[0])
+
     def test_attestations_programme_et_non_departement(self):
         from .attestations import contenu_fin_etudes, contenu_inscription, contenu_niveau, infos_publiques
         from .models import Attestation
@@ -1710,10 +1733,20 @@ class GpedTests(TestCase):
         from io import StringIO
         from django.contrib.auth import authenticate
         from django.core.management import call_command
+        # Doublons d'une ancienne version : MASTER 1 (inutilisé) est retiré, MASTER 2 (utilisé) est gardé
+        Licence.objects.create(nom='MASTER 1')
+        m2_utilise = Licence.objects.create(nom='MASTER 2')
+        Licence.objects.create(nom='M1')
+        Licence.objects.create(nom='M2')
+        Inscription.objects.create(etudiant=Etudiant.objects.get(matricule='M1'), session=self.s2425,
+                                   licence=m2_utilise, filiere=self.info)
         sortie = StringIO()
         call_command('gped_demo_master', '--email-etudiant', 'Essai.Master@Exemple.com', stdout=sortie)
         mdp = re.search(r'notez-le\) : (\S+)', sortie.getvalue()).group(1)
         self.assertIsNotNone(authenticate(username='demo.master', password=mdp))
+        self.assertFalse(Licence.objects.filter(nom='MASTER 1').exists())
+        self.assertTrue(Licence.objects.filter(nom='MASTER 2').exists())
+        self.assertIn("« MASTER 2 » gardé", sortie.getvalue())
         programme = Service.objects.get(nom='MASTER EN ENERGIE')
         self.assertEqual((programme.programme, programme.cycle), (True, 'Master'))
         perso = Personnel.objects.get(utilisateur__username='demo.master')
@@ -1721,7 +1754,7 @@ class GpedTests(TestCase):
                          (True, 'Dr Démo MASTER ÉNERGIE', [programme]))
         insc = Inscription.objects.get(etudiant__matricule='26M03DEMO01')
         self.assertEqual((insc.etudiant.email, insc.licence.nom, insc.cycle, insc.etudiant.preinscrit),
-                         ('essai.master@exemple.com', 'MASTER 1', 'Master', True))
+                         ('essai.master@exemple.com', 'M1', 'Master', True))
         # Relancée : rien n'est dupliqué, le mot de passe ne change pas
         sortie = StringIO()
         call_command('gped_demo_master', stdout=sortie)
