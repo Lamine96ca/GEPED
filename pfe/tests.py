@@ -197,7 +197,7 @@ class GpedTests(TestCase):
         titre, (texte, _) = contenu_inscription(a1)
         self.assertEqual(titre, 'ATTESTATION DE REINSCRIPTION')
         for attendu in ('<b>Semestres S3 et S4</b> (Licence 2)', 'Matricule : <b>M0</b>',
-                        'Département <b>Informatique</b>', '<b>2024-2025</b>'):
+                        'Programme <b>Informatique</b>', '<b>2024-2025</b>'):
             self.assertIn(attendu, texte)
         # Niveau réel, tel qu'enregistré (jamais converti en « 4ème Année »)
         from .attestations import niveau_reel
@@ -269,7 +269,7 @@ class GpedTests(TestCase):
 
         titre, (texte, _) = contenu_niveau(a)
         self.assertEqual(titre, 'ATTESTATION DE NIVEAU')
-        for attendu in ('Je soussigné, atteste', '<b>P N0</b>', 'Matricule : <b>M0</b>', 'Département : <b>Informatique</b>',
+        for attendu in ('Je soussigné, atteste', '<b>P N0</b>', 'Matricule : <b>M0</b>', 'Programme : <b>Informatique</b>',
                         'cours théoriques et pratiques des Semestres <b>S3 et S4</b> (Licence 2)', '<b>2024-2025</b>'):
             self.assertIn(attendu, texte)
         self.assertEqual(self.client.get(reverse('attestation_pdf', args=[a.pk])).content[:4], b'%PDF')
@@ -301,7 +301,7 @@ class GpedTests(TestCase):
 
         titre, (texte, fin) = contenu_fin_etudes(a)
         self.assertEqual(titre, "ATTESTATION DE FIN D'ETUDES SUPERIEURES")
-        for attendu in ('M ou Mme', '<b>P N0</b>', 'INE : <b>DIHO0807698329</b>', 'Département <b>Informatique</b>',
+        for attendu in ('M ou Mme', '<b>P N0</b>', 'INE : <b>DIHO0807698329</b>', 'Programme <b>Informatique</b>',
                         'pratiques du <b>Premier cycle LMD (Licence)</b> de notre institution'):
             self.assertIn(attendu, texte)
         self.assertEqual(titre_document(a), "ATTESTATION DE FIN D'ETUDES SUPERIEURES (Premier cycle LMD)")
@@ -1522,6 +1522,23 @@ class GpedTests(TestCase):
         cache.clear()
         return dossier
 
+    def test_attestations_programme_et_non_departement(self):
+        from .attestations import contenu_fin_etudes, contenu_inscription, contenu_niveau, infos_publiques
+        from .models import Attestation
+        # Description = nom du département (cas réel : MECATRONIQUE → « Conception et Fabrication Mécanique »)
+        meca = Service.objects.create(nom='MECATRONIQUE', code='MEC', programme=True,
+                                      description='Conception et Fabrication Mécanique')
+        e = Etudiant.objects.get(matricule='M0')
+        for type_, contenu in ((Attestation.INSCRIPTION, contenu_inscription), (Attestation.NIVEAU, contenu_niveau),
+                               (Attestation.FIN_ETUDES, contenu_fin_etudes)):
+            a = Attestation(type=type_, etudiant=e, licence=self.licence, filiere=meca, session=self.session,
+                            cycle='Licence', num_ref='ESSAI')
+            texte = ' '.join(str(x) for x in contenu(a)[1])
+            self.assertIn('<b>MECATRONIQUE</b>', texte)
+            self.assertNotIn('Conception', texte)
+            self.assertNotIn('Département', texte)
+            self.assertIn(('Programme', 'MECATRONIQUE'), infos_publiques(a))
+
     def test_attestations_directeur_de_master(self):
         from .models import Attestation
         master = Service.objects.create(nom='MASTER EN ENERGIE', code='M03', programme=True, cycle='Master')
@@ -2736,10 +2753,10 @@ class GpedTests(TestCase):
         self.assertIn('du département <b>Informatique</b>, programme <b>Systèmes Embarqués</b>', texte)
         a.filiere = self.info
         self.assertNotIn('programme <b>', _paragraphe(insc.etudiant, None, a))
-        # Attestation d'inscription : le programme seulement (pas le département)
+        # Attestation d'inscription : le programme (son vrai nom), pas le département
         a = Attestation(type=Attestation.INSCRIPTION, etudiant=insc.etudiant, filiere=se, session=self.session,
                         licence=self.licence)
-        self.assertIn('Département <b>Systèmes Embarqués</b>', contenu_inscription(a)[1][0])
+        self.assertIn('Programme <b>Systèmes embarqués</b>', contenu_inscription(a)[1][0])
 
     def test_attestation_de_soutenance(self):
         import datetime

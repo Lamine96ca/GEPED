@@ -277,6 +277,12 @@ def _nom_programme(filiere):
     return (filiere.description or '').strip() or filiere.nom.title()
 
 
+def _programme_reel(filiere):
+    """Nom réel du programme (la description porte souvent celui du département) : inscription, niveau,
+    fin d'études."""
+    return filiere.nom
+
+
 def _nom_departement(filiere):
     """Département du programme (champ `departement` du Service) ; à défaut, le programme lui-même."""
     return _nom_programme(filiere.departement_effectif)
@@ -297,7 +303,7 @@ def contenu_inscription(attestation):
     semestres = _semestres(lic)
     niveau = (f"aux <b>{semestres}</b> ({_echap(niveau_reel(lic))})" if semestres
               else f"en <b>{_echap(niveau_reel(lic))}</b>")
-    programme = (f" du Département <b>{_echap(_nom_programme(attestation.filiere))}</b>"
+    programme = (f" du Programme <b>{_echap(_programme_reel(attestation.filiere))}</b>"
                  if attestation.filiere else '')
     texte = (
         f"Je soussigné {_echap(_signataire(attestation).nom)},  {_echap(_signataire(attestation).fonction)} de {_echap(_conf('etablissement'))}, "
@@ -340,7 +346,7 @@ def contenu_niveau(attestation):
     semestres = _semestres(lic)
     suivi = (f"des {semestres.replace('Semestres ', 'Semestres <b>').replace('Semestre ', 'Semestre <b>')}</b> "
              f"({_echap(niveau_reel(lic))})" if semestres else f"de la <b>{_echap(niveau_reel(lic))}</b>")
-    departement = (f", du Département : <b>{_echap(_nom_programme(attestation.filiere))}</b> "
+    departement = (f", du Programme : <b>{_echap(_programme_reel(attestation.filiere))}</b> "
                    f"de {_echap(_conf('etablissement'))}" if attestation.filiere else '')
     texte = (
         f"Je soussigné, atteste que l’étudiant·e : <b>{_echap(e.prenom.upper())} {_echap(e.nom.upper())}</b>, "
@@ -395,7 +401,7 @@ def contenu_fin_etudes(attestation):
     """Texte de l'attestation de fin d'études supérieures (avec le cycle)."""
     e = attestation.etudiant
     cycle = libelle_cycle(attestation.cycle, 'texte')
-    departement = (f", Département <b>{_echap(_nom_programme(attestation.filiere))}</b>" if attestation.filiere else '')
+    departement = (f", Programme <b>{_echap(_programme_reel(attestation.filiere))}</b>" if attestation.filiere else '')
     texte = (
         f"Je soussigné {_echap(_signataire(attestation).nom)},  {_echap(_signataire(attestation).fonction)} ,  atteste  que M ou Mme :  "
         f"<b>{_echap(e.prenom.upper())} {_echap(e.nom.upper())}</b>, Matricule : <b>{_echap(e.matricule or '—')}</b>, "
@@ -515,7 +521,7 @@ def infos_publiques(attestation):
     elif attestation.type == Attestation.FIN_ETUDES:
         infos.append(('INE', e.ine or '—'))
         if attestation.filiere:
-            infos.append(('Département', _nom_programme(attestation.filiere)))
+            infos.append(('Programme', _programme_reel(attestation.filiere)))
         if attestation.cycle:
             infos.append(('Cycle validé', libelle_cycle(attestation.cycle, 'texte')))
     elif attestation.type == Attestation.SOUTENANCE:
@@ -539,7 +545,7 @@ def infos_publiques(attestation):
             niveau = niveau_reel(attestation.licence)
             infos.append(('Niveau', f"{semestres} ({niveau})" if semestres else niveau))
         if attestation.filiere:
-            infos.append(('Département', _nom_programme(attestation.filiere)))
+            infos.append(('Programme', _programme_reel(attestation.filiere)))
         if attestation.session:
             infos.append(('Année universitaire', attestation.session.annee))
     return infos
