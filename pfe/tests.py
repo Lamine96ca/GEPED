@@ -1522,6 +1522,35 @@ class GpedTests(TestCase):
         cache.clear()
         return dossier
 
+    def test_commande_demo_master(self):
+        import re
+        from io import StringIO
+        from django.contrib.auth import authenticate
+        from django.core.management import call_command
+        sortie = StringIO()
+        call_command('gped_demo_master', '--email-etudiant', 'Essai.Master@Exemple.com', stdout=sortie)
+        mdp = re.search(r'notez-le\) : (\S+)', sortie.getvalue()).group(1)
+        self.assertIsNotNone(authenticate(username='demo.master', password=mdp))
+        programme = Service.objects.get(nom='MASTER EN ENERGIE')
+        self.assertEqual((programme.programme, programme.cycle), (True, 'Master'))
+        perso = Personnel.objects.get(utilisateur__username='demo.master')
+        self.assertEqual((perso.chef, perso.nom_signature, list(perso.service.all())),
+                         (True, 'Dr Démo MASTER ÉNERGIE', [programme]))
+        insc = Inscription.objects.get(etudiant__matricule='26M03DEMO01')
+        self.assertEqual((insc.etudiant.email, insc.licence.nom, insc.cycle, insc.etudiant.preinscrit),
+                         ('essai.master@exemple.com', 'MASTER 1', 'Master', True))
+        # Relancée : rien n'est dupliqué, le mot de passe ne change pas
+        sortie = StringIO()
+        call_command('gped_demo_master', stdout=sortie)
+        self.assertIn('Mot de passe inchangé', sortie.getvalue())
+        self.assertIsNotNone(authenticate(username='demo.master', password=mdp))
+        self.assertEqual(Etudiant.objects.filter(matricule='26M03DEMO01').count(), 1)
+        # Suppression : le compte et l'étudiante partent, le programme reste
+        call_command('gped_demo_master', '--supprimer', stdout=StringIO())
+        self.assertFalse(User.objects.filter(username='demo.master').exists())
+        self.assertFalse(Etudiant.objects.filter(matricule='26M03DEMO01').exists())
+        self.assertTrue(Service.objects.filter(nom='MASTER EN ENERGIE').exists())
+
     def test_espace_master_lien_par_email(self):
         import re
         from django.core import mail
