@@ -148,9 +148,9 @@
                 {{ form_insc.redouble }}
                 <div><strong>Redoublant</strong><span>L'étudiant reprend ce niveau.</span></div>
               </label>
-              <label class="option-import{% if form_etu.inscription_en_ligne %} opacity-75{% endif %}" for="{{ form_etu.preinscrit.id_for_label }}">
+              <label class="option-import" for="{{ form_etu.preinscrit.id_for_label }}">
                 {{ form_etu.preinscrit }}
-                <div><strong>Préinscrit</strong>{% if form_etu.inscription_en_ligne %}<span><i class="bi bi-lock"></i> Inscription en ligne validée le {{ form_etu.inscription_en_ligne.traitee_le|date:"d/m/Y" }} : l'étudiant est inscrit.</span>{% else %}<span>Inscription pas encore finalisée.</span>{% endif %}</div>
+                <div><strong>Préinscrit</strong><span>Inscription pas encore finalisée.{% if form_etu.inscription_en_ligne %} Inscription en ligne validée le {{ form_etu.inscription_en_ligne.traitee_le|date:"d/m/Y" }}.{% endif %}</span></div>
               </label>
             </div>
           </div>

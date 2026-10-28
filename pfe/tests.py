@@ -1597,14 +1597,14 @@ class GpedTests(TestCase):
         d.refresh_from_db()
         self.assertEqual((p.telephone, p.email, p.tuteur, p.preinscrit, d.statut),
                          ('622 11 22 33', 'awa.bah@exemple.com', 'Mariam CAMARA', False, 'validee'))
-        # Inscription en ligne validée : la fiche ne peut plus repasser « Préinscrit » (case bloquée)
+        # Inscription en ligne validée : la case « Préinscrit » reste modifiable (la validation est signalée)
         from django.forms.models import model_to_dict
         from .forms import EtudiantForm
         donnees = {k: v for k, v in model_to_dict(p, exclude=['photo', 'utilisateur']).items() if v not in (None, False)}
         f = EtudiantForm({**donnees, 'preinscrit': 'on'}, instance=p)
-        self.assertTrue(f.fields['preinscrit'].disabled)
+        self.assertFalse(f.fields['preinscrit'].disabled)
         self.assertTrue(f.is_valid(), f.errors)
-        self.assertFalse(f.cleaned_data['preinscrit'])
+        self.assertTrue(f.cleaned_data['preinscrit'])
         self.assertContains(self.client.get(reverse('inscription_modifier', args=[insc.pk])), 'Inscription en ligne validée le')
 
     def test_espace_etudiant_essais_limites_et_expiration(self):
