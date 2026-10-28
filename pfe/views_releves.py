@@ -78,9 +78,9 @@ def releves(request):
                                    | Q(etudiant__nom__icontains=r) | Q(etudiant__prenom__icontains=r))
         page = Paginator(delivres, 25).get_page(request.GET.get('page'))
     else:
-        # Sans recherche : les N derniers seulement, N fixé dans l'espace admin (Réglages d'affichage)
-        limite = ReglageAffichage.actuel().nb_releves
-        page = Paginator(delivres[:limite], limite).get_page(1)
+        # Sans recherche : le nombre fixé dans l'espace admin (Réglages d'affichage), plus les relevés délivrés depuis
+        affiches = ReglageAffichage.actuel().releves_affiches(delivres)
+        page = Paginator(affiches, max(len(affiches), 1)).get_page(1)
     imprimer = None
     if _entier(request.GET.get('imprimer')):
         imprimer = ReleveNote.objects.select_related('etudiant', 'filiere', 'session', 'semestre', 'licence').filter(

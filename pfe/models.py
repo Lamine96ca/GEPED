@@ -956,7 +956,10 @@ class ReglageAffichage(models.Model):
     nb_releves = models.PositiveSmallIntegerField(
         'Relevés délivrés affichés', default=50, validators=[MinValueValidator(1), MaxValueValidator(500)],
         help_text="Nombre de relevés (les plus récents) affichés dans la liste « Relevés délivrés » "
-                  "pour tout le monde. Les autres ne sont trouvés que par la recherche.")
+                  "pour tout le monde. Les relevés délivrés ensuite s'y ajoutent (30 + 1 nouveau = 31). "
+                  "Les autres ne sont trouvés que par la recherche.")
+    # Dernier relevé existant quand le nombre a été fixé : ceux d'après s'ajoutent à la liste
+    dernier_releve = models.PositiveIntegerField(null=True, blank=True, editable=False)
 
     class Meta:
         verbose_name = "Réglage d'affichage"
@@ -965,7 +968,21 @@ class ReglageAffichage(models.Model):
     def __str__(self):
         return "Réglages d'affichage"
 
+    def save(self, *args, **kwargs):
+        # Nouveau nombre : le décompte repart d'ici (réenregistrer le même nombre ne change rien)
+        avant = ReglageAffichage.objects.filter(pk=self.pk).values_list('nb_releves', flat=True).first()
+        if self.pk is None or avant != self.nb_releves or self.dernier_releve is None:
+            self.dernier_releve = ReleveNote.objects.aggregate(m=models.Max('pk'))['m'] or 0
+        super().save(*args, **kwargs)
+
     @classmethod
     def actuel(cls):
         return cls.objects.first() or cls()
+
+    def releves_affiches(self, releves):
+        """Les `nb_releves` derniers au moment du réglage, plus tous ceux délivrés depuis."""
+        if self.dernier_releve is None:                       # rien d'enregistré : les N derniers
+            return list(releves[:self.nb_releves])
+        anciens = list(releves.filter(pk__lte=self.dernier_releve).values_list('pk', flat=True)[:self.nb_releves])
+        return list(releves.filter(models.Q(pk__gt=self.dernier_releve) | models.Q(pk__in=anciens)))
 

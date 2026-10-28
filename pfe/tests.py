@@ -1313,6 +1313,17 @@ class GpedTests(TestCase):
         # La recherche trouve aussi celui qui n'est pas affiché
         r = self.client.get(reverse('releves'), {'r': rel[0].num_ref})
         self.assertEqual([x.pk for x in r.context['page']], [rel[0].pk])
+        # Un relevé délivré après le réglage s'ajoute : 2 + 1 = 3 (le plus ancien reste masqué)
+        nouveau = ReleveNote.objects.create(type='E', etudiant=e, filiere=self.gc)
+        r = self.client.get(reverse('releves'))
+        self.assertEqual([x.pk for x in r.context['page']], [nouveau.pk, rel[2].pk, rel[1].pk])
+        self.assertContains(r, '<p>3 relevés</p>')
+        # Réenregistrer le même nombre ne change rien ; un nouveau nombre fait repartir le décompte
+        reglage.save()
+        self.assertEqual(len(self.client.get(reverse('releves')).context['page']), 3)
+        reglage.nb_releves = 1
+        reglage.save()
+        self.assertEqual([x.pk for x in self.client.get(reverse('releves')).context['page']], [nouveau.pk])
         # Hors de l'espace admin : la scolarité n'a pas accès au réglage
         self.assertNotEqual(self.client.get(reverse('admin:pfe_reglageaffichage_change', args=[reglage.pk])).status_code,
                             200)
