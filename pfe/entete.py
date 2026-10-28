@@ -1,7 +1,8 @@
 """
 En-tête officiel commun aux documents PDF (relevés de notes, fiche d'inscription, attestations) :
-bandeau de l'établissement (emblème du ministère, « IST Mamou », logo), « SERVICE SCOLARITÉ »,
-coordonnées (boîte postale, e-mail, téléphone) et trait bleu.
+bandeau de l'établissement (emblème du ministère, « IST Mamou », logo), service du signataire
+(« SERVICE SCOLARITÉ », ou le programme pour un Master), coordonnées (boîte postale, e-mail et
+téléphone du chef qui signe : voir pfe/signataires.py) et trait bleu.
 """
 import io
 from functools import lru_cache
@@ -31,13 +32,16 @@ def bandeau():
 
 
 def dessiner_entete(c, largeur_page, hauteur_page, g, d, haut=14, largeur_bandeau=None, taille_service=12,
-                    taille_coordonnees=8.5, ecart=16):
+                    taille_coordonnees=8.5, ecart=16, signataire=None):
     """
     Dessine l'en-tête, bandeau centré sur la page, son haut à `haut` pt du haut de la page.
     Les coordonnées et le trait vont de `g` à `d`. Renvoie la ligne de base des coordonnées
     (le trait est 4 pt plus bas). Le bandeau est opaque : le filigrane doit commencer sous l'en-tête.
+    `signataire` : celui du document (par défaut, le chef de la scolarité).
     """
+    from .signataires import signataire as signataire_par_defaut
     conf = settings.GPED_ATTESTATION
+    s = signataire or signataire_par_defaut()
     largeur = largeur_bandeau or (d - g)
     hauteur = largeur * RAPPORT_BANDEAU
     y = hauteur_page - haut - hauteur
@@ -45,12 +49,16 @@ def dessiner_entete(c, largeur_page, hauteur_page, g, d, haut=14, largeur_bandea
     y += hauteur * MARGE_BAS_BANDEAU
     c.setFillColorRGB(0, 0, 0)
     c.setFont('Helvetica-Bold', taille_service)
-    c.drawCentredString(largeur_page / 2, y, 'SERVICE SCOLARITÉ')
+    service, taille = s.service, taille_service
+    while c.stringWidth(service, 'Helvetica-Bold', taille) > d - g and taille > 7:
+        taille -= 0.5
+    c.setFont('Helvetica-Bold', taille)
+    c.drawCentredString(largeur_page / 2, y, service)
     y -= ecart
     c.setFont('Helvetica-Bold', taille_coordonnees)
     c.drawString(g, y, conf['boite_postale'])
-    c.drawCentredString((g + d) / 2, y, f"Email : {conf['email']}")
-    c.drawRightString(d, y, f"Tél : {conf['telephone']}")
+    c.drawCentredString((g + d) / 2, y, f"Email : {s.email}")
+    c.drawRightString(d, y, f"Tél : {s.telephone}")
     c.setStrokeColorRGB(*BLEU_TRAIT)
     c.setLineWidth(1.6)
     c.line(g, y - 4, d, y - 4)

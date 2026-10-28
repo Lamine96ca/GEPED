@@ -126,7 +126,9 @@ def pdf_fiche_inscription(inscription, photo_privee=None):
     c.setAuthor('gePed – IST de Mamou')
 
     # En-tête : le même que sur les relevés de notes
-    bas = dessiner_entete(c, LARGEUR, HAUTEUR, G, D) - 4
+    from .signataires import signataire_inscription
+    signataire = signataire_inscription(inscription)
+    bas = dessiner_entete(c, LARGEUR, HAUTEUR, G, D, signataire=signataire) - 4
     c.setLineWidth(0.8)
     c.setStrokeColorRGB(0.35, 0.35, 0.35)
 
@@ -211,10 +213,10 @@ def pdf_fiche_inscription(inscription, photo_privee=None):
     y -= 30
     c.setFont('Helvetica-BoldOblique', 9.5)
     c.drawString(G + 10, y, "L'ÉTUDIANT(E)")
-    c.drawRightString(D - 10, y, conf['fonction'].upper())
+    c.drawRightString(D - 10, y, signataire.fonction.upper())
     _signature_etudiant(c, inscription, G + 10, y - 66)
     c.setFont('Helvetica', 9.5)
-    c.drawRightString(D - 10, y - 70, conf['signataire'])
+    c.drawRightString(D - 10, y - 70, signataire.nom)
 
     # Bas de page
     c.setFont('Helvetica', 7)

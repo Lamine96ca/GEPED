@@ -26,7 +26,7 @@ class ServiceAdmin(admin.ModelAdmin):
 
 @admin.register(Personnel)
 class PersonnelAdmin(admin.ModelAdmin):
-    list_display = ('prenom', 'nom', 'fonc', 'email', 'utilisateur')
+    list_display = ('civilite', 'prenom', 'nom', 'fonc', 'chef', 'email', 'utilisateur')
     search_fields = ('prenom', 'nom', 'email')
     filter_horizontal = ('service',)
     autocomplete_fields = ('utilisateur',)

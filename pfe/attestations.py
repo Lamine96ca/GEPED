@@ -126,17 +126,21 @@ def dessiner_fond(c, haut_filigrane=196):
     c.setStrokeColorRGB(0, 0, 0)
 
 
-def dessiner_bloc_signataire(c, haut_signature, normale='Helvetica', grasse='Helvetica-Bold'):
+def dessiner_bloc_signataire(c, haut_signature, normale='Helvetica', grasse='Helvetica-Bold', signataire=None):
     """
     Sans cachet ni signature : fonction et nom du signataire en texte, aux mêmes places que sur
     l'image signature_scolarite, avec l'espace entre les deux pour signer et tamponner à la main.
     """
+    from .signataires import signataire as signataire_par_defaut
+    s = signataire or signataire_par_defaut()
     centre = 650.4
     c.setFillColorRGB(0, 0, 0)
-    c.setFont(grasse, 12.5)
-    c.drawCentredString(centre, HAUTEUR - haut_signature - 11.5, _conf('fonction'))
-    c.setFont(normale, 12.5)
-    c.drawCentredString(centre, HAUTEUR - haut_signature - 82, _conf('signataire'))
+    for texte, police, haut in ((s.fonction, grasse, 11.5), (s.nom, normale, 82)):
+        taille = 12.5
+        while stringWidth(texte, police, taille) > 300 and taille > 8:     # tient entre le centre et la bordure
+            taille -= 0.5
+        c.setFont(police, taille)
+        c.drawCentredString(centre, HAUTEUR - haut_signature - haut, texte)
 
 
 def signature_disponible():
@@ -153,30 +157,35 @@ def signature_disponible():
     return False
 
 
-def dessiner_pied(c, url_verification, haut_signature=417.12, cachet_signature=True, polices=None):
-    """Signature et cachet (ou leur emplacement vide), QR code de vérification (bas gauche), bas de page."""
-    if cachet_signature and signature_disponible():
+def dessiner_pied(c, url_verification, haut_signature=417.12, cachet_signature=True, polices=None, signataire=None):
+    """
+    Signature et cachet (ou leur emplacement vide), QR code de vérification (bas gauche), bas de page.
+    L'image « signature et cachet » est celle de la scolarité : un chef de programme (Master) signe à la main.
+    """
+    if cachet_signature and (signataire is None or signataire.scolarite) and signature_disponible():
         c.drawImage(_image('signature_scolarite'), 428.4, HAUTEUR - haut_signature - 95.4, 343.92, 95.4, mask='auto')
     else:
-        dessiner_bloc_signataire(c, haut_signature, *(polices or ()))
+        dessiner_bloc_signataire(c, haut_signature, *(polices or ('Helvetica', 'Helvetica-Bold')), signataire=signataire)
     if url_verification:
         dessiner_qr(c, url_verification, x=62, haut=420, taille=82)
     _centre(c, 'Cette attestation ne doit contenir ni rature, ni surcharge', 534.1, 'Times-BoldItalic', 10)
 
 
-def dessiner_entete_paysage(c, largeur_bandeau=520, haut=48):
+def dessiner_entete_paysage(c, largeur_bandeau=520, haut=48, signataire=None):
     """En-tête des relevés, à l'échelle de la page paysage, entre les bordures. Renvoie le haut du trait."""
     from .entete import dessiner_entete
     y = dessiner_entete(c, LARGEUR, HAUTEUR, MARGE_G, 784.44, haut=haut, largeur_bandeau=largeur_bandeau,
-                        taille_service=15, taille_coordonnees=11, ecart=17)
+                        taille_service=15, taille_coordonnees=11, ecart=17, signataire=signataire)
     return HAUTEUR - (y - 4)
 
 
 def dessiner_cadre(c, attestation, url_verification=None):
     """Cadre des attestations d'orientation, d'inscription et de niveau (QR de vérification compris)."""
+    from .signataires import signataire_attestation
+    signataire = signataire_attestation(attestation)
     dessiner_fond(c)
-    # En-tête officiel : le même que sur les relevés (bandeau, service, coordonnées, trait)
-    dessiner_entete_paysage(c)
+    # En-tête officiel : le même que sur les relevés (bandeau, service, coordonnées du chef qui signe, trait)
+    dessiner_entete_paysage(c, signataire=signataire)
 
     # N° de référence et date
     c.setFont('Times-Roman', 12)
@@ -184,7 +193,7 @@ def dessiner_cadre(c, attestation, url_verification=None):
     c.drawString(MARGE_G, y, f"N° Ref : {attestation.num_ref}")
     c.drawRightString(MARGE_D, y, f"{_conf('ville')}, le {date_longue(attestation.date_delivrance)}")
 
-    dessiner_pied(c, url_verification)
+    dessiner_pied(c, url_verification, signataire=signataire)
 
 
 STYLE_TEXTE = ParagraphStyle('texte', fontName='Times-Roman', fontSize=14, leading=24.2,
@@ -273,6 +282,11 @@ def _nom_departement(filiere):
     return _nom_programme(filiere.departement_effectif)
 
 
+def _signataire(attestation):
+    from .signataires import signataire_attestation
+    return signataire_attestation(attestation)
+
+
 def _echap(v):
     return str(v).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
 
@@ -286,7 +300,7 @@ def contenu_inscription(attestation):
     programme = (f" du Département <b>{_echap(_nom_programme(attestation.filiere))}</b>"
                  if attestation.filiere else '')
     texte = (
-        f"Je soussigné {_echap(_conf('signataire'))},  {_echap(_conf('fonction'))} de {_echap(_conf('etablissement'))}, "
+        f"Je soussigné {_echap(_signataire(attestation).nom)},  {_echap(_signataire(attestation).fonction)} de {_echap(_conf('etablissement'))}, "
         f"atteste que l’étudiant·e : <b>{_echap(e.prenom.upper())} {_echap(e.nom.upper())},</b> "
         f"Matricule : <b>{_echap(e.matricule or '—')}</b>, a été inscrit·e {niveau}{programme} "
         f"au compte de l’année universitaire <b>{_echap(attestation.session.annee)}</b>."
@@ -308,7 +322,7 @@ def contenu_orientation(attestation):
     departement = (f", au compte du Département : <b>{_echap(_nom_programme(attestation.filiere))}</b> "
                    f"de l'Institut Supérieur de Technologie de Mamou" if attestation.filiere else '')
     texte = (
-        f"Je soussigné {_echap(_conf('signataire'))},  {_echap(_conf('fonction'))}  de {_echap(_conf('etablissement'))}, "
+        f"Je soussigné {_echap(_signataire(attestation).nom)},  {_echap(_signataire(attestation).fonction)}  de {_echap(_conf('etablissement'))}, "
         f"atteste que l’étudiant(e) : <b>{_echap(e.prenom.upper())} {_echap(e.nom.upper())},</b> "
         f"INE : <b>{v(e.ine)}</b>, PV Bac Unique : <b>{v(e.pvbac)}</b>, Profil : <b>{v(e.option_de_bac)}</b>, "
         f"Centre : <b>{v(e.centre_de_bac)}</b>, a réussi à la sélection et à l'orientation dans les Institutions "
@@ -383,7 +397,7 @@ def contenu_fin_etudes(attestation):
     cycle = libelle_cycle(attestation.cycle, 'texte')
     departement = (f", Département <b>{_echap(_nom_programme(attestation.filiere))}</b>" if attestation.filiere else '')
     texte = (
-        f"Je soussigné {_echap(_conf('signataire'))},  {_echap(_conf('fonction'))} ,  atteste  que M ou Mme :  "
+        f"Je soussigné {_echap(_signataire(attestation).nom)},  {_echap(_signataire(attestation).fonction)} ,  atteste  que M ou Mme :  "
         f"<b>{_echap(e.prenom.upper())} {_echap(e.nom.upper())}</b>, Matricule : <b>{_echap(e.matricule or '—')}</b>, "
         f"INE : <b>{_echap(e.ine or '—')}</b>{departement}, a effectivement suivi et validé tous les cours "
         f"théoriques et pratiques {('du <b>' + _echap(cycle) + '</b> ') if cycle else ''}de notre institution."
@@ -408,7 +422,9 @@ def pdf_fin_etudes(attestation, url_verification=None, cachet_signature=False):
     dessiner_fond(c, haut_filigrane=232)
 
     # En-tête des relevés, en plus grand (bandeau plus large : document solennel)
-    dessiner_entete_paysage(c, largeur_bandeau=675)
+    from .signataires import signataire_attestation
+    signataire = signataire_attestation(attestation)
+    dessiner_entete_paysage(c, largeur_bandeau=675, signataire=signataire)
 
     # Date, cartouche de référence
     c.setFont(grasse, 12)
@@ -442,7 +458,7 @@ def pdf_fin_etudes(attestation, url_verification=None, cachet_signature=False):
     placer_texte(c, paragraphes, style, 67.2, 300, 790 - 67.2, 416)
 
     dessiner_pied(c, url_verification, haut_signature=436.3, cachet_signature=cachet_signature,
-                  polices=(normale, grasse))
+                  polices=(normale, grasse), signataire=signataire)
     c.showPage()
     c.save()
     return flux.getvalue()

@@ -64,7 +64,8 @@ def _texte(c, x, y, texte, police, taille, largeur=None, align='g'):
 def _entete(c, releve, contenu, url_verification):
     conf = settings.GPED_ATTESTATION
     c.drawImage(_ressource('filigrane.jpg'), 0, 0, LARGEUR, HAUTEUR)
-    y = dessiner_entete(c, LARGEUR, HAUTEUR, G, D)          # le logo du filigrane commence sous l'en-tête
+    y = dessiner_entete(c, LARGEUR, HAUTEUR, G, D,          # le logo du filigrane commence sous l'en-tête
+                        signataire=contenu['signataire'])
     compact = releve.type == 'E'                         # extrait : plus de place pour les tableaux
     y -= 15
     c.setFont('Helvetica-Bold', 9)
@@ -142,21 +143,21 @@ def _provisoire(c):
 BAS_CADRE = 40                       # ligne bleue du bas de page : rien ne descend en dessous
 
 
-def _pied(c, releve, cachet_signature, y_mention, extrait=False):
+def _pied(c, releve, cachet_signature, y_mention, signataire, extrait=False):
     """
     Signature à DROITE du bloc des moyennes : son titre commence au niveau de la ligne « Mention ».
     Elle reste toujours dans le cadre, au-dessus de la ligne du bas de page.
+    Image « signature et cachet » : celle de la scolarité seulement (sinon fonction et nom du chef).
     """
-    conf = settings.GPED_ATTESTATION
     y = max(y_mention, BAS_CADRE + 80)
     x = D - 115
-    if cachet_signature and signature_disponible():
+    if cachet_signature and signataire.scolarite and signature_disponible():
         largeur = 225
         hauteur = largeur * 95.4 / 343.92
         c.drawImage(_image('signature_scolarite'), x - largeur / 2, y - hauteur + 10, largeur, hauteur, mask='auto')
     else:
-        _texte(c, x, y, conf['fonction'], 'Helvetica-Bold', 10, align='c')
-        _texte(c, x, y - 62, conf['signataire'], 'Helvetica', 10, align='c')
+        _texte(c, x, y, signataire.fonction, 'Helvetica-Bold', 10, align='c', largeur=225)
+        _texte(c, x, y - 62, signataire.nom, 'Helvetica', 10, align='c', largeur=225)
     c.setStrokeColorRGB(*BLEU)
     c.setLineWidth(1.6)
     c.line(G + 70, BAS_CADRE, D - 70, BAS_CADRE)
@@ -245,7 +246,7 @@ def _pdf_releve(c, releve, contenu, url, cachet_signature):
                         + [(contenu['libelle_moyenne'], f"{fmt(contenu['moyenne'])}/10"),
                            ('Crédits validés', f"{b['credits_valides']} / {b['credits_total']}"),
                            ('Mention', contenu['mention'] or '—')])
-    _pied(c, releve, cachet_signature, y_mention)
+    _pied(c, releve, cachet_signature, y_mention, contenu['signataire'])
 
 
 # ---------------------------------------------------------------- extrait du livret
@@ -325,11 +326,13 @@ def _pdf_extrait(c, releve, contenu, url, cachet_signature):
     y_mention = _resume(c, y + 4, lignes, pas=14.5, police=('Times-Roman', 'Times-Bold'), couleur=(0, 0, 0))
     if not blocs:
         _texte(c, LARGEUR / 2, y + 40, "Aucune note enregistrée pour ce programme.", 'Helvetica-Oblique', 10, align='c')
-    _pied(c, releve, cachet_signature, y_mention, extrait=True)
+    _pied(c, releve, cachet_signature, y_mention, contenu['signataire'], extrait=True)
 
 
 def pdf_releve(releve, contenu, url_verification=None, cachet_signature=False):
     from .models import ReleveNote
+    from .signataires import signataire_releve
+    contenu = {**contenu, 'signataire': signataire_releve(releve, contenu)}
     flux = io.BytesIO()
     c = Canvas(flux, pagesize=A4)
     e = releve.etudiant

@@ -12,8 +12,9 @@
         <div class="card-body">
           <div class="entete-carte"><span class="icone-carte"><i class="bi bi-person-vcard"></i></span><div><h3>Identité et coordonnées</h3><p>L'e-mail reçoit l'invitation et sert aussi à se connecter</p></div></div>
           <div class="row g-3">
-            {% include 'pfe/_champ.html' with champ=form.prenom col='col-md-6' %}
-            {% include 'pfe/_champ.html' with champ=form.nom col='col-md-6' %}
+            {% include 'pfe/_champ.html' with champ=form.civilite col='col-md-2' %}
+            {% include 'pfe/_champ.html' with champ=form.prenom col='col-md-5' %}
+            {% include 'pfe/_champ.html' with champ=form.nom col='col-md-5' %}
             {% include 'pfe/_champ.html' with champ=form.fonc col='col-md-12' %}
             {% include 'pfe/_champ.html' with champ=form.email col='col-md-6' %}
             {% include 'pfe/_champ.html' with champ=form.telephone col='col-md-6' %}

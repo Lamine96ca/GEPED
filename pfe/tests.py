@@ -1960,17 +1960,77 @@ class GpedTests(TestCase):
         self.assertEqual((r.status_code, dessins), (200, [insc.pk]))
         self.assertGreaterEqual(r.content.count(b'/Subtype /Image'), 1)
 
-    def test_personnel_chef_seulement_scolarite_ou_departement(self):
+    def test_signataire_chef_scolarite_ou_chef_du_programme_en_master(self):
+        from django.conf import settings
+        from .models import ReleveNote
+        from .pdf_releves import pdf_releve
+        from .releves import contenu
+        from .signataires import signataire, signataire_inscription
+        # Aucun chef enregistré : le réglage actuel
+        self.assertEqual(signataire().nom, settings.GPED_ATTESTATION['signataire'])
+        # Chef de la scolarité : civilité, prénom, NOM ; sa fonction ; ses coordonnées dans l'en-tête
+        Personnel.objects.filter(utilisateur__username='scol').update(
+            chef=True, civilite='M.', prenom='Lanciné 2', nom='Conde', fonc='Le Chef Service de la Scolarité',
+            email='scol@ist.gn', telephone='+224 600')
+        s = signataire()
+        self.assertEqual((s.nom, s.fonction, s.service, s.email, s.telephone, s.scolarite),
+                         ('M. Lanciné 2 CONDE', 'Le Chef Service de la Scolarité', 'SERVICE SCOLARITÉ', 'scol@ist.gn',
+                          '+224 600', True))
+        # Master : le chef du programme (son programme dans l'en-tête, pas d'image de cachet de la scolarité)
+        Personnel.objects.filter(utilisateur__username='info').update(
+            chef=True, civilite='Dr', prenom='Awa', nom='Bah', fonc='Chef du programme', email='master@ist.gn',
+            telephone='+224 611')
+        insc = Inscription.objects.get(etudiant__matricule='M0')
+        self.assertEqual(signataire_inscription(insc).nom, 'M. Lanciné 2 CONDE')             # Licence
+        Inscription.objects.filter(pk=insc.pk).update(cycle='Master')
+        insc.refresh_from_db()
+        m = signataire_inscription(insc)
+        self.assertEqual((m.nom, m.fonction, m.service, m.email, m.scolarite),
+                         ('Dr Awa BAH', 'Chef du programme', 'INFORMATIQUE', 'master@ist.gn', False))
+        self.assertEqual(signataire(self.gc, cycle='Master').nom, 'M. Lanciné 2 CONDE')       # pas de chef : scolarité
+        self.assertEqual(signataire(self.info, licence=Licence(nom='MASTER 1')).nom, 'Dr Awa BAH')
+        # Documents : fiche d'inscription et relevé de l'étudiant en Master (textes dessinés dans le PDF)
+        from unittest import mock
+        from reportlab.pdfgen.canvas import Canvas
+
+        def textes_dessines(produire):
+            vus = []
+            originaux = {n: getattr(Canvas, n) for n in ('drawString', 'drawCentredString', 'drawRightString')}
+
+            def espion(nom):
+                return lambda c, x, y, texte, *a, **k: (vus.append(str(texte)), originaux[nom](c, x, y, texte, *a, **k))[1]
+            with mock.patch.multiple(Canvas, **{n: espion(n) for n in originaux}):
+                produire()
+            return ' | '.join(vus)
+        self.connecter('scol')
+        textes = textes_dessines(lambda: self.client.get(reverse('inscription_fiche_pdf', args=[insc.pk])))
+        for attendu in ('Dr Awa BAH', 'Email : master@ist.gn', 'Tél : +224 611', 'INFORMATIQUE', 'CHEF DU PROGRAMME'):
+            self.assertIn(attendu, textes)
+        self.assertNotIn('CONDE', textes)
+        import datetime
+        releve = ReleveNote(type='E', etudiant=insc.etudiant, filiere=self.info, num_ref='ESSAI',
+                            date_delivrance=datetime.date.today())
+        textes = textes_dessines(lambda: pdf_releve(releve, contenu(releve), cachet_signature=True))
+        self.assertIn('Dr Awa BAH', textes)
+        # Licence : signée par le chef de la scolarité, ses coordonnées dans l'en-tête
+        Inscription.objects.filter(pk=insc.pk).update(cycle='Licence')
+        textes = textes_dessines(lambda: self.client.get(reverse('inscription_fiche_pdf', args=[insc.pk])))
+        for attendu in ('M. Lanciné 2 CONDE', 'LE CHEF SERVICE DE LA SCOLARITÉ', 'SERVICE SCOLARITÉ', 'scol@ist.gn'):
+            self.assertIn(attendu, textes)
+
+    def test_personnel_chef_seulement_scolarite_ou_programme(self):
         from .forms import PersonnelForm
         admin = User.objects.create_superuser('admin_chef', 'a@t.local', 'x')
-        donnees = {'prenom': 'Awa', 'nom': 'Bah', 'fonc': 'Chef', 'email': 'awa@t.local', 'telephone': '999',
-                   'service': [self.gc.pk], 'chef': 'on'}
+        donnees = {'civilite': 'Mme', 'prenom': 'Awa', 'nom': 'Bah', 'fonc': 'Chef', 'email': 'awa@t.local',
+                   'telephone': '999', 'service': [self.dep.pk], 'chef': 'on'}
         f = PersonnelForm(donnees, editeur=admin)
         self.assertFalse(f.is_valid())
-        self.assertIn('Impossible', f.errors['chef'][0])                      # Génie civil n'est pas un département
-        Service.objects.filter(pk=self.gc.pk).update(departement=self.gc)
-        self.assertTrue(PersonnelForm(donnees, editeur=admin).is_valid())
+        self.assertIn('Impossible', f.errors['chef'][0])                      # simple service : pas de chef
+        self.assertTrue(PersonnelForm({**donnees, 'service': [self.gc.pk]}, editeur=admin).is_valid())   # programme
         self.assertTrue(PersonnelForm({**donnees, 'service': [self.scol.pk]}, editeur=admin).is_valid())
+        f = PersonnelForm({**donnees, 'service': [self.gc.pk]}, editeur=admin)
+        self.assertTrue(f.is_valid(), f.errors)
+        self.assertEqual(f.save().nom_signature, 'Mme Awa BAH')
 
     def test_import_des_notes(self):
         from .import_matieres import ImportRefuse

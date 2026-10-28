@@ -37,6 +37,9 @@ class Service(models.Model):
         return self.departement or self
 #PERSONNEL
 class Personnel(models.Model):
+    CIVILITE_CHOICES = [('M.', 'M.'), ('Mme', 'Mme'), ('Dr', 'Dr'), ('Pr', 'Pr')]
+    # Devant le nom du signataire sur les documents (« M. Lanciné 2 CONDE »)
+    civilite = models.CharField(max_length=5, choices=CIVILITE_CHOICES, blank=True, default='', verbose_name="Civilité")
     prenom = models.CharField(max_length=100, verbose_name="Prénom")
     nom = models.CharField(max_length=50, verbose_name="Nom")
     telephone = models.CharField(max_length=25, unique=True, verbose_name="Téléphone")
@@ -53,6 +56,11 @@ class Personnel(models.Model):
 
     def __str__(self):
         return f"{self.prenom} {self.nom}"
+
+    @property
+    def nom_signature(self):
+        """Nom imprimé sous la signature : civilité, prénom, NOM (« M. Lanciné 2 CONDE »)."""
+        return ' '.join(x for x in (self.civilite, self.prenom.strip(), self.nom.strip().upper()) if x)
 
 #SESSION
 class Session(models.Model):

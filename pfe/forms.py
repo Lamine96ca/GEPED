@@ -228,10 +228,12 @@ class PersonnelForm(BootstrapMixin, forms.ModelForm):
 
     class Meta:
         model = Personnel
-        fields = ['prenom', 'nom', 'fonc', 'email', 'telephone', 'service', 'chef']
+        fields = ['civilite', 'prenom', 'nom', 'fonc', 'email', 'telephone', 'service', 'chef']
         labels = {'fonc': 'Fonction', 'service': 'Services'}
-        help_texts = {'chef': "Chef du Service Scolarité, ou chef d'un département (programme qui est son propre "
-                              "département). Seul un chef modifie les notes d'une année écoulée."}
+        help_texts = {'chef': "Chef du Service Scolarité, d'un département ou d'un programme. Le chef signe les "
+                              "documents (chef de la scolarité ; chef du programme pour le Master) ; seul un chef "
+                              "de la scolarité ou d'un département modifie les notes d'une année écoulée.",
+                      'fonc': "Imprimée au-dessus de la signature (ex. Le Chef Service de la Scolarité)."}
         widgets = {'service': forms.CheckboxSelectMultiple, 'email': forms.EmailInput()}
 
     def __init__(self, *args, editeur, **kwargs):
@@ -314,13 +316,12 @@ class PersonnelForm(BootstrapMixin, forms.ModelForm):
         d = super().clean()
         services = d.get('service')
         if d.get('chef') and services is not None:
-            # Chef : du Service Scolarité, ou d'un département (programme dont le département est lui-même)
-            dirige = [s for s in services if s.pk in self.services_scolarite
-                      or (s.programme and s.departement_id == s.pk)]
+            # Chef : du Service Scolarité, ou d'un programme (département ou non : le chef de programme signe
+            # les documents du Master ; les droits de chef sur les notes restent ceux des départements)
+            dirige = [s for s in services if s.pk in self.services_scolarite or s.programme]
             if not dirige:
                 self.add_error('chef', "Impossible : un chef doit être rattaché au Service Scolarité ou à un "
-                                       "département (programme qui est son propre département, voir "
-                                       "« Département » dans l'administration des services).")
+                                       "programme.")
         return d
 
     def save(self, commit=True):

@@ -100,9 +100,15 @@ def _bandeau(c, attestation, url_verification, normale, grasse):
     c.setLineWidth(0.8)
     c.line(cx - 28, y + 2, cx + 28, y + 2)
     c.setFillColorRGB(0.8, 0.85, 0.9)
-    _ecrit_espace(c, cx, y - 14, 'SERVICE DE LA SCOLARITÉ', normale, 7.2, 0.9, centre=True)
+    # Service et coordonnées du chef qui signe (scolarité, ou programme pour un Master)
+    from .signataires import signataire_attestation
+    sig = signataire_attestation(attestation)
+    service, taille = ('SERVICE DE LA SCOLARITÉ' if sig.scolarite else sig.service), 7.2
+    while stringWidth(service, normale, taille) + 0.9 * len(service) > BANDE - 14 and taille > 5:
+        taille -= 0.2
+    _ecrit_espace(c, cx, y - 14, service, normale, taille, 0.9, centre=True)
     c.setFont(normale, 7)
-    for i, ligne in enumerate((_conf('boite_postale'), f"Tél : {_conf('telephone')}", _conf('email'))):
+    for i, ligne in enumerate((_conf('boite_postale'), f"Tél : {sig.telephone}", sig.email)):
         c.drawCentredString(cx, y - 32 - i * 10, ligne)
     # Référence
     y_ref = 228
@@ -169,6 +175,8 @@ def pdf_soutenance(attestation, url_verification=None):
     _rosace(c, LARGEUR - 18, HAUTEUR - 12, 128)
     _rosace(c, LARGEUR - 10, 10, 70, couleur=(0.95, 0.93, 0.88))
     _bandeau(c, attestation, url_verification, normale, grasse)
+    from .signataires import signataire_attestation
+    sig = signataire_attestation(attestation)
     centre = (X0 + X1) / 2
 
     # En-tête officiel
@@ -257,7 +265,7 @@ def pdf_soutenance(attestation, url_verification=None):
     # Signataires
     signataires = [('Le Président du jury', p.president_jury if p else ''), ("L'Encadreur", p.encadreur if p else ''),
                    ('Le Chef de département', p.chef_departement if p else ''),
-                   (_conf('fonction'), _conf('signataire'))]
+                   (sig.fonction, sig.nom)]
     largeur_sig = largeur_texte / len(signataires)
     taille = 8.2                        # même taille pour les quatre titres : celle qui fait tenir le plus long
     while max(stringWidth(t.upper(), grasse, taille) + 0.8 * len(t) for t, _ in signataires) > largeur_sig - 8 \
