@@ -3,7 +3,9 @@ Espace étudiant (sans compte) : inscription des préinscrits et réinscription 
 
 Identification :
   - inscription   : INE + PV du bac ; l'étudiant doit être PRÉINSCRIT dans la session ouverte ;
-  - réinscription : INE + matricule ; étudiant inscrit, pas encore inscrit dans la session ouverte.
+  - réinscription : INE + matricule ; étudiant inscrit, pas encore inscrit dans la session ouverte ;
+  - Master (inscription ou réinscription) : adresse e-mail de la fiche, puis lien personnel envoyé
+    par e-mail (valable 1 heure, utilisable une fois). Les Masters ne passent pas par l'INE.
 Seules les promotions prévues pour la session (Promotion_Licence_Session) passent en ligne ; les
 autres étudiants doivent se présenter à la scolarité. À la réinscription, le niveau proposé est celui
 prévu pour la promotion dans la session.
@@ -73,11 +75,13 @@ def bloque(request, ine=''):
     return max(0, reste)
 
 
-def echec(request, ine=''):
+def echec(request, ine='', journal=True):
     """Compte l'échec (appareil et INE) ; renvoie les essais restants pour cet INE."""
     import logging
-    logging.getLogger('pfe').warning("Espace étudiant : identification refusée (adresse %s, INE %s)",
-                                     request.META.get('REMOTE_ADDR', '?'), _norm(ine)[:25] or '—')
+    if journal:
+        logging.getLogger('pfe').warning("Espace étudiant : identification refusée (adresse %s, INE %s)",
+                                         request.META.get('REMOTE_ADDR', '?'),
+                                         'adresse e-mail' if '@' in str(ine) else (_norm(ine)[:25] or '—'))
     restants = ESSAIS_MAX
     for genre, cle, maxi in _cles(request, ine):
         cle_cache = f'espace:{genre}:{cle}'
@@ -106,8 +110,22 @@ HORS_PROMOTION = ("Votre promotion n'est pas prévue pour les inscriptions en li
                   "présentez-vous au Service de la Scolarité.")
 
 
+VERS_MASTER = ("Étudiant(e) en Master : utilisez l'onglet « Master » avec votre adresse e-mail ; vous recevrez "
+               "un lien personnel.")
+
+
+def est_master(inscription):
+    """Inscription en Master : cycle, niveau M1 / M2 / MASTER…, ou programme de Master (voir signataires.py)."""
+    from .signataires import est_master as master
+    return master(inscription.cycle, inscription.licence, inscription.filiere)
+
+
+def _inscription_session(e, session):
+    return e.etudiant_inscription.filter(session=session).select_related('filiere', 'licence', 'promotion').first()
+
+
 def identifier_inscription(ine, pvbac, session):
-    """Préinscrit de la session : (étudiant, inscription)."""
+    """Préinscrit de la session : (étudiant, inscription). Les Masters passent par l'onglet Master."""
     ine, pvbac = _norm(ine), _norm(pvbac)
     if not ine or not pvbac:
         raise Refus("Saisissez votre INE et votre numéro de PV du bac.")
@@ -115,7 +133,14 @@ def identifier_inscription(ine, pvbac, session):
     if len(etudiants) != 1:
         raise Refus(INCONNU)
     e = etudiants[0]
-    insc = e.etudiant_inscription.filter(session=session).select_related('filiere', 'licence', 'promotion').first()
+    insc = _inscription_session(e, session)
+    if e.preinscrit and insc is not None and est_master(insc):
+        raise Refus(VERS_MASTER)
+    return e, _verifier_preinscrit(e, insc, session)
+
+
+def _verifier_preinscrit(e, insc, session):
+    """Préinscrit de la session, d'une promotion prévue en ligne : son inscription, sinon Refus."""
     if not e.preinscrit or insc is None:
         if not e.preinscrit and insc is not None:
             raise Refus(f"Votre inscription pour {session} est déjà validée : adressez-vous à la scolarité "
@@ -125,7 +150,7 @@ def identifier_inscription(ine, pvbac, session):
     if not insc.promotion_id or not Promotion_Licence_Session.objects.filter(
             promotion_id=insc.promotion_id, licence_id=insc.licence_id, session=session).exists():
         raise Refus(HORS_PROMOTION.format(session=session))
-    return e, insc
+    return insc
 
 
 def identifier_reinscription(ine, matricule, session):
@@ -139,21 +164,110 @@ def identifier_reinscription(ine, matricule, session):
     e = etudiants[0]
     if e.preinscrit:
         raise Refus("Vous êtes préinscrit(e) : utilisez l'onglet « Inscription » (INE et PV du bac).")
+    derniere = _derniere_inscription(e)
+    if derniere is not None and reinscription_master(derniere, session):
+        raise Refus(VERS_MASTER)
+    return e, _verifier_ancien(e, session)
+
+
+def _derniere_inscription(e):
+    return (e.etudiant_inscription.select_related('session', 'licence', 'filiere', 'promotion')
+            .order_by('-session__annee', '-licence__nom').first())
+
+
+def reinscription_master(derniere, session):
+    """Réinscription en Master : la dernière inscription est en Master, ou le niveau prévu en est un."""
+    from .signataires import est_master as master
+    return est_master(derniere) or any(master(licence=n) for n in niveaux_prevus(derniere, session))
+
+
+def _verifier_ancien(e, session):
+    """Ancien étudiant pas encore inscrit dans la session, d'une promotion prévue : sa dernière inscription."""
     if e.etudiant_inscription.filter(session=session).exists():
         raise Refus(f"Vous êtes déjà inscrit(e) pour {session} : adressez-vous à la scolarité pour toute "
                     f"modification.")
-    derniere = (e.etudiant_inscription.select_related('session', 'licence', 'filiere', 'promotion')
-                .order_by('-session__annee', '-licence__nom').first())
+    derniere = _derniere_inscription(e)
     if derniere is None:
         raise Refus(INCONNU)
     if not derniere.promotion_id or not niveaux_prevus(derniere, session):
         raise Refus(HORS_PROMOTION.format(session=session))
-    return e, derniere
+    return derniere
 
 
-def ouvrir_acces(request, etudiant, type_demande, inscription):
+# ------------------------------------------------------------------ Master : adresse e-mail et lien personnel
+
+DUREE_LIEN = 60 * 60                  # secondes de validité du lien envoyé par e-mail
+SEL_LIEN = 'gped.espace.master'
+
+
+class RefusConnu(Refus):
+    """Adresse connue mais accès impossible : la raison part par e-mail (jamais affichée à l'écran)."""
+    def __init__(self, message, etudiant):
+        super().__init__(message)
+        self.etudiant = etudiant
+
+
+def identifier_master(email, session, ouvert=None):
+    """
+    Étudiant en Master d'après l'adresse e-mail de sa fiche : (étudiant, type de demande, inscription).
+    Préinscrit en Master dans la session → inscription ; ancien étudiant de Master → réinscription.
+    `ouvert(type_demande)` : les inscriptions / réinscriptions en ligne sont-elles ouvertes ?
+    Adresse inconnue : Refus (rien n'est envoyé) ; adresse connue : RefusConnu (raison envoyée par e-mail).
+    """
+    email = (email or '').strip()
+    e = Etudiant.objects.filter(email__iexact=email).first() if email else None
+    if e is None:
+        raise Refus(INCONNU)
+    try:
+        if e.preinscrit:
+            insc = _inscription_session(e, session)
+            if insc is None or not est_master(insc):
+                raise Refus(f"Vous n'êtes pas préinscrit(e) en Master pour {session} : utilisez l'onglet "
+                            f"« Inscription » (INE et PV du bac).")
+            type_demande, inscription = DemandeEtudiant.INSCRIPTION, _verifier_preinscrit(e, insc, session)
+        else:
+            derniere = _derniere_inscription(e)
+            if derniere is None or not (est_master(derniere) or reinscription_master(derniere, session)):
+                raise Refus("Vous n'êtes pas étudiant(e) en Master : utilisez l'onglet « Réinscription » "
+                            "(INE et matricule).")
+            type_demande, inscription = DemandeEtudiant.REINSCRIPTION, _verifier_ancien(e, session)
+        if ouvert is not None and not ouvert(type_demande):
+            quoi = 'inscriptions' if type_demande == DemandeEtudiant.INSCRIPTION else 'réinscriptions'
+            raise Refus(f"Les {quoi} en ligne de {session} sont fermées : renseignez-vous auprès de la scolarité.")
+    except RefusConnu:
+        raise
+    except Refus as r:
+        raise RefusConnu(str(r), e)
+    return e, type_demande, inscription
+
+
+def creer_lien(etudiant):
+    """Jeton signé du lien personnel : valable DUREE_LIEN, utilisable une seule fois (marque gardée en cache)."""
+    import secrets
+    from django.core import signing
+    nonce = secrets.token_urlsafe(16)
+    cache.set(f'espace:lien:{nonce}', etudiant.pk, DUREE_LIEN)
+    return signing.dumps({'e': etudiant.pk, 'n': nonce}, salt=SEL_LIEN)
+
+
+def lire_lien(jeton, consommer=False):
+    """Étudiant du lien (None s'il est faux, expiré ou déjà utilisé) ; `consommer` : le lien ne servira plus."""
+    from django.core import signing
+    try:
+        d = signing.loads(jeton, salt=SEL_LIEN, max_age=DUREE_LIEN)
+    except signing.BadSignature:
+        return None
+    cle = f"espace:lien:{d.get('n')}"
+    if cache.get(cle) != d.get('e'):
+        return None
+    if consommer:
+        cache.delete(cle)
+    return Etudiant.objects.filter(pk=d['e']).first()
+
+
+def ouvrir_acces(request, etudiant, type_demande, inscription, master=False):
     request.session[CLE_SESSION] = {'etudiant': etudiant.pk, 'type': type_demande, 'inscription': inscription.pk,
-                                    'expire': time.time() + DUREE_ACCES}
+                                    'master': bool(master), 'expire': time.time() + DUREE_ACCES}
     request.session.cycle_key()                   # nouvel identifiant de session après identification
 
 

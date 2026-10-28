@@ -1522,6 +1522,85 @@ class GpedTests(TestCase):
         cache.clear()
         return dossier
 
+    def test_espace_master_lien_par_email(self):
+        import re
+        from django.core import mail
+        from .models import DemandeEtudiant, PieceDossier
+        self._espace()
+        Session.objects.filter(pk=self.session.pk).update(inscriptions_ouvertes=True, reinscriptions_ouvertes=True)
+        m1, m2 = Licence.objects.create(nom='MASTER 1'), Licence.objects.create(nom='MASTER 2')
+        pm1, pm0 = Promotion.objects.create(nom='PM1'), Promotion.objects.create(nom='PM0')
+        for promo, lic, ses in [(pm1, m1, self.session), (pm0, m1, self.s2425), (pm0, m2, self.session)]:
+            Promotion_Licence_Session.objects.create(promotion=promo, licence=lic, session=ses)
+        # Préinscrit en Master (inscription) et ancien étudiant de Master (réinscription)
+        awa = Etudiant.objects.create(matricule='MA1', prenom='Awa', nom='BAH', email='awa.master@exemple.com',
+                                      ine='INEMA1', pvbac='111', preinscrit=True)
+        Inscription.objects.create(etudiant=awa, session=self.session, licence=m1, filiere=self.info, promotion=pm1,
+                                   cycle='Master')
+        ali = Etudiant.objects.create(matricule='MA2', prenom='Ali', nom='SOW', email='ali.master@exemple.com',
+                                      ine='INEMA2')
+        Inscription.objects.create(etudiant=ali, session=self.s2425, licence=m1, filiere=self.info, promotion=pm0,
+                                   cycle='Master')
+
+        def lien(adresse):
+            mail.outbox.clear()
+            r = self.client.post(reverse('espace_accueil'), {'mode': 'master', 'm-email': adresse}, follow=True)
+            self.assertContains(r, 'Si cette adresse est celle')                   # même réponse dans tous les cas
+            return mail.outbox
+        # Adresse directe : l'espace sur l'onglet Master
+        self.assertRedirects(self.client.get(reverse('espace_master')), reverse('espace_accueil') + '?onglet=master')
+        self.assertContains(self.client.get(reverse('espace_accueil') + '?onglet=master'), 'Recevoir mon lien')
+        # Adresse inconnue : rien n'est envoyé ; un Master ne passe pas par l'INE
+        self.assertEqual(lien('personne@exemple.com'), [])
+        r = self.client.post(reverse('espace_accueil'), {'mode': 'inscription', 'i-ine': 'INEMA1', 'i-pvbac': '111'})
+        self.assertContains(r, 'utilisez l&#x27;onglet « Master »')
+        # Adresse connue mais pas en Master : la raison part par e-mail, sans lien
+        envoyes = lien('e0@t.local')
+        self.assertEqual(len(envoyes), 1)
+        self.assertIn("pas étudiant(e) en Master", envoyes[0].body)
+        self.assertNotIn('/etudiant/lien/', envoyes[0].body)
+        # Inscription en Master : lien personnel ; l'ouvrir (GET) ne le consomme pas
+        envoyes = lien('AWA.master@exemple.com')
+        self.assertEqual(envoyes[0].to, ['awa.master@exemple.com'])
+        url = re.search(r'https?://[^/\s]+(/etudiant/lien/[^/\s]+/)', envoyes[0].body).group(1)
+        self.assertContains(self.client.get(url), 'Ouvrir mon dossier')
+        self.assertContains(self.client.get(url), 'Ouvrir mon dossier')
+        self.assertRedirects(self.client.post(url), reverse('espace_dossier'))
+        r = self.client.get(reverse('espace_dossier'))
+        self.assertContains(r, 'Inscription en Master')
+        self.assertContains(r, 'value="awa.master@exemple.com"')                  # adresse déjà remplie
+        self.assertContains(r, 'Diplôme de licence')
+        # Une seule fois : le lien a servi
+        self.assertRedirects(self.client.post(url), reverse('espace_accueil') + '?onglet=master',
+                             fetch_redirect_response=False)
+        # Pièces : bac et acte obligatoires ; diplôme de licence et relevé de l'année dernière facultatifs
+        base = {'telephone': '622 11 22 33', 'email': 'awa.master@exemple.com', 'adresse': 'Petel/Mamou',
+                'tuteur': 'Mariam CAMARA', 'contact_de_tuteur': '628 99 88 77', **signer()}
+        r = self.client.post(reverse('espace_dossier'), {**base, 'photo': photo_jpeg()})
+        self.assertContains(r, 'Obligatoire : scannez ou envoyez cette pièce.', count=3)
+        r = self.client.post(reverse('espace_dossier'), {
+            **base, 'photo': photo_jpeg(), 'piece_acte_naissance': SimpleUploadedFile('a.pdf', b'%PDF-1.4 a'),
+            'piece_diplome_bac': SimpleUploadedFile('d.pdf', b'%PDF-1.4 d'),
+            'piece_releve_bac': SimpleUploadedFile('r.pdf', b'%PDF-1.4 r')})
+        self.assertRedirects(r, reverse('espace_confirmation'))
+        d = DemandeEtudiant.objects.get(etudiant=awa)
+        self.assertEqual((d.type, d.statut), (DemandeEtudiant.INSCRIPTION, DemandeEtudiant.EN_ATTENTE))
+        self.client.post(reverse('espace_quitter'))
+        # Réinscription en Master : acte et pièces du bac déjà dans le dossier → pas redemandés
+        for t in (PieceDossier.ACTE_NAISSANCE, PieceDossier.DIPLOME_BAC, PieceDossier.RELEVE_BAC):
+            PieceDossier.objects.create(etudiant=ali, type=t, fichier=f'pieces/{t}.pdf', taille=10)
+        url = re.search(r'(/etudiant/lien/[^/\s]+/)', lien('ali.master@exemple.com')[0].body).group(1)
+        self.assertRedirects(self.client.post(url), reverse('espace_dossier'))
+        r = self.client.get(reverse('espace_dossier'))
+        self.assertContains(r, 'Réinscription en Master')
+        self.assertContains(r, f'<option value="{m2.pk}" selected')                 # niveau prévu : MASTER 2
+        r = self.client.post(reverse('espace_dossier'), {
+            **base, 'email': 'ali.master@exemple.com', 'photo': photo_jpeg(), 'licence': m2.pk,
+            'boursier': 'boursier', 'type_formation': 'initiale'})
+        self.assertRedirects(r, reverse('espace_confirmation'))                   # relevé facultatif
+        d = DemandeEtudiant.objects.get(etudiant=ali)
+        self.assertEqual((d.type, d.licence, d.derniere_inscription.licence), (DemandeEtudiant.REINSCRIPTION, m2, m1))
+
     def test_espace_etudiant_inscription_en_ligne(self):
         from .models import DemandeEtudiant, PieceDossier
         self._espace()

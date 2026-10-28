@@ -3,6 +3,9 @@ Espace étudiant (public, sans compte) : /etudiant/
   - Inscription   : préinscrit, INE + PV du bac → contacts, photo, pièces (facultatives).
   - Réinscription : ancien étudiant, INE + matricule → contacts, niveau, bourse, formation,
                     relevé de notes de la dernière année.
+  - Master        : adresse e-mail → lien personnel par e-mail → inscription ou réinscription
+                    (pièces du bac et acte de naissance obligatoires ; diplôme de licence et
+                    relevé de l'année dernière facultatifs).
 Rien n'est appliqué à la fiche avant la validation par la scolarité (voir pfe/espace_etudiant.py).
 """
 from functools import wraps
@@ -18,7 +21,8 @@ from django.views.decorators.http import require_POST
 from . import espace_etudiant as espace
 from . import pieces as dossier
 from .attestations import _nom_departement
-from .forms import DossierEtudiantForm, IdentificationInscriptionForm, IdentificationReinscriptionForm
+from .forms import (DossierEtudiantForm, IdentificationInscriptionForm, IdentificationMasterForm,
+                    IdentificationReinscriptionForm)
 from .models import DemandeEtudiant, Etudiant, Inscription, PieceDossier
 from .photos import url_photo
 
@@ -53,6 +57,22 @@ PIECES = {
     DemandeEtudiant.REINSCRIPTION: [PieceDossier.RELEVE_NOTES],
 }
 OBLIGATOIRES = PIECES
+# Master (inscription ou réinscription) : acte de naissance et pièces du bac obligatoires (une pièce déjà
+# dans le dossier n'est pas redemandée) ; diplôme de licence et relevé de l'année dernière facultatifs
+PIECES_MASTER = [PieceDossier.ACTE_NAISSANCE, PieceDossier.DIPLOME_BAC, PieceDossier.RELEVE_BAC,
+                 PieceDossier.DIPLOME_LICENCE, PieceDossier.RELEVE_NOTES]
+OBLIGATOIRES_MASTER = [PieceDossier.ACTE_NAISSANCE, PieceDossier.DIPLOME_BAC, PieceDossier.RELEVE_BAC]
+MASTER = 'master'                       # onglet de l'espace (la demande reste une inscription ou une réinscription)
+MESSAGE_LIEN = ("Si cette adresse est celle d'un(e) étudiant(e) en Master, un e-mail vient de lui être envoyé avec "
+                "un lien personnel (valable 1 heure). Pensez à regarder dans les courriers indésirables.")
+
+
+def pieces_demandees(type_demande, master=False):
+    return PIECES_MASTER if master else PIECES[type_demande]
+
+
+def pieces_obligatoires(type_demande, master=False):
+    return OBLIGATOIRES_MASTER if master else OBLIGATOIRES.get(type_demande, [])
 
 
 def _piece_deja_deposee(etudiant, type_piece, session):
@@ -72,8 +92,30 @@ def _ouvert(session, type_demande):
 def espace_accueil(request):
     session = espace.session_cible()
     mode = request.POST.get('mode') or request.GET.get('onglet') or DemandeEtudiant.INSCRIPTION
-    if mode not in (DemandeEtudiant.INSCRIPTION, DemandeEtudiant.REINSCRIPTION):
+    if mode not in (DemandeEtudiant.INSCRIPTION, DemandeEtudiant.REINSCRIPTION, MASTER):
         mode = DemandeEtudiant.INSCRIPTION
+    ouvert_master = _ouvert(session, DemandeEtudiant.INSCRIPTION) or _ouvert(session, DemandeEtudiant.REINSCRIPTION)
+    form_master = IdentificationMasterForm(request.POST if mode == MASTER and request.method == 'POST' else None,
+                                           prefix='m')
+    if mode == MASTER and request.method == 'POST':
+        erreur = ''
+        attente = espace.bloque(request, request.POST.get('m-email', ''))
+        if not ouvert_master:
+            erreur = "Les inscriptions et réinscriptions en ligne sont fermées."
+        elif attente:
+            erreur = f"Trop de demandes : réessayez dans {attente // 60 + 1} minute(s)."
+        elif form_master.is_valid():
+            # Chaque demande de lien compte (pas d'envois en rafale) ; même réponse, l'adresse existe ou non
+            espace.echec(request, form_master.cleaned_data['email'], journal=False)
+            _envoyer_lien_master(request, form_master.cleaned_data['email'], session)
+            messages.success(request, MESSAGE_LIEN)
+            return redirect(f"{reverse('espace_accueil')}?onglet={MASTER}")
+        return render(request, 'pfe/espace/accueil.html', {
+            'session': session, 'mode': mode, 'form_insc': IdentificationInscriptionForm(prefix='i'),
+            'form_reinsc': IdentificationReinscriptionForm(prefix='r'), 'form_master': form_master, 'erreur': erreur,
+            'ouvert_insc': _ouvert(session, DemandeEtudiant.INSCRIPTION),
+            'ouvert_reinsc': _ouvert(session, DemandeEtudiant.REINSCRIPTION), 'ouvert_master': ouvert_master,
+        })
     form_insc = IdentificationInscriptionForm(request.POST if mode == DemandeEtudiant.INSCRIPTION and request.method == 'POST' else None, prefix='i')
     form_reinsc = IdentificationReinscriptionForm(request.POST if mode == DemandeEtudiant.REINSCRIPTION and request.method == 'POST' else None, prefix='r')
     erreur = ''
@@ -100,9 +142,80 @@ def espace_accueil(request):
                 return redirect('espace_dossier')
     return render(request, 'pfe/espace/accueil.html', {
         'session': session, 'mode': mode, 'form_insc': form_insc, 'form_reinsc': form_reinsc, 'erreur': erreur,
+        'form_master': form_master, 'ouvert_master': ouvert_master,
         'ouvert_insc': _ouvert(session, DemandeEtudiant.INSCRIPTION),
         'ouvert_reinsc': _ouvert(session, DemandeEtudiant.REINSCRIPTION),
     })
+
+
+def _envoyer_lien_master(request, email, session):
+    """
+    Adresse d'un étudiant en Master : lien personnel par e-mail. Adresse connue mais accès impossible
+    (pas en Master, promotion non prévue, déjà inscrit…) : la raison, par e-mail. Adresse inconnue : rien.
+    """
+    try:
+        etudiant, type_demande, _ = espace.identifier_master(email, session, ouvert=lambda t: _ouvert(session, t))
+    except espace.RefusConnu as r:
+        _mail_master(request, r.etudiant, session, raison=str(r))
+    except espace.Refus:
+        return
+    else:
+        jeton = espace.creer_lien(etudiant)
+        _mail_master(request, etudiant, session, lien=reverse('espace_lien', args=[jeton]), type_demande=type_demande)
+
+
+def _mail_master(request, etudiant, session, lien='', type_demande='', raison=''):
+    import logging
+    from django.conf import settings
+    from django.core.mail import EmailMultiAlternatives
+    from django.template.loader import render_to_string
+    from .comptes import _adresse_site
+    site = _adresse_site(request)
+    contexte = {'etudiant': etudiant, 'session': session, 'lien': f"{site}{lien}" if lien else '', 'raison': raison,
+                'quoi': 'réinscription' if type_demande == DemandeEtudiant.REINSCRIPTION else 'inscription',
+                'validite': f"{espace.DUREE_LIEN // 60} minutes", 'site': site,
+                'logo': f"{site}{settings.STATIC_URL}pfe/img/logo_ist.png"}
+    try:
+        message = EmailMultiAlternatives(
+            "gePed : votre lien d'inscription en Master" if lien else "gePed : inscription en Master",
+            render_to_string('pfe/emails/lien_master.txt', contexte), settings.DEFAULT_FROM_EMAIL, [etudiant.email])
+        message.attach_alternative(render_to_string('pfe/emails/lien_master.html', contexte), 'text/html')
+        message.send()
+    except Exception:
+        logging.getLogger('pfe').exception("Espace étudiant : envoi du lien Master impossible (étudiant %s)",
+                                           etudiant.pk)
+
+
+@securise
+@never_cache
+def espace_master(request):
+    """Adresse directe des étudiants en Master : l'espace ouvert sur l'onglet Master."""
+    return redirect(f"{reverse('espace_accueil')}?onglet={MASTER}")
+
+
+@securise
+@never_cache
+def espace_lien(request, jeton):
+    """
+    Lien personnel reçu par e-mail. Il n'est utilisé qu'au clic sur « Ouvrir mon dossier » (POST) : une
+    messagerie qui ouvre les liens pour les vérifier ne le consomme pas.
+    """
+    session = espace.session_cible()
+    etudiant = espace.lire_lien(jeton, consommer=request.method == 'POST')
+    if etudiant is None:
+        messages.error(request, "Ce lien a expiré ou a déjà servi : saisissez de nouveau votre adresse e-mail pour "
+                                "en recevoir un autre.")
+        return redirect(f"{reverse('espace_accueil')}?onglet={MASTER}")
+    if request.method == 'POST':
+        try:
+            etudiant, type_demande, insc = espace.identifier_master(etudiant.email, session,
+                                                                     ouvert=lambda t: _ouvert(session, t))
+        except espace.Refus as r:
+            messages.error(request, str(r))
+            return redirect(f"{reverse('espace_accueil')}?onglet={MASTER}")
+        espace.ouvrir_acces(request, etudiant, type_demande, insc, master=True)
+        return redirect('espace_dossier')
+    return render(request, 'pfe/espace/lien.html', {'etudiant': etudiant, 'session': session})
 
 
 @securise
@@ -124,6 +237,7 @@ def espace_dossier(request):
     etudiant = Etudiant.objects.get(pk=a['etudiant'])
     insc = Inscription.objects.select_related('session', 'licence', 'filiere', 'promotion').get(pk=a['inscription'])
     type_demande = a['type']
+    master = bool(a.get('master'))
     reinscription = type_demande == DemandeEtudiant.REINSCRIPTION
     demande = DemandeEtudiant.objects.filter(etudiant=etudiant, session=session, type=type_demande).first()
     if demande and demande.statut == DemandeEtudiant.VALIDEE:
@@ -136,6 +250,8 @@ def espace_dossier(request):
     initial = {}
     if reinscription:                       # Boursier et formation initiale cochés par défaut
         initial.update(licence=suivant.pk if suivant else None, boursier='boursier', type_formation='initiale')
+    if master and not demande:              # identifié(e) par son adresse : déjà remplie
+        initial['email'] = etudiant.email
     if demande:
         initial.update({c: v for c, v in (demande.contacts or {}).items() if v})
         if reinscription:
@@ -150,7 +266,7 @@ def espace_dossier(request):
         form.add_error('photo', "Ajoutez votre photo d'identité : elle est obligatoire.")
     if request.method == 'POST' and form.is_valid():
         d = form.cleaned_data
-        envois = {t: request.FILES.getlist(f'piece_{t}') for t in PIECES[type_demande]}
+        envois = {t: request.FILES.getlist(f'piece_{t}') for t in pieces_demandees(type_demande, master)}
         # Les pièces sont préparées (et contrôlées) avant d'enregistrer quoi que ce soit
         preparees = {}
         for t, fichiers in envois.items():
@@ -161,7 +277,7 @@ def espace_dossier(request):
                 except ValidationError as e:
                     erreurs_pieces[t] = ' '.join(e.messages)
         # Pièces obligatoires : envoyées maintenant, ou déjà dans le dossier
-        for t in OBLIGATOIRES.get(type_demande, []):
+        for t in pieces_obligatoires(type_demande, master):
             if t not in preparees and t not in erreurs_pieces and not _piece_deja_deposee(etudiant, t, session):
                 erreurs_pieces[t] = "Obligatoire : scannez ou envoyez cette pièce."
         if not erreurs_pieces:
@@ -192,11 +308,12 @@ def espace_dossier(request):
                         f.seek(0)
                     dossier.enregistrer(etudiant, t, fichiers, par_etudiant=True,
                                         session=session if t == PieceDossier.RELEVE_NOTES else None)
-                _signer(request, demande, d['signature'])
+                _signer(request, demande, d['signature'], master)
             return redirect('espace_confirmation')
 
     # Pièces déjà dans le dossier (déposées par l'étudiant ou par la scolarité) : affichées « déposée »
-    deposees = {p.type: p for p in etudiant.pieces.filter(type__in=PIECES[type_demande]).order_by('date')}
+    deposees = {p.type: p for p in etudiant.pieces.filter(type__in=pieces_demandees(type_demande, master))
+                .order_by('date')}
     if PieceDossier.RELEVE_NOTES in deposees and deposees[PieceDossier.RELEVE_NOTES].session_id != session.pk:
         del deposees[PieceDossier.RELEVE_NOTES]           # relevé d'une autre année : à redéposer
     # Demande déjà envoyée (en attente ou refusée) : ce qui est fourni et ce qui reste à fournir
@@ -208,14 +325,15 @@ def espace_dossier(request):
             recapitulatif.append((f"Niveau demandé : {demande.licence}" if demande.licence else 'Niveau demandé',
                                   bool(demande.licence_id)))
         recapitulatif.append(("Photo d'identité", bool(demande.photo) or bool(url_photo(etudiant))))
-        recapitulatif += [(dict(PieceDossier.TYPES)[t], t in deposees) for t in PIECES[type_demande]]
+        recapitulatif += [(dict(PieceDossier.TYPES)[t], t in deposees) for t in pieces_demandees(type_demande, master)
+                          if t in deposees or t in pieces_obligatoires(type_demande, master)]
         recapitulatif.append(('Signature', bool(demande.signature)))
     return render(request, 'pfe/espace/dossier.html', {
         'recapitulatif': recapitulatif,
         'signature_url': (f"{reverse('espace_signature')}?v={int(demande.signee_le.timestamp())}"
                           if demande and demande.signature and demande.signee_le else None),
         'session': session, 'etudiant': etudiant, 'insc': insc, 'form': form, 'demande': demande,
-        'reinscription': reinscription,
+        'reinscription': reinscription, 'master': master,
         # Photo visible par l'étudiant : la nouvelle en attente, sinon l'actuelle (servie par espace_photo)
         'photo_url': (f"{reverse('espace_photo')}?v={int(demande.date_maj.timestamp()) if demande else 0}"
                       if (demande and demande.photo) or url_photo(etudiant) else None),
@@ -224,17 +342,18 @@ def espace_dossier(request):
         'departement': _nom_departement(insc.filiere) if insc.filiere else '',
         'programme': insc.filiere.nom if insc.filiere else '',        # nom réel : la description porte souvent le département
         'pieces': [(t, dict(PieceDossier.TYPES)[t], deposees.get(t), erreurs_pieces.get(t),
-                    t in OBLIGATOIRES.get(type_demande, [])) for t in PIECES[type_demande]],
+                    t in pieces_obligatoires(type_demande, master)) for t in pieces_demandees(type_demande, master)],
         'expire_minutes': max(1, int((a['expire'] - __import__('time').time()) // 60)),
     })
 
 
-def _empreinte(demande):
+def _empreinte(demande, master=False):
     """SHA-256 de ce que l'étudiant a signé : identité, demande, coordonnées, photo et pièces du dossier."""
     import hashlib
     import json
     e = demande.etudiant
-    pieces = sorted((p.type, p.fichier.name, p.taille) for p in e.pieces.filter(type__in=PIECES[demande.type]))
+    pieces = sorted((p.type, p.fichier.name, p.taille)
+                    for p in e.pieces.filter(type__in=pieces_demandees(demande.type, master)))
     contenu = {
         'etudiant': [e.pk, e.matricule, e.ine, e.prenom, e.nom], 'demande': [demande.type, demande.session_id],
         'contacts': demande.contacts, 'niveau': demande.licence_id, 'bourse': demande.boursier,
@@ -244,7 +363,7 @@ def _empreinte(demande):
     return hashlib.sha256(json.dumps(contenu, sort_keys=True, ensure_ascii=False).encode('utf-8')).hexdigest()
 
 
-def _signer(request, demande, png):
+def _signer(request, demande, png, master=False):
     """Enregistre la signature (image privée), la date, l'appareil et l'empreinte des informations signées."""
     from django.core.files.base import ContentFile
     from django.utils import timezone
@@ -258,7 +377,7 @@ def _signer(request, demande, png):
     demande.signee_le = timezone.now()
     demande.signature_ip = (request.META.get('REMOTE_ADDR') or '')[:45]
     demande.signature_appareil = (request.META.get('HTTP_USER_AGENT') or '')[:255]
-    demande.empreinte = _empreinte(demande)
+    demande.empreinte = _empreinte(demande, master)
     demande.save(update_fields=['signature', 'signee_le', 'signature_ip', 'signature_appareil', 'empreinte',
                                 'date_maj'])
 

@@ -1,0 +1,16 @@
+Bonjour {{ etudiant.prenom }} {{ etudiant.nom }},
+{% if lien %}
+Voici votre lien personnel pour votre {{ quoi }} en Master{% if session %} ({{ session }}){% endif %} à l'IST de Mamou :
+
+{{ lien }}
+
+Ouvrez-le puis cliquez sur « Ouvrir mon dossier ». Ce lien est valable {{ validite }} et ne sert qu'une fois. Ne le transférez à personne.
+Pièces à fournir : acte de naissance, diplôme et relevé de notes du baccalauréat (s'ils ne sont pas déjà dans votre dossier) ; diplôme de licence et relevé de l'année dernière si vous les avez.
+{% else %}
+Vous avez demandé un lien d'inscription en Master{% if session %} pour {{ session }}{% endif %}, mais votre dossier ne peut pas être ouvert en ligne :
+
+{{ raison }}
+{% endif %}
+Si vous n'êtes pas à l'origine de cette demande, ignorez ce message.
+
+gePed · Institut Supérieur de Technologie de Mamou · {{ site }}

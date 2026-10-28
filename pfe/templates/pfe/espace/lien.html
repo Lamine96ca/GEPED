@@ -1,0 +1,13 @@
+{% extends 'pfe/espace/base.html' %}
+{% block titre %}Master · ouvrir mon dossier{% endblock %}
+{% block contenu %}
+<section class="verif-carte text-center">
+  <h1 class="h4 mb-2" style="color:var(--encre)">Bonjour {{ etudiant.prenom }} {{ etudiant.nom }}</h1>
+  <p class="text-secondary">Votre lien personnel est valide{% if session %} pour l'année universitaire <strong>{{ session }}</strong>{% endif %}. Il ne sert qu'une fois : votre dossier reste ensuite ouvert 30 minutes.</p>
+  <form method="post" class="mt-3">
+    {% csrf_token %}
+    <button class="btn btn-primary"><i class="bi bi-box-arrow-in-right"></i> Ouvrir mon dossier</button>
+  </form>
+  <p class="small text-secondary mt-3 mb-0">Ce n'est pas vous ? Fermez cette page : rien n'est ouvert sans ce bouton.</p>
+</section>
+{% endblock %}

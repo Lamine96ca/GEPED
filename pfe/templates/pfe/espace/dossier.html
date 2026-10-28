@@ -1,13 +1,13 @@
 {% extends 'pfe/espace/base.html' %}
 {% load static %}
-{% block titre %}{% if reinscription %}Réinscription{% else %}Inscription{% endif %}{% endblock %}
+{% block titre %}{% if reinscription %}Réinscription{% else %}Inscription{% endif %}{% if master %} en Master{% endif %}{% endblock %}
 {% block contenu %}
 <form method="post" enctype="multipart/form-data" novalidate id="form-dossier">
   {% csrf_token %}
   <section class="verif-carte mb-3">
     <div class="d-flex flex-wrap align-items-start gap-2 mb-3">
       <div class="me-auto" style="min-width:0">
-        <div class="small text-secondary">{% if reinscription %}Réinscription{% else %}Inscription{% endif %} · {{ session }}</div>
+        <div class="small text-secondary">{% if reinscription %}Réinscription{% else %}Inscription{% endif %}{% if master %} en Master{% endif %} · {{ session }}</div>
         <h1 class="h4 mb-0" style="color:var(--encre)">{{ etudiant.prenom }} {{ etudiant.nom }}</h1>
       </div>
       <span class="small text-secondary"><i class="bi bi-clock"></i> Session ouverte encore {{ expire_minutes }} min</span>
@@ -95,7 +95,7 @@
   </section>
 
   <section class="verif-carte mb-3">
-    <h2 class="h6 text-uppercase text-secondary"><i class="bi bi-folder2-open"></i> Pièces du dossier <span class="fw-normal text-lowercase">(<span class="text-danger">*</span> toutes obligatoires)</span></h2>
+    <h2 class="h6 text-uppercase text-secondary"><i class="bi bi-folder2-open"></i> Pièces du dossier <span class="fw-normal text-lowercase">(<span class="text-danger">*</span> {% if master %}obligatoires ; les autres sont facultatives{% else %}toutes obligatoires{% endif %})</span></h2>
     <p class="small text-secondary">Scannez chaque pièce avec l'appareil photo (une photo par page) ou envoyez un PDF. Les fichiers sont compressés automatiquement.</p>
     <div class="row g-3">
       {% for code, libelle, deposee, erreur, obligatoire in pieces %}

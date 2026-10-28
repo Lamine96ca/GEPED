@@ -10,6 +10,8 @@ urlpatterns = [
     path('django-admin/', admin.site.urls),
     # Espace étudiant public (sans compte) : inscription et réinscription en ligne
     path('etudiant/', views_espace.espace_accueil, name='espace_accueil'),
+    path('etudiant/master/', views_espace.espace_master, name='espace_master'),
+    path('etudiant/lien/<str:jeton>/', views_espace.espace_lien, name='espace_lien'),
     path('etudiant/dossier/', views_espace.espace_dossier, name='espace_dossier'),
     path('etudiant/dossier/envoye/', views_espace.espace_confirmation, name='espace_confirmation'),
     path('etudiant/quitter/', views_espace.espace_quitter, name='espace_quitter'),

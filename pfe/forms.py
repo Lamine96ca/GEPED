@@ -1145,6 +1145,11 @@ class IdentificationReinscriptionForm(BootstrapMixin, forms.Form):
         'placeholder': 'Ex. 2306004423', 'autocomplete': 'off'}))
 
 
+class IdentificationMasterForm(BootstrapMixin, forms.Form):
+    email = forms.EmailField(label='Adresse e-mail', max_length=150, widget=forms.EmailInput(attrs={
+        'placeholder': 'Ex. prenom.nom@gmail.com', 'autocomplete': 'email'}))
+
+
 class DossierEtudiantForm(BootstrapMixin, forms.Form):
     """
     Ce que l'étudiant peut proposer dans son espace : contacts, photo (déjà recadrée et compressée

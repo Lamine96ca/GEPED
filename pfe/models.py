@@ -423,13 +423,14 @@ class PieceDossier(models.Model):
     toujours rangée en PDF compressé dans le stockage privé (jamais publiée). Déposée par l'étudiant
     depuis l'espace d'inscription, ou par la scolarité depuis la fiche.
     """
-    ACTE_NAISSANCE, DIPLOME_BAC, RELEVE_BAC, RELEVE_NOTES, AUTRE = (
-        'acte_naissance', 'diplome_bac', 'releve_bac', 'releve_notes', 'autre')
+    ACTE_NAISSANCE, DIPLOME_BAC, RELEVE_BAC, RELEVE_NOTES, DIPLOME_LICENCE, AUTRE = (
+        'acte_naissance', 'diplome_bac', 'releve_bac', 'releve_notes', 'diplome_licence', 'autre')
     TYPES = [
         (ACTE_NAISSANCE, 'Acte de naissance'),
         (DIPLOME_BAC, 'Diplôme du baccalauréat'),
         (RELEVE_BAC, 'Relevé de notes du baccalauréat'),
         (RELEVE_NOTES, "Relevé de notes de la dernière année"),
+        (DIPLOME_LICENCE, 'Diplôme de licence'),
         (AUTRE, 'Autre pièce'),
     ]
     etudiant = models.ForeignKey(Etudiant, on_delete=models.CASCADE, related_name='pieces', verbose_name='Étudiant')

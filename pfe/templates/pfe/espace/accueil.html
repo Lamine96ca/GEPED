@@ -8,6 +8,7 @@
   <ul class="nav nav-pills onglets-espace mb-4" role="tablist">
     <li class="nav-item"><button class="nav-link {% if mode == 'inscription' %}active{% endif %}" data-bs-toggle="pill" data-bs-target="#onglet-inscription" type="button"><i class="bi bi-person-plus"></i> Inscription <span class="d-none d-sm-inline">(nouvel étudiant)</span></button></li>
     <li class="nav-item"><button class="nav-link {% if mode == 'reinscription' %}active{% endif %}" data-bs-toggle="pill" data-bs-target="#onglet-reinscription" type="button"><i class="bi bi-arrow-repeat"></i> Réinscription <span class="d-none d-sm-inline">(ancien étudiant)</span></button></li>
+    <li class="nav-item"><button class="nav-link {% if mode == 'master' %}active{% endif %}" data-bs-toggle="pill" data-bs-target="#onglet-master" type="button"><i class="bi bi-mortarboard"></i> Master</button></li>
   </ul>
 
   <div class="tab-content">
@@ -39,11 +40,24 @@
         <div class="alert alert-secondary mb-0"><i class="bi bi-lock"></i> Les <strong>réinscriptions en ligne</strong> sont fermées{% if session %} pour {{ session }}{% endif %}. Renseignez-vous auprès du Service de la Scolarité.</div>
       {% endif %}
     </div>
+    <div class="tab-pane fade {% if mode == 'master' %}show active{% endif %}" id="onglet-master">
+      {% if ouvert_master %}
+        <p class="small text-secondary">Étudiant(e) en <strong>Master</strong> (inscription ou réinscription) : saisissez l'<strong>adresse e-mail</strong> enregistrée à la scolarité. Vous recevrez un <strong>lien personnel</strong>, valable 1 heure, pour ouvrir votre dossier.</p>
+        <form method="post" novalidate class="row g-3">
+          {% csrf_token %}<input type="hidden" name="mode" value="master">
+          {% if erreur and mode == 'master' %}<div class="col-12"><div class="alert alert-danger py-2 mb-0"><i class="bi bi-exclamation-circle"></i> {{ erreur }}</div></div>{% endif %}
+          {% include 'pfe/_champ.html' with champ=form_master.email col='col-md-8' %}
+          <div class="col-12"><button class="btn btn-primary"><i class="bi bi-envelope"></i> Recevoir mon lien</button></div>
+        </form>
+      {% else %}
+        <div class="alert alert-secondary mb-0"><i class="bi bi-lock"></i> Les <strong>inscriptions en ligne</strong> sont fermées{% if session %} pour {{ session }}{% endif %}. Renseignez-vous auprès du Service de la Scolarité.</div>
+      {% endif %}
+    </div>
   </div>
 
   <div class="verif-conseil mt-4">
     <i class="bi bi-shield-lock"></i>
-    <span>Ne communiquez pas votre INE, votre PV du bac ni votre matricule. Après 5 essais manqués, l'accès est bloqué 15 minutes ; votre session se ferme seule après 30 minutes.</span>
+    <span>Ne communiquez pas votre INE, votre PV du bac, votre matricule ni le lien reçu par e-mail. Après 5 essais manqués, l'accès est bloqué 15 minutes ; votre session se ferme seule après 30 minutes.</span>
   </div>
 </section>
 {% endblock %}
