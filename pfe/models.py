@@ -197,9 +197,11 @@ class Promotion_Licence_Session(models.Model):
 
     class Meta:
         unique_together = ('promotion', 'licence', 'session')
+        verbose_name = "Niveau d'une promotion (promotion · licence · session)"
+        verbose_name_plural = "Niveaux des promotions (promotion · licence · session)"
 
     def __str__(self):
-        return self.promotion
+        return f"{self.promotion} · {self.licence} · {self.session}"
 
 #ATTESTATION
 def nouveau_code_verification():

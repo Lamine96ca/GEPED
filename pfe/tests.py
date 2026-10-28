@@ -1286,6 +1286,23 @@ class GpedTests(TestCase):
         h = NoteHistorique.objects.filter(apres_deliberation=True).get()
         self.assertEqual((h.motif, h.apres['examen']), ('PV du jury', 10))
 
+    def test_admin_niveaux_des_promotions(self):
+        from django.contrib.auth.models import User
+        User.objects.create_superuser('admin', password='x')
+        self.client.login(username='admin', password='x')
+        r = self.client.get(reverse('admin:pfe_promotion_licence_session_changelist'))
+        self.assertContains(r, 'P18 · Licence 2 · 2024-2025')
+        self.assertEqual(self.client.get(reverse('admin:pfe_promotion_licence_session_add')).status_code, 200)
+        # Ajout direct : promotion, licence, session (un doublon est refusé)
+        donnees = {'promotion': self.p20.pk, 'licence': self.l2.pk, 'session': self.s2425.pk}
+        self.client.post(reverse('admin:pfe_promotion_licence_session_add'), donnees)
+        self.assertTrue(Promotion_Licence_Session.objects.filter(promotion=self.p20, licence=self.l2).exists())
+        r = self.client.post(reverse('admin:pfe_promotion_licence_session_add'), donnees)
+        self.assertContains(r, 'existe déjà')
+        # Depuis la promotion : ses niveaux par session, modifiables sur la même page
+        r = self.client.get(reverse('admin:pfe_promotion_change', args=[self.p18.pk]))
+        self.assertContains(r, 'Niveaux par session')
+
     def test_releves_delivres_nombre_affiche_regle_dans_l_admin(self):
         from django.contrib.auth.models import User
         from .models import ReglageAffichage, ReleveNote

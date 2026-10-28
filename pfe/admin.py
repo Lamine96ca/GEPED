@@ -1,6 +1,7 @@
 from django.contrib import admin
 
-from .models import Licence, Personnel, Promotion, ReglageAffichage, Semestre, Service, Session
+from .models import (Licence, Personnel, Promotion, Promotion_Licence_Session, ReglageAffichage, Semestre, Service,
+                     Session)
 
 admin.site.site_header = "gePed · Paramétrage"
 admin.site.site_title = "gePed"
@@ -44,7 +45,31 @@ class SemestreAdmin(admin.ModelAdmin):
 
 
 admin.site.register(Licence)
-admin.site.register(Promotion)
+
+
+class NiveauPromotionInline(admin.TabularInline):
+    """Niveau de la promotion pour chaque session (Promotion_Licence_Session) : sert aux inscriptions en ligne."""
+    model = Promotion_Licence_Session
+    extra = 1
+    ordering = ('session__annee',)
+    verbose_name = 'Niveau pour une session'
+    verbose_name_plural = 'Niveaux par session (inscriptions et réinscriptions en ligne)'
+
+
+@admin.register(Promotion)
+class PromotionAdmin(admin.ModelAdmin):
+    list_display = ('nom', 'description')
+    search_fields = ('nom',)
+    inlines = [NiveauPromotionInline]
+
+
+@admin.register(Promotion_Licence_Session)
+class PromotionLicenceSessionAdmin(admin.ModelAdmin):
+    list_display = ('promotion', 'licence', 'session')
+    list_filter = ('session', 'licence', 'promotion')
+    search_fields = ('promotion__nom', 'licence__nom', 'session__annee')
+    ordering = ('-session__annee', 'promotion__nom', 'licence__nom')
+    list_select_related = ('promotion', 'licence', 'session')
 
 
 @admin.register(ReglageAffichage)
