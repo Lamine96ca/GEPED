@@ -5,10 +5,17 @@
   <h1 class="h4 mb-1" style="color:var(--encre)">Inscription et réinscription en ligne</h1>
   <p class="text-secondary mb-4">Complétez votre dossier{% if session %} pour l'année universitaire <strong>{{ session }}</strong>{% endif %} : coordonnées, photo et pièces. La scolarité vérifie ensuite votre demande.</p>
 
-  <ul class="nav nav-pills onglets-espace mb-4" role="tablist">
-    <li class="nav-item"><button class="nav-link {% if mode == 'inscription' %}active{% endif %}" data-bs-toggle="pill" data-bs-target="#onglet-inscription" type="button"><i class="bi bi-person-plus"></i> Inscription <span class="d-none d-sm-inline">(nouvel étudiant)</span></button></li>
-    <li class="nav-item"><button class="nav-link {% if mode == 'reinscription' %}active{% endif %}" data-bs-toggle="pill" data-bs-target="#onglet-reinscription" type="button"><i class="bi bi-arrow-repeat"></i> Réinscription <span class="d-none d-sm-inline">(ancien étudiant)</span></button></li>
-    <li class="nav-item"><button class="nav-link {% if mode == 'master' %}active{% endif %}" data-bs-toggle="pill" data-bs-target="#onglet-master" type="button"><i class="bi bi-mortarboard"></i> Master</button></li>
+  <p class="fw-semibold mb-2" style="color:var(--encre)">Choisissez votre démarche :</p>
+  <ul class="nav onglets-espace mb-4" role="tablist" aria-label="Choisissez votre démarche">
+    <li class="nav-item" role="presentation"><button class="nav-link {% if mode == 'inscription' %}active{% endif %}" data-bs-toggle="pill" data-bs-target="#onglet-inscription" type="button" role="tab" aria-selected="{% if mode == 'inscription' %}true{% else %}false{% endif %}">
+      <span class="icone"><i class="bi bi-person-plus"></i></span><span class="titre">Inscription</span><span class="aide">Nouvel étudiant</span>
+    </button></li>
+    <li class="nav-item" role="presentation"><button class="nav-link {% if mode == 'reinscription' %}active{% endif %}" data-bs-toggle="pill" data-bs-target="#onglet-reinscription" type="button" role="tab" aria-selected="{% if mode == 'reinscription' %}true{% else %}false{% endif %}">
+      <span class="icone"><i class="bi bi-arrow-repeat"></i></span><span class="titre">Réinscription</span><span class="aide">Ancien étudiant</span>
+    </button></li>
+    <li class="nav-item" role="presentation"><button class="nav-link {% if mode == 'master' %}active{% endif %}" data-bs-toggle="pill" data-bs-target="#onglet-master" type="button" role="tab" aria-selected="{% if mode == 'master' %}true{% else %}false{% endif %}">
+      <span class="icone"><i class="bi bi-mortarboard"></i></span><span class="titre">Master</span><span class="aide">Lien par e-mail</span>
+    </button></li>
   </ul>
 
   <div class="tab-content">
