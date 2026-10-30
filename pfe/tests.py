@@ -1889,10 +1889,36 @@ class GpedTests(TestCase):
         self.assertFalse(Etudiant.objects.filter(matricule='26M03DEMO01').exists())
         self.assertTrue(Service.objects.filter(nom='MASTER EN ENERGIE').exists())
 
+    def test_espace_page_d_accueil(self):
+        from django.conf import settings
+        from .models import PieceDossier
+        accueil = reverse('espace_accueil')
+        Session.objects.filter(pk=self.session.pk).update(inscriptions_ouvertes=True, reinscriptions_ouvertes=False)
+        r = self.client.get(accueil)
+        self.assertIn("default-src 'self'", r['Content-Security-Policy'])
+        # Chaque démarche expliquée, sans formulaire ; un bouton mène à sa page d'identification
+        self.assertNotContains(r, '<form')
+        for attendu in (reverse('espace_inscription'), reverse('espace_master'), 'numéro de PV du bac', 'matricule',
+                        'Demande manuscrite', 'Relevé de notes de la dernière année', 'sea@ist-mamou.org',
+                        '4 semestres', 'Fermée pour le moment'):
+            self.assertContains(r, attendu)
+        self.assertNotContains(r, reverse('espace_reinscription'))                  # réinscriptions fermées
+        # Pas de frais ni de reçu : c'est une demande en ligne
+        for absent in ('GNF', 'frais', 'Frais', 'reçu de', 'Reçu', 'paiement'):
+            self.assertNotContains(r, absent)
+        self.assertNotIn('recu', ' '.join(code for code, _ in PieceDossier.TYPES))
+        # Pages d'identification ; anciens liens redirigés
+        self.assertContains(self.client.get(reverse('espace_inscription')), 'i-pvbac')
+        self.assertContains(self.client.get(reverse('espace_reinscription')), 'sont fermées')
+        self.assertRedirects(self.client.get(accueil + '?onglet=reinscription'), reverse('espace_reinscription'))
+        for page in ('inscription', 'reinscription', 'master'):
+            self.assertTrue((settings.BASE_DIR / f'pfe/static/pfe/img/espace/{page}.svg').exists())
+
     def test_espace_master_lien_par_email(self):
         import re
         from django.core import mail
         from .models import DemandeEtudiant, PieceDossier
+        from .views_espace import PIECES_MASTER
         self._espace()
         Session.objects.filter(pk=self.session.pk).update(inscriptions_ouvertes=True, reinscriptions_ouvertes=True)
         m1, m2 = Licence.objects.create(nom='MASTER 1'), Licence.objects.create(nom='MASTER 2')
@@ -1914,13 +1940,13 @@ class GpedTests(TestCase):
             r = self.client.post(reverse('espace_accueil'), {'mode': 'master', 'm-email': adresse}, follow=True)
             self.assertContains(r, 'Si cette adresse est celle')                   # même réponse dans tous les cas
             return mail.outbox
-        # Adresse directe : l'espace sur l'onglet Master
-        self.assertRedirects(self.client.get(reverse('espace_master')), reverse('espace_accueil') + '?onglet=master')
-        self.assertContains(self.client.get(reverse('espace_accueil') + '?onglet=master'), 'Recevoir mon lien')
+        # Adresse directe : la page de la démarche Master ; les anciens liens y mènent
+        self.assertContains(self.client.get(reverse('espace_master')), 'Recevoir mon lien')
+        self.assertRedirects(self.client.get(reverse('espace_accueil') + '?onglet=master'), reverse('espace_master'))
         # Adresse inconnue : rien n'est envoyé ; un Master ne passe pas par l'INE
         self.assertEqual(lien('personne@exemple.com'), [])
         r = self.client.post(reverse('espace_accueil'), {'mode': 'inscription', 'i-ine': 'INEMA1', 'i-pvbac': '111'})
-        self.assertContains(r, 'utilisez l&#x27;onglet « Master »')
+        self.assertContains(r, 'utilisez la démarche « Master »')
         # Adresse connue mais pas en Master : la raison part par e-mail, sans lien
         envoyes = lien('e0@t.local')
         self.assertEqual(len(envoyes), 1)
@@ -1937,23 +1963,25 @@ class GpedTests(TestCase):
         self.assertContains(r, 'Inscription en Master')
         self.assertContains(r, 'value="awa.master@exemple.com"')                  # adresse déjà remplie
         self.assertContains(r, 'Diplôme de licence')
+        self.assertContains(r, 'Lettre de recommandation 2')
+        self.assertContains(r, 'Le canevas est à retirer au Service des Études Avancées')
+        self.assertContains(r, 'toutes obligatoires')
         # Une seule fois : le lien a servi
-        self.assertRedirects(self.client.post(url), reverse('espace_accueil') + '?onglet=master',
-                             fetch_redirect_response=False)
-        # Pièces : bac et acte obligatoires ; diplôme de licence et relevé de l'année dernière facultatifs
+        self.assertRedirects(self.client.post(url), reverse('espace_master'), fetch_redirect_response=False)
+        # Inscription : toutes les pièces de l'appel à candidature sont obligatoires, avec leurs précisions
         base = {'telephone': '622 11 22 33', 'email': 'awa.master@exemple.com', 'adresse': 'Petel/Mamou',
                 'tuteur': 'Mariam CAMARA', 'contact_de_tuteur': '628 99 88 77', **signer()}
         r = self.client.post(reverse('espace_dossier'), {**base, 'photo': photo_jpeg()})
-        self.assertContains(r, 'Obligatoire : scannez ou envoyez cette pièce.', count=3)
-        r = self.client.post(reverse('espace_dossier'), {
-            **base, 'photo': photo_jpeg(), 'piece_acte_naissance': SimpleUploadedFile('a.pdf', b'%PDF-1.4 a'),
-            'piece_diplome_bac': SimpleUploadedFile('d.pdf', b'%PDF-1.4 d'),
-            'piece_releve_bac': SimpleUploadedFile('r.pdf', b'%PDF-1.4 r')})
+        self.assertContains(r, 'Obligatoire : scannez ou envoyez cette pièce.', count=12)
+        pieces = {f'piece_{t}': SimpleUploadedFile(f'{t}.pdf', b'%PDF-1.4 x')
+                  for t in PIECES_MASTER[DemandeEtudiant.INSCRIPTION]}
+        r = self.client.post(reverse('espace_dossier'), {**base, 'photo': photo_jpeg(), **pieces})
         self.assertRedirects(r, reverse('espace_confirmation'))
+        self.assertEqual(awa.pieces.filter(type=PieceDossier.RECOMMANDATION_2).count(), 1)
         d = DemandeEtudiant.objects.get(etudiant=awa)
         self.assertEqual((d.type, d.statut), (DemandeEtudiant.INSCRIPTION, DemandeEtudiant.EN_ATTENTE))
         self.client.post(reverse('espace_quitter'))
-        # Réinscription en Master : acte et pièces du bac déjà dans le dossier → pas redemandés
+        # Réinscription en Master : pièces de base déjà dans le dossier → pas redemandées, et rien de plus
         for t in (PieceDossier.ACTE_NAISSANCE, PieceDossier.DIPLOME_BAC, PieceDossier.RELEVE_BAC):
             PieceDossier.objects.create(etudiant=ali, type=t, fichier=f'pieces/{t}.pdf', taille=10)
         url = re.search(r'(/etudiant/lien/[^/\s]+/)', lien('ali.master@exemple.com')[0].body).group(1)
@@ -1961,9 +1989,13 @@ class GpedTests(TestCase):
         r = self.client.get(reverse('espace_dossier'))
         self.assertContains(r, 'Réinscription en Master')
         self.assertContains(r, f'<option value="{m2.pk}" selected')                 # niveau prévu : MASTER 2
+        self.assertNotContains(r, 'Lettre de motivation')
+        reinscription = {**base, 'email': 'ali.master@exemple.com', 'licence': m2.pk, 'boursier': 'boursier',
+                         'type_formation': 'initiale'}
+        r = self.client.post(reverse('espace_dossier'), {**reinscription, 'photo': photo_jpeg()})
+        self.assertContains(r, 'Obligatoire : scannez ou envoyez cette pièce.', count=1)     # le diplôme de licence
         r = self.client.post(reverse('espace_dossier'), {
-            **base, 'email': 'ali.master@exemple.com', 'photo': photo_jpeg(), 'licence': m2.pk,
-            'boursier': 'boursier', 'type_formation': 'initiale'})
+            **reinscription, 'photo': photo_jpeg(), 'piece_diplome_licence': SimpleUploadedFile('l.pdf', b'%PDF-1.4 l')})
         self.assertRedirects(r, reverse('espace_confirmation'))                   # relevé facultatif
         d = DemandeEtudiant.objects.get(etudiant=ali)
         self.assertEqual((d.type, d.licence, d.derniere_inscription.licence), (DemandeEtudiant.REINSCRIPTION, m2, m1))

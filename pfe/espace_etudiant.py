@@ -110,7 +110,7 @@ HORS_PROMOTION = ("Votre promotion n'est pas prévue pour les inscriptions en li
                   "présentez-vous au Service de la Scolarité.")
 
 
-VERS_MASTER = ("Étudiant(e) en Master : utilisez l'onglet « Master » avec votre adresse e-mail ; vous recevrez "
+VERS_MASTER = ("Étudiant(e) en Master : utilisez la démarche « Master » avec votre adresse e-mail ; vous recevrez "
                "un lien personnel.")
 
 
@@ -125,7 +125,7 @@ def _inscription_session(e, session):
 
 
 def identifier_inscription(ine, pvbac, session):
-    """Préinscrit de la session : (étudiant, inscription). Les Masters passent par l'onglet Master."""
+    """Préinscrit de la session : (étudiant, inscription). Les Masters passent par la démarche Master."""
     ine, pvbac = _norm(ine), _norm(pvbac)
     if not ine or not pvbac:
         raise Refus("Saisissez votre INE et votre numéro de PV du bac.")
@@ -145,7 +145,7 @@ def _verifier_preinscrit(e, insc, session):
         if not e.preinscrit and insc is not None:
             raise Refus(f"Votre inscription pour {session} est déjà validée : adressez-vous à la scolarité "
                         f"pour toute modification.")
-        raise Refus(f"Vous n'êtes pas préinscrit(e) pour {session}. Ancien étudiant ? Utilisez l'onglet "
+        raise Refus(f"Vous n'êtes pas préinscrit(e) pour {session}. Ancien étudiant ? Utilisez la démarche "
                     f"« Réinscription ».")
     if not insc.promotion_id or not Promotion_Licence_Session.objects.filter(
             promotion_id=insc.promotion_id, licence_id=insc.licence_id, session=session).exists():
@@ -163,7 +163,7 @@ def identifier_reinscription(ine, matricule, session):
         raise Refus(INCONNU)
     e = etudiants[0]
     if e.preinscrit:
-        raise Refus("Vous êtes préinscrit(e) : utilisez l'onglet « Inscription » (INE et PV du bac).")
+        raise Refus("Vous êtes préinscrit(e) : utilisez la démarche « Inscription » (INE et PV du bac).")
     derniere = _derniere_inscription(e)
     if derniere is not None and reinscription_master(derniere, session):
         raise Refus(VERS_MASTER)
@@ -222,13 +222,13 @@ def identifier_master(email, session, ouvert=None):
         if e.preinscrit:
             insc = _inscription_session(e, session)
             if insc is None or not est_master(insc):
-                raise Refus(f"Vous n'êtes pas préinscrit(e) en Master pour {session} : utilisez l'onglet "
+                raise Refus(f"Vous n'êtes pas préinscrit(e) en Master pour {session} : utilisez la démarche "
                             f"« Inscription » (INE et PV du bac).")
             type_demande, inscription = DemandeEtudiant.INSCRIPTION, _verifier_preinscrit(e, insc, session)
         else:
             derniere = _derniere_inscription(e)
             if derniere is None or not (est_master(derniere) or reinscription_master(derniere, session)):
-                raise Refus("Vous n'êtes pas étudiant(e) en Master : utilisez l'onglet « Réinscription » "
+                raise Refus("Vous n'êtes pas étudiant(e) en Master : utilisez la démarche « Réinscription » "
                             "(INE et matricule).")
             type_demande, inscription = DemandeEtudiant.REINSCRIPTION, _verifier_ancien(e, session)
         if ouvert is not None and not ouvert(type_demande):

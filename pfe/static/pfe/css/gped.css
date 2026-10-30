@@ -845,29 +845,86 @@ code { color: var(--encre); background: var(--survol); padding: .05rem .3rem; bo
 .page-espace .verif-carte { padding: 1.4rem 1.5rem; overflow: visible; }
 .page-espace .verif-carte .verif-conseil { margin: 0; }
 .page-espace .verif-carte .verif-statut { margin: -1.4rem -1.5rem 0; border-radius: 18px 18px 0 0; }
-/* Choix de la démarche (Inscription / Réinscription / Master) : trois cartes-boutons de même taille */
-.onglets-espace { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .75rem; }
-.onglets-espace .nav-item { display: flex; }
-.onglets-espace .nav-link { width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
-  gap: .35rem; text-align: center; padding: 1rem .5rem .9rem; border: 2px solid var(--bord-fort); border-radius: 14px;
-  background: var(--surface); color: var(--encre); box-shadow: 0 2px 6px rgba(47, 63, 78, .08); cursor: pointer;
-  transition: border-color .15s, box-shadow .15s, transform .15s, background-color .15s; }
-.onglets-espace .nav-link:hover { border-color: var(--accent); box-shadow: 0 6px 16px rgba(47, 63, 78, .14); transform: translateY(-1px); }
-.onglets-espace .nav-link:focus-visible { outline: 3px solid var(--or); outline-offset: 2px; }
-.onglets-espace .nav-link .icone { width: 2.75rem; height: 2.75rem; border-radius: 50%; display: grid; place-items: center;
-  font-size: 1.3rem; background: var(--accent-doux); color: var(--accent); }
-.onglets-espace .nav-link .titre { font-weight: 700; font-size: 1rem; line-height: 1.2; }
-.onglets-espace .nav-link .aide { font-size: .78rem; line-height: 1.2; color: var(--muet); }
-.onglets-espace .nav-link.active { border-color: var(--accent); background: var(--accent); color: #fff;
-  box-shadow: 0 6px 18px rgba(65, 98, 124, .35); }
-.onglets-espace .nav-link.active .icone { background: rgba(255, 255, 255, .2); color: #fff; }
-.onglets-espace .nav-link.active .aide { color: rgba(255, 255, 255, .88); }
+/* Page d'accueil de l'espace étudiant : chaque démarche expliquée, puis sa page d'identification */
+.page-vitrine .espace-contenu { max-width: 1080px; }
+.page-vitrine .verif-marque { max-width: 1048px; }
+.page-vitrine .verif-conseil { margin: 0; }
+.vitrine-hero { display: grid; grid-template-columns: 1.05fr 1fr; align-items: stretch; background: var(--surface); border-radius: 18px;
+  overflow: hidden; box-shadow: 0 18px 44px -20px rgba(47, 63, 78, .35); }
+.vitrine-hero .texte { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; padding: 2.25rem 2.25rem 2.25rem 2.5rem; }
+.vitrine-hero .surtitre { margin: 0 0 .6rem; font-size: .85rem; font-weight: 700; color: var(--or-texte); }
+.vitrine-hero h1 { margin: 0 0 .8rem; font-size: clamp(1.45rem, 2.7vw, 2.05rem); line-height: 1.2; font-weight: 700; color: var(--encre); }
+.vitrine-hero p:not(.surtitre) { margin: 0 0 1.3rem; font-size: 1rem; line-height: 1.55; }
+.vitrine-hero .btn { padding: .65rem 1.15rem; font-size: 1rem; }
+.vitrine-hero img { width: 100%; height: 100%; min-height: 300px; object-fit: cover; display: block; }
+.vitrine-titre { margin: 2.25rem 0 1rem; font-size: 1.25rem; font-weight: 700; color: var(--encre); scroll-margin-top: 1rem; }
+
+.demarches { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.1rem; }
+.demarche { display: flex; flex-direction: column; background: var(--surface); border-radius: 16px; overflow: hidden;
+  box-shadow: 0 10px 28px -18px rgba(47, 63, 78, .4); transition: box-shadow .15s, transform .15s; }
+.demarche:hover { box-shadow: 0 16px 34px -18px rgba(47, 63, 78, .55); transform: translateY(-2px); }
+.demarche img { width: 100%; height: auto; aspect-ratio: 36 / 19; display: block; }
+.demarche .corps { display: flex; flex-direction: column; flex: 1; padding: 1.1rem 1.2rem 1.15rem; }
+.demarche h3 { margin: 0; font-size: 1.2rem; font-weight: 700; color: var(--encre); }
+.demarche p { margin: 0 0 .7rem; font-size: .92rem; line-height: 1.45; }
+.demarche .pour { margin: .1rem 0 .6rem; font-weight: 700; font-size: .85rem; color: var(--accent); }
+.demarche .besoin { margin-top: auto; padding: .55rem .7rem; border-radius: 10px; background: var(--accent-doux); color: var(--encre); font-size: .86rem; }
+.demarche .btn, .demarche .ferme { width: 100%; margin-top: .25rem; padding: .62rem .75rem; font-weight: 700; text-align: center; }
+.demarche .ferme { display: block; border-radius: var(--rayon); background: var(--survol); color: var(--muet); font-size: .9rem; }
+.demarche .detail { margin-top: .6rem; font-size: .85rem; text-align: center; }
+
+.etapes { list-style: none; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .85rem; margin: 0; padding: 0; }
+.etapes li { display: flex; flex-direction: column; gap: .15rem; padding: 1rem; border-radius: 14px; background: var(--surface); box-shadow: 0 8px 22px -18px rgba(47, 63, 78, .4); }
+.etapes .num { width: 2rem; height: 2rem; margin-bottom: .4rem; border-radius: 50%; display: grid; place-items: center; background: var(--or); color: var(--encre); font-weight: 700; }
+.etapes strong { color: var(--encre); }
+.etapes li > span:last-child { font-size: .87rem; line-height: 1.4; }
+.vitrine-note { display: flex; gap: .7rem; align-items: flex-start; margin: 1rem 0 0; padding: .9rem 1rem; border-radius: 12px; background: var(--or-doux); color: var(--or-texte); font-size: .92rem; }
+
+.detail-demarche { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2rem; margin-top: 1.1rem; padding: 1.5rem 1.6rem;
+  background: var(--surface); border-radius: 16px; box-shadow: 0 8px 22px -18px rgba(47, 63, 78, .4); scroll-margin-top: 1rem; }
+.vitrine-titre + .detail-demarche { margin-top: 0; }
+.detail-demarche h2 { margin: 0 0 .6rem; font-size: 1.2rem; font-weight: 700; color: var(--encre); }
+.detail-demarche h2 .bi { color: var(--accent); margin-right: .25rem; }
+.detail-demarche h3 { margin: 1.1rem 0 .4rem; font-size: .95rem; font-weight: 700; color: var(--encre); }
+.detail-demarche > div > h3:first-child { margin-top: 0; }
+.detail-demarche p { line-height: 1.5; margin-bottom: .5rem; }
+.detail-demarche.master { border-top: 4px solid var(--or); }
+.liste-pieces, .faits, .points { margin: 0 0 .6rem; padding: 0; list-style: none; }
+.liste-pieces li, .faits li { display: flex; gap: .55rem; align-items: flex-start; padding: .24rem 0; line-height: 1.4; }
+.liste-pieces .bi { flex: none; margin-top: .1rem; color: var(--succes); }
+.liste-pieces small { display: block; font-size: .8rem; color: var(--muet); }
+.faits .bi { flex: none; margin-top: .05rem; color: var(--accent); }
+.points li { position: relative; padding: .18rem 0 .18rem 1rem; line-height: 1.45; }
+.points li::before { content: ""; position: absolute; left: 0; top: .72em; width: .42rem; height: .42rem; border-radius: 50%; background: var(--or); }
+
+.contacts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.contact { display: flex; gap: .85rem; padding: 1.1rem 1.2rem; background: var(--surface); border-radius: 14px; box-shadow: 0 8px 22px -18px rgba(47, 63, 78, .4); }
+.contact > .bi { flex: none; width: 2.5rem; height: 2.5rem; border-radius: 50%; display: grid; place-items: center; background: var(--accent-doux); color: var(--accent); font-size: 1.15rem; }
+.contact > div { display: flex; flex-direction: column; min-width: 0; line-height: 1.5; }
+.contact strong { color: var(--encre); }
+.contact span { font-size: .85rem; color: var(--muet); margin-bottom: .25rem; }
+
+.retour-vitrine { display: inline-flex; gap: .35rem; margin-bottom: 1rem; font-size: .9rem; font-weight: 600; text-decoration: none; }
+.identification-tete { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 1.25rem; align-items: center; margin-bottom: 1.25rem; }
+.identification-tete img { width: 100%; height: auto; border-radius: 12px; display: block; }
+
+@media (max-width: 899.98px) {
+  .vitrine-hero { grid-template-columns: 1fr; }
+  .vitrine-hero .texte { padding: 1.6rem 1.4rem; }
+  .vitrine-hero img { min-height: 0; height: 210px; object-position: center 45%; }
+  .demarches { grid-template-columns: 1fr; }
+  .demarche { flex-direction: row; }
+  .demarche img { width: 38%; flex: none; aspect-ratio: auto; height: auto; object-fit: cover; }
+  .detail-demarche { grid-template-columns: 1fr; gap: 1.1rem; }
+  .etapes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 @media (max-width: 575.98px) {
-  .onglets-espace { gap: .5rem; }
-  .onglets-espace .nav-link { padding: .8rem .25rem .75rem; border-radius: 12px; }
-  .onglets-espace .nav-link .icone { width: 2.3rem; height: 2.3rem; font-size: 1.1rem; }
-  .onglets-espace .nav-link .titre { font-size: .88rem; }
-  .onglets-espace .nav-link .aide { font-size: .7rem; }
+  .demarche { flex-direction: column; }
+  .demarche img { width: 100%; height: 150px; object-position: center; }
+  .detail-demarche { padding: 1.2rem 1.1rem; }
+  .contacts { grid-template-columns: 1fr; }
+  .identification-tete { grid-template-columns: 1fr; gap: .85rem; }
+  .identification-tete img { max-height: 130px; object-fit: cover; }
 }
 @media (max-width: 575.98px) { .page-espace .verif-carte { padding: 1.1rem 1rem; } .page-espace .verif-carte .verif-statut { margin: -1.1rem -1rem 0; } }
 

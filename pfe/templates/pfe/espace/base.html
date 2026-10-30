@@ -11,7 +11,7 @@
   {% include 'pfe/_ressources.html' %}
   <link rel="stylesheet" href="{% static 'pfe/css/gped.css' %}?v={{ version_statique }}">
 </head>
-<body class="page-verification page-espace">
+<body class="page-verification page-espace {% block classe_page %}{% endblock %}">
 
 <header class="verif-bandeau">
   <div class="verif-marque">
@@ -28,7 +28,7 @@
     <div class="alert alert-{% if m.tags == 'error' %}danger{% else %}{{ m.tags }}{% endif %} d-flex gap-2 align-items-center"><i class="bi bi-info-circle"></i> {{ m }}</div>
   {% endfor %}
   {% block contenu %}{% endblock %}
-  <p class="text-center small text-secondary mt-4 mb-0">Un problème ? Présentez-vous au Service de la Scolarité de l'IST de Mamou.</p>
+  {% block aide_bas %}<p class="text-center small text-secondary mt-4 mb-0">Un problème ? Présentez-vous au Service de la Scolarité de l'IST de Mamou.</p>{% endblock %}
 </main>
 <script src="{% static 'pfe/vendor/bootstrap/bootstrap.bundle.min.js' %}?v={{ version_statique }}"></script>
 <script src="{% static 'pfe/js/gped-reseau.js' %}?v={{ version_statique }}"></script>

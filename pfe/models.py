@@ -435,12 +435,25 @@ class PieceDossier(models.Model):
     """
     ACTE_NAISSANCE, DIPLOME_BAC, RELEVE_BAC, RELEVE_NOTES, DIPLOME_LICENCE, AUTRE = (
         'acte_naissance', 'diplome_bac', 'releve_bac', 'releve_notes', 'diplome_licence', 'autre')
+    # Dossier d'inscription en Master (appel à candidature du Service des Études Avancées)
+    RELEVES_LICENCE, DEMANDE_MANUSCRITE, LETTRE_MOTIVATION, PROJET_RECHERCHE, RECOMMANDATION_1, RECOMMANDATION_2, \
+        LETTRE_ENGAGEMENT, CV = (
+            'releves_licence', 'demande_manuscrite', 'lettre_motivation', 'projet_recherche', 'recommandation_1',
+            'recommandation_2', 'lettre_engagement', 'cv')
     TYPES = [
         (ACTE_NAISSANCE, 'Acte de naissance'),
         (DIPLOME_BAC, 'Diplôme du baccalauréat'),
         (RELEVE_BAC, 'Relevé de notes du baccalauréat'),
         (RELEVE_NOTES, "Relevé de notes de la dernière année"),
-        (DIPLOME_LICENCE, 'Diplôme de licence'),
+        (DIPLOME_LICENCE, 'Diplôme de licence ou équivalent'),
+        (RELEVES_LICENCE, 'Relevés de notes de la licence'),
+        (DEMANDE_MANUSCRITE, 'Demande manuscrite'),
+        (LETTRE_MOTIVATION, 'Lettre de motivation'),
+        (PROJET_RECHERCHE, 'Projet de recherche'),
+        (RECOMMANDATION_1, 'Lettre de recommandation 1'),
+        (RECOMMANDATION_2, 'Lettre de recommandation 2'),
+        (LETTRE_ENGAGEMENT, "Lettre d'engagement"),
+        (CV, 'Curriculum Vitae (CV)'),
         (AUTRE, 'Autre pièce'),
     ]
     etudiant = models.ForeignKey(Etudiant, on_delete=models.CASCADE, related_name='pieces', verbose_name='Étudiant')

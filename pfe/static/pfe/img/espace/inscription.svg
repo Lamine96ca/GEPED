@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 190" role="img" aria-label="Un dossier ouvert avec un diplôme et une photo d'identité">
+  <rect width="360" height="190" fill="#fff3cd"/>
+  <circle cx="306" cy="42" r="58" fill="#fbdf8a"/>
+  <path d="M0 158c70-14 250-16 360-4v36H0z" fill="#f0dca6"/>
+  <g transform="rotate(-5 180 100)">
+    <path d="M84 62h62l14 15h116a9 9 0 0 1 9 9v82a9 9 0 0 1-9 9H84a9 9 0 0 1-9-9V71a9 9 0 0 1 9-9z" fill="#344f65"/>
+  </g>
+  <g transform="rotate(-9 150 90)">
+    <rect x="92" y="34" width="120" height="132" fill="#fff"/>
+    <rect x="104" y="48" width="96" height="8" fill="#41627c"/>
+    <g fill="#c3d1dc"><rect x="104" y="66" width="96" height="4"/><rect x="104" y="77" width="78" height="4"/><rect x="104" y="88" width="88" height="4"/><rect x="104" y="99" width="62" height="4"/></g>
+    <circle cx="186" cy="136" r="15" fill="none" stroke="#c8693a" stroke-width="3"/>
+    <circle cx="186" cy="136" r="9" fill="none" stroke="#c8693a" stroke-width="1.5"/>
+    <path d="M104 128c8-8 10 6 16-2s8 6 16-2" fill="none" stroke="#2f3f4e" stroke-width="2" stroke-linecap="round"/>
+  </g>
+  <g transform="rotate(7 240 92)">
+    <rect x="202" y="46" width="72" height="92" fill="#fff"/>
+    <rect x="209" y="53" width="58" height="62" fill="#c3d1dc"/>
+    <circle cx="238" cy="77" r="13" fill="#5c3f2b"/>
+    <path d="M214 115c2-18 14-22 24-22s22 4 24 22z" fill="#41627c"/>
+    <rect x="212" y="122" width="52" height="4" fill="#d3dbe3"/>
+  </g>
+  <path d="M72 106h206a10 10 0 0 1 10 12l-7 50a10 10 0 0 1-10 9H76a10 10 0 0 1-10-9l-6-50a10 10 0 0 1 12-12z" fill="#41627c"/>
+  <rect x="118" y="124" width="116" height="24" rx="3" fill="#fbf7ee"/>
+  <text x="176" y="141" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="14" font-weight="700" letter-spacing="2" fill="#344f65">DOSSIER</text>
+  <g transform="rotate(38 306 118)">
+    <rect x="300" y="60" width="11" height="86" fill="#fbbd08"/><rect x="300" y="60" width="11" height="12" fill="#c8693a"/>
+    <path d="M300 146h11l-5.500 16z" fill="#2f3f4e"/>
+  </g>
+</svg>

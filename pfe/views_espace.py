@@ -3,9 +3,9 @@ Espace étudiant (public, sans compte) : /etudiant/
   - Inscription   : préinscrit, INE + PV du bac → contacts, photo, pièces (facultatives).
   - Réinscription : ancien étudiant, INE + matricule → contacts, niveau, bourse, formation,
                     relevé de notes de la dernière année.
-  - Master        : adresse e-mail → lien personnel par e-mail → inscription ou réinscription
-                    (pièces du bac et acte de naissance obligatoires ; diplôme de licence et
-                    relevé de l'année dernière facultatifs).
+  - Master        : adresse e-mail → lien personnel par e-mail → inscription (toutes les pièces de
+                    l'appel à candidature) ou réinscription (pièces de base encore manquantes).
+La page d'accueil explique chaque démarche ; chacune a ensuite sa page d'identification.
 Rien n'est appliqué à la fiche avant la validation par la scolarité (voir pfe/espace_etudiant.py).
 """
 from functools import wraps
@@ -57,22 +57,44 @@ PIECES = {
     DemandeEtudiant.REINSCRIPTION: [PieceDossier.RELEVE_NOTES],
 }
 OBLIGATOIRES = PIECES
-# Master (inscription ou réinscription) : acte de naissance et pièces du bac obligatoires (une pièce déjà
-# dans le dossier n'est pas redemandée) ; diplôme de licence et relevé de l'année dernière facultatifs
-PIECES_MASTER = [PieceDossier.ACTE_NAISSANCE, PieceDossier.DIPLOME_BAC, PieceDossier.RELEVE_BAC,
-                 PieceDossier.DIPLOME_LICENCE, PieceDossier.RELEVE_NOTES]
-OBLIGATOIRES_MASTER = [PieceDossier.ACTE_NAISSANCE, PieceDossier.DIPLOME_BAC, PieceDossier.RELEVE_BAC]
-MASTER = 'master'                       # onglet de l'espace (la demande reste une inscription ou une réinscription)
+# Master : pièces de base, puis celles de l'appel à candidature pour une inscription, le relevé de l'année
+# dernière (facultatif) pour une réinscription. Une pièce déjà dans le dossier n'est pas redemandée.
+PIECES_BASE_MASTER = [PieceDossier.ACTE_NAISSANCE, PieceDossier.DIPLOME_BAC, PieceDossier.RELEVE_BAC,
+                      PieceDossier.DIPLOME_LICENCE]
+PIECES_MASTER = {
+    DemandeEtudiant.INSCRIPTION: PIECES_BASE_MASTER + [
+        PieceDossier.RELEVES_LICENCE, PieceDossier.DEMANDE_MANUSCRITE, PieceDossier.LETTRE_MOTIVATION,
+        PieceDossier.PROJET_RECHERCHE, PieceDossier.RECOMMANDATION_1, PieceDossier.RECOMMANDATION_2,
+        PieceDossier.LETTRE_ENGAGEMENT, PieceDossier.CV],
+    DemandeEtudiant.REINSCRIPTION: PIECES_BASE_MASTER + [PieceDossier.RELEVE_NOTES],
+}
+OBLIGATOIRES_MASTER = {DemandeEtudiant.INSCRIPTION: PIECES_MASTER[DemandeEtudiant.INSCRIPTION],
+                       DemandeEtudiant.REINSCRIPTION: PIECES_BASE_MASTER}
+AIDES_MASTER = {
+    PieceDossier.ACTE_NAISSANCE: "Copie légalisée de l'extrait de naissance (biométrique pour les nationaux).",
+    PieceDossier.DIPLOME_BAC: "Copie certifiée conforme du diplôme ou de l'attestation.",
+    PieceDossier.DIPLOME_LICENCE: "Copie certifiée conforme : licence, maîtrise ou diplôme jugé équivalent.",
+    PieceDossier.DEMANDE_MANUSCRITE: "Adressée au Directeur Général de l'IST.",
+    PieceDossier.PROJET_RECHERCHE: "Une page. Le canevas est à retirer au Service des Études Avancées (SEA).",
+    PieceDossier.RECOMMANDATION_1: "Rédigée par un enseignant qui vous connaît.",
+    PieceDossier.RECOMMANDATION_2: "Rédigée par un deuxième enseignant qui vous connaît.",
+    PieceDossier.LETTRE_ENGAGEMENT: "Lettre personnelle : vous vous engagez à respecter le règlement des études et "
+                                    "la charte de formation en master.",
+    PieceDossier.CV: "Actualisé.",
+}
+MASTER = 'master'                       # démarche de l'espace (la demande reste une inscription ou une réinscription)
+DEMARCHES = {DemandeEtudiant.INSCRIPTION: 'espace_inscription', DemandeEtudiant.REINSCRIPTION: 'espace_reinscription',
+             MASTER: 'espace_master'}
 MESSAGE_LIEN = ("Si cette adresse est celle d'un(e) étudiant(e) en Master, un e-mail vient de lui être envoyé avec "
                 "un lien personnel (valable 1 heure). Pensez à regarder dans les courriers indésirables.")
 
 
 def pieces_demandees(type_demande, master=False):
-    return PIECES_MASTER if master else PIECES[type_demande]
+    return (PIECES_MASTER if master else PIECES)[type_demande]
 
 
 def pieces_obligatoires(type_demande, master=False):
-    return OBLIGATOIRES_MASTER if master else OBLIGATOIRES.get(type_demande, [])
+    return (OBLIGATOIRES_MASTER if master else OBLIGATOIRES).get(type_demande, [])
 
 
 def _piece_deja_deposee(etudiant, type_piece, session):
@@ -87,40 +109,69 @@ def _ouvert(session, type_demande):
     return session.inscriptions_ouvertes if type_demande == DemandeEtudiant.INSCRIPTION else session.reinscriptions_ouvertes
 
 
+def _ouvertures(session):
+    inscription, reinscription = (_ouvert(session, DemandeEtudiant.INSCRIPTION),
+                                  _ouvert(session, DemandeEtudiant.REINSCRIPTION))
+    return {DemandeEtudiant.INSCRIPTION: inscription, DemandeEtudiant.REINSCRIPTION: reinscription,
+            MASTER: inscription or reinscription}
+
+
+def _pieces_affichees(types, master=False):
+    noms = dict(PieceDossier.TYPES)
+    return [(noms[t], AIDES_MASTER.get(t, '') if master else '') for t in types]
+
+
 @securise
 @never_cache
 def espace_accueil(request):
+    """Page d'accueil : chaque démarche expliquée, un bouton vers la page d'identification de chacune."""
+    if request.method == 'POST':                # identification envoyée depuis une ancienne page restée ouverte
+        mode = request.POST.get('mode')
+        return _demarche(request, mode if mode in DEMARCHES else DemandeEtudiant.INSCRIPTION)
+    if request.GET.get('onglet') in DEMARCHES:  # anciens liens
+        return redirect(DEMARCHES[request.GET['onglet']])
     session = espace.session_cible()
-    mode = request.POST.get('mode') or request.GET.get('onglet') or DemandeEtudiant.INSCRIPTION
-    if mode not in (DemandeEtudiant.INSCRIPTION, DemandeEtudiant.REINSCRIPTION, MASTER):
-        mode = DemandeEtudiant.INSCRIPTION
-    ouvert_master = _ouvert(session, DemandeEtudiant.INSCRIPTION) or _ouvert(session, DemandeEtudiant.REINSCRIPTION)
-    form_master = IdentificationMasterForm(request.POST if mode == MASTER and request.method == 'POST' else None,
-                                           prefix='m')
+    ouvertures = _ouvertures(session)
+    return render(request, 'pfe/espace/accueil.html', {
+        'session': session, 'ouvert_insc': ouvertures[DemandeEtudiant.INSCRIPTION],
+        'ouvert_reinsc': ouvertures[DemandeEtudiant.REINSCRIPTION], 'ouvert_master': ouvertures[MASTER],
+        'pieces_insc': _pieces_affichees(PIECES[DemandeEtudiant.INSCRIPTION]),
+        'pieces_reinsc': _pieces_affichees(PIECES[DemandeEtudiant.REINSCRIPTION]),
+        'pieces_master': _pieces_affichees(PIECES_MASTER[DemandeEtudiant.INSCRIPTION], master=True),
+        'pieces_master_reinsc': _pieces_affichees(OBLIGATOIRES_MASTER[DemandeEtudiant.REINSCRIPTION], master=True),
+    })
+
+
+@securise
+@never_cache
+def espace_demarche(request, mode):
+    return _demarche(request, mode)
+
+
+def _demarche(request, mode):
+    """Page d'identification d'une démarche (inscription, réinscription ou Master)."""
+    session = espace.session_cible()
+    ouvert = _ouvertures(session)[mode]
+    classe, prefixe = {DemandeEtudiant.INSCRIPTION: (IdentificationInscriptionForm, 'i'),
+                       DemandeEtudiant.REINSCRIPTION: (IdentificationReinscriptionForm, 'r'),
+                       MASTER: (IdentificationMasterForm, 'm')}[mode]
+    form = classe(request.POST if request.method == 'POST' else None, prefix=prefixe)
+    erreur = ''
+    contexte = {'session': session, 'mode': mode, 'form': form, 'ouvert': ouvert, 'image': f'pfe/img/espace/{mode}.svg'}
     if mode == MASTER and request.method == 'POST':
-        erreur = ''
         attente = espace.bloque(request, request.POST.get('m-email', ''))
-        if not ouvert_master:
+        if not ouvert:
             erreur = "Les inscriptions et réinscriptions en ligne sont fermées."
         elif attente:
             erreur = f"Trop de demandes : réessayez dans {attente // 60 + 1} minute(s)."
-        elif form_master.is_valid():
+        elif form.is_valid():
             # Chaque demande de lien compte (pas d'envois en rafale) ; même réponse, l'adresse existe ou non
-            espace.echec(request, form_master.cleaned_data['email'], journal=False)
-            _envoyer_lien_master(request, form_master.cleaned_data['email'], session)
+            espace.echec(request, form.cleaned_data['email'], journal=False)
+            _envoyer_lien_master(request, form.cleaned_data['email'], session)
             messages.success(request, MESSAGE_LIEN)
-            return redirect(f"{reverse('espace_accueil')}?onglet={MASTER}")
-        return render(request, 'pfe/espace/accueil.html', {
-            'session': session, 'mode': mode, 'form_insc': IdentificationInscriptionForm(prefix='i'),
-            'form_reinsc': IdentificationReinscriptionForm(prefix='r'), 'form_master': form_master, 'erreur': erreur,
-            'ouvert_insc': _ouvert(session, DemandeEtudiant.INSCRIPTION),
-            'ouvert_reinsc': _ouvert(session, DemandeEtudiant.REINSCRIPTION), 'ouvert_master': ouvert_master,
-        })
-    form_insc = IdentificationInscriptionForm(request.POST if mode == DemandeEtudiant.INSCRIPTION and request.method == 'POST' else None, prefix='i')
-    form_reinsc = IdentificationReinscriptionForm(request.POST if mode == DemandeEtudiant.REINSCRIPTION and request.method == 'POST' else None, prefix='r')
-    erreur = ''
-    if request.method == 'POST' and _ouvert(session, mode):
-        form = form_insc if mode == DemandeEtudiant.INSCRIPTION else form_reinsc
+            return redirect('espace_master')
+        return render(request, 'pfe/espace/identification.html', {**contexte, 'erreur': erreur})
+    if request.method == 'POST' and ouvert:
         ine = request.POST.get(form.add_prefix('ine'), '')
         attente = espace.bloque(request, ine)
         if attente:
@@ -140,12 +191,7 @@ def espace_accueil(request):
                 espace.reussite(request, d['ine'])
                 espace.ouvrir_acces(request, etudiant, mode, insc)
                 return redirect('espace_dossier')
-    return render(request, 'pfe/espace/accueil.html', {
-        'session': session, 'mode': mode, 'form_insc': form_insc, 'form_reinsc': form_reinsc, 'erreur': erreur,
-        'form_master': form_master, 'ouvert_master': ouvert_master,
-        'ouvert_insc': _ouvert(session, DemandeEtudiant.INSCRIPTION),
-        'ouvert_reinsc': _ouvert(session, DemandeEtudiant.REINSCRIPTION),
-    })
+    return render(request, 'pfe/espace/identification.html', {**contexte, 'erreur': erreur})
 
 
 def _envoyer_lien_master(request, email, session):
@@ -188,13 +234,6 @@ def _mail_master(request, etudiant, session, lien='', type_demande='', raison=''
 
 @securise
 @never_cache
-def espace_master(request):
-    """Adresse directe des étudiants en Master : l'espace ouvert sur l'onglet Master."""
-    return redirect(f"{reverse('espace_accueil')}?onglet={MASTER}")
-
-
-@securise
-@never_cache
 def espace_lien(request, jeton):
     """
     Lien personnel reçu par e-mail. Il n'est utilisé qu'au clic sur « Ouvrir mon dossier » (POST) : une
@@ -205,14 +244,14 @@ def espace_lien(request, jeton):
     if etudiant is None:
         messages.error(request, "Ce lien a expiré ou a déjà servi : saisissez de nouveau votre adresse e-mail pour "
                                 "en recevoir un autre.")
-        return redirect(f"{reverse('espace_accueil')}?onglet={MASTER}")
+        return redirect('espace_master')
     if request.method == 'POST':
         try:
             etudiant, type_demande, insc = espace.identifier_master(etudiant.email, session,
                                                                      ouvert=lambda t: _ouvert(session, t))
         except espace.Refus as r:
             messages.error(request, str(r))
-            return redirect(f"{reverse('espace_accueil')}?onglet={MASTER}")
+            return redirect('espace_master')
         espace.ouvrir_acces(request, etudiant, type_demande, insc, master=True)
         return redirect('espace_dossier')
     return render(request, 'pfe/espace/lien.html', {'etudiant': etudiant, 'session': session})
@@ -342,7 +381,9 @@ def espace_dossier(request):
         'departement': _nom_departement(insc.filiere) if insc.filiere else '',
         'programme': insc.filiere.nom if insc.filiere else '',        # nom réel : la description porte souvent le département
         'pieces': [(t, dict(PieceDossier.TYPES)[t], deposees.get(t), erreurs_pieces.get(t),
-                    t in pieces_obligatoires(type_demande, master)) for t in pieces_demandees(type_demande, master)],
+                    t in pieces_obligatoires(type_demande, master), AIDES_MASTER.get(t, '') if master else '')
+                   for t in pieces_demandees(type_demande, master)],
+        'toutes_obligatoires': set(pieces_demandees(type_demande, master)) == set(pieces_obligatoires(type_demande, master)),
         'expire_minutes': max(1, int((a['expire'] - __import__('time').time()) // 60)),
     })
 

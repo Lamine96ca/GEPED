@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 420" role="img" aria-label="Le bâtiment de l'institut, au pied des collines de Mamou">
+  <defs>
+    <pattern id="fenetres-g" x="146" y="238" width="36" height="40" patternUnits="userSpaceOnUse">
+      <rect width="22" height="27" fill="#41627c"/><rect width="22" height="9" fill="#8fa9bd"/>
+    </pattern>
+    <pattern id="fenetres-d" x="386" y="238" width="36" height="40" patternUnits="userSpaceOnUse">
+      <rect width="22" height="27" fill="#41627c"/><rect width="22" height="9" fill="#8fa9bd"/>
+    </pattern>
+  </defs>
+  <rect width="640" height="420" fill="#f6efe2"/>
+  <circle cx="486" cy="112" r="64" fill="#fbbd08"/>
+  <g fill="none" stroke="#e5a800" stroke-width="5" stroke-linecap="round">
+    <path d="M486 28v-14M570 112h14M545 53l10-10M427 53l-10-10M545 171l10 10"/>
+  </g>
+  <g fill="#fff">
+    <path d="M86 92c4-16 26-20 36-8 12-6 28 2 28 16H70c-4-6 4-10 16-8z"/>
+    <path d="M280 62c3-11 19-14 26-5 9-4 20 1 20 11h-57c-3-4 3-7 11-6z"/>
+  </g>
+  <path d="M0 226c58-34 112-30 170-14 60-44 128-46 190-22 62 24 150 28 280-22v252H0z" fill="#c3d1dc"/>
+  <path d="M0 268c84-36 158-22 240-30 96-10 240-38 400 4v178H0z" fill="#8fa9bd"/>
+  <path d="M0 316c150-26 430-24 640-8v112H0z" fill="#7d9a78"/>
+
+  <g id="arbres-fond" fill="#587a5c">
+    <circle cx="96" cy="262" r="30"/><circle cx="62" cy="276" r="24"/><circle cx="126" cy="280" r="22"/>
+    <circle cx="552" cy="266" r="28"/><circle cx="588" cy="280" r="26"/>
+  </g>
+  <rect x="88" y="282" width="10" height="36" fill="#6b4a33"/>
+  <rect x="568" y="284" width="10" height="32" fill="#6b4a33"/>
+
+  <g id="batiment">
+    <rect x="134" y="224" width="372" height="94" fill="#fbf7ee"/>
+    <rect x="124" y="214" width="392" height="11" fill="#344f65"/>
+    <rect x="146" y="238" width="112" height="67" fill="url(#fenetres-g)"/>
+    <rect x="386" y="238" width="112" height="67" fill="url(#fenetres-d)"/>
+    <rect x="266" y="180" width="108" height="138" fill="#fff"/>
+    <rect x="256" y="170" width="128" height="11" fill="#344f65"/>
+    <rect x="266" y="181" width="108" height="30" fill="#edf2f6"/>
+    <text x="320" y="204" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="22" font-weight="700" letter-spacing="4" fill="#344f65">IST</text>
+    <rect x="280" y="222" width="20" height="26" fill="#41627c"/><rect x="340" y="222" width="20" height="26" fill="#41627c"/>
+    <rect x="310" y="222" width="20" height="26" fill="#41627c"/>
+    <rect x="298" y="260" width="44" height="58" fill="#344f65"/><rect x="319" y="260" width="2" height="58" fill="#8fa9bd"/>
+    <rect x="288" y="256" width="64" height="5" fill="#fbbd08"/>
+    <rect x="284" y="314" width="72" height="5" fill="#d9cdb6"/><rect x="276" y="319" width="88" height="5" fill="#c9bb9f"/>
+  </g>
+
+  <g id="drapeau">
+    <rect x="202" y="146" width="3" height="172" fill="#6c7a87"/>
+    <rect x="205" y="149" width="13" height="28" fill="#ce1126"/><rect x="218" y="149" width="13" height="28" fill="#fcd116"/><rect x="231" y="149" width="13" height="28" fill="#009460"/>
+  </g>
+
+  <path d="M278 324c-8 34-70 66-158 96h236c10-34 30-66 8-96z" fill="#c8693a"/>
+  <g fill="none" stroke="#b25a2e" stroke-width="3" stroke-linecap="round" stroke-dasharray="1 14">
+    <path d="M290 340c-16 26-60 46-112 66"/><path d="M340 338c2 28-14 52-30 74"/>
+  </g>
+
+  <g id="arbre-devant">
+    <rect x="522" y="318" width="13" height="58" fill="#5c3f2b"/>
+    <circle cx="528" cy="300" r="40" fill="#3f5f48"/><circle cx="494" cy="318" r="28" fill="#4a6e52"/><circle cx="564" cy="322" r="30" fill="#4a6e52"/>
+    <circle cx="522" cy="284" r="20" fill="#587a5c"/>
+  </g>
+  <g fill="#587a5c"><path d="M18 388c14-16 36-18 52-6 16-12 40-8 50 8z"/><path d="M420 400c14-14 34-14 46-4 14-10 34-8 44 6z"/></g>
+
+  <g id="etudiants">
+    <g transform="translate(244 352)">
+      <rect x="-7" y="-20" width="14" height="24" rx="6" fill="#2f3f4e"/>
+      <rect x="-11" y="-19" width="7" height="16" rx="3" fill="#fbbd08"/>
+      <rect x="-6" y="3" width="5" height="17" fill="#344f65"/><rect x="1" y="3" width="5" height="17" fill="#344f65"/>
+      <circle cy="-27" r="7" fill="#6b4a33"/>
+    </g>
+    <g transform="translate(272 362)">
+      <rect x="-7" y="-20" width="14" height="24" rx="6" fill="#fbf7ee"/>
+      <path d="M-8 2h16l3 17h-22z" fill="#41627c"/>
+      <rect x="6" y="-16" width="9" height="13" fill="#c8693a"/>
+      <circle cy="-27" r="7" fill="#5c3f2b"/><path d="M-8-29c1-9 15-9 16 0-5-3-11-3-16 0z" fill="#2f3f4e"/>
+    </g>
+  </g>
+</svg>

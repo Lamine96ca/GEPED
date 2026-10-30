@@ -1,0 +1,41 @@
+{% extends 'pfe/espace/base.html' %}
+{% load static %}
+{% block titre %}{% if mode == 'master' %}Master{% elif mode == 'reinscription' %}Réinscription{% else %}Inscription{% endif %}{% endblock %}
+{% block contenu %}
+<section class="verif-carte">
+  <a class="retour-vitrine" href="{% url 'espace_accueil' %}"><i class="bi bi-arrow-left"></i> Toutes les démarches</a>
+  <div class="identification-tete">
+    <img src="{% static image %}?v={{ version_statique }}" width="360" height="190" alt="">
+    <div>
+      <h1 class="h4 mb-1" style="color:var(--encre)">{% if mode == 'master' %}Master{% elif mode == 'reinscription' %}Réinscription{% else %}Inscription{% endif %}</h1>
+      {% if session %}<p class="text-secondary mb-2">Année universitaire <strong>{{ session }}</strong></p>{% endif %}
+      {% if mode == 'master' %}
+        <p class="small text-secondary mb-0">Étudiant(e) en <strong>Master</strong> (inscription ou réinscription) : saisissez l'<strong>adresse e-mail</strong> enregistrée à la scolarité. Vous recevrez un <strong>lien personnel</strong>, valable 1 heure, pour ouvrir votre dossier.</p>
+      {% elif mode == 'reinscription' %}
+        <p class="small text-secondary mb-0">Vous étiez inscrit(e) l'an dernier : identifiez-vous avec votre <strong>INE</strong> et votre <strong>matricule</strong>.</p>
+      {% else %}
+        <p class="small text-secondary mb-0">Vous avez été <strong>orienté(e)</strong> à l'IST de Mamou et figurez sur la liste des préinscrits : identifiez-vous avec votre <strong>INE</strong> et votre <strong>numéro de PV du bac</strong>.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if ouvert %}
+    <form method="post" novalidate class="row g-3">
+      {% csrf_token %}<input type="hidden" name="mode" value="{{ mode }}">
+      {% if erreur %}<div class="col-12"><div class="alert alert-danger py-2 mb-0"><i class="bi bi-exclamation-circle"></i> {{ erreur }}</div></div>{% endif %}
+      {% for champ in form %}{% include 'pfe/_champ.html' with champ=champ col='col-md-6' %}{% endfor %}
+      <div class="col-12">
+        {% if mode == 'master' %}<button class="btn btn-primary"><i class="bi bi-envelope"></i> Recevoir mon lien</button>
+        {% else %}<button class="btn btn-primary"><i class="bi bi-box-arrow-in-right"></i> Accéder à mon dossier</button>{% endif %}
+      </div>
+    </form>
+  {% else %}
+    <div class="alert alert-secondary mb-0"><i class="bi bi-lock"></i> Les <strong>{% if mode == 'reinscription' %}réinscriptions{% else %}inscriptions{% endif %} en ligne</strong> sont fermées{% if session %} pour {{ session }}{% endif %}. Renseignez-vous auprès du {% if mode == 'master' %}Service des Études Avancées{% else %}Service de la Scolarité{% endif %}.</div>
+  {% endif %}
+
+  <div class="verif-conseil mt-4">
+    <i class="bi bi-shield-lock"></i>
+    <span>Ne communiquez pas votre INE, votre PV du bac, votre matricule ni le lien reçu par e-mail. Après 5 essais manqués, l'accès est bloqué 15 minutes ; votre session se ferme seule après 30 minutes.</span>
+  </div>
+</section>
+{% endblock %}

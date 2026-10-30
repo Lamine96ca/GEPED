@@ -1,70 +1,167 @@
 {% extends 'pfe/espace/base.html' %}
-{% block titre %}Inscription et réinscription{% endblock %}
+{% load static %}
+{% block titre %}Demande d'inscription en ligne{% endblock %}
+{% block classe_page %}page-vitrine{% endblock %}
+{% block aide_bas %}{% endblock %}
 {% block contenu %}
-<section class="verif-carte">
-  <h1 class="h4 mb-1" style="color:var(--encre)">Inscription et réinscription en ligne</h1>
-  <p class="text-secondary mb-4">Complétez votre dossier{% if session %} pour l'année universitaire <strong>{{ session }}</strong>{% endif %} : coordonnées, photo et pièces. La scolarité vérifie ensuite votre demande.</p>
-
-  <p class="fw-semibold mb-2" style="color:var(--encre)">Choisissez votre démarche :</p>
-  <ul class="nav onglets-espace mb-4" role="tablist" aria-label="Choisissez votre démarche">
-    <li class="nav-item" role="presentation"><button class="nav-link {% if mode == 'inscription' %}active{% endif %}" data-bs-toggle="pill" data-bs-target="#onglet-inscription" type="button" role="tab" aria-selected="{% if mode == 'inscription' %}true{% else %}false{% endif %}">
-      <span class="icone"><i class="bi bi-person-plus"></i></span><span class="titre">Inscription</span><span class="aide">Nouvel étudiant</span>
-    </button></li>
-    <li class="nav-item" role="presentation"><button class="nav-link {% if mode == 'reinscription' %}active{% endif %}" data-bs-toggle="pill" data-bs-target="#onglet-reinscription" type="button" role="tab" aria-selected="{% if mode == 'reinscription' %}true{% else %}false{% endif %}">
-      <span class="icone"><i class="bi bi-arrow-repeat"></i></span><span class="titre">Réinscription</span><span class="aide">Ancien étudiant</span>
-    </button></li>
-    <li class="nav-item" role="presentation"><button class="nav-link {% if mode == 'master' %}active{% endif %}" data-bs-toggle="pill" data-bs-target="#onglet-master" type="button" role="tab" aria-selected="{% if mode == 'master' %}true{% else %}false{% endif %}">
-      <span class="icone"><i class="bi bi-mortarboard"></i></span><span class="titre">Master</span><span class="aide">Lien par e-mail</span>
-    </button></li>
-  </ul>
-
-  <div class="tab-content">
-    <div class="tab-pane fade {% if mode == 'inscription' %}show active{% endif %}" id="onglet-inscription">
-      {% if ouvert_insc %}
-        <p class="small text-secondary">Vous avez été <strong>orienté(e)</strong> à l'IST de Mamou et figurez sur la liste des préinscrits : identifiez-vous avec votre <strong>INE</strong> et votre <strong>numéro de PV du bac</strong>.</p>
-        <form method="post" novalidate class="row g-3">
-          {% csrf_token %}<input type="hidden" name="mode" value="inscription">
-          {% if erreur and mode == 'inscription' %}<div class="col-12"><div class="alert alert-danger py-2 mb-0"><i class="bi bi-exclamation-circle"></i> {{ erreur }}</div></div>{% endif %}
-          {% include 'pfe/_champ.html' with champ=form_insc.ine col='col-md-6' %}
-          {% include 'pfe/_champ.html' with champ=form_insc.pvbac col='col-md-6' %}
-          <div class="col-12"><button class="btn btn-primary"><i class="bi bi-box-arrow-in-right"></i> Accéder à mon dossier</button></div>
-        </form>
-      {% else %}
-        <div class="alert alert-secondary mb-0"><i class="bi bi-lock"></i> Les <strong>inscriptions en ligne</strong> sont fermées{% if session %} pour {{ session }}{% endif %}. Renseignez-vous auprès du Service de la Scolarité.</div>
-      {% endif %}
-    </div>
-    <div class="tab-pane fade {% if mode == 'reinscription' %}show active{% endif %}" id="onglet-reinscription">
-      {% if ouvert_reinsc %}
-        <p class="small text-secondary">Vous étiez inscrit(e) l'an dernier : identifiez-vous avec votre <strong>INE</strong> et votre <strong>matricule</strong>.</p>
-        <form method="post" novalidate class="row g-3">
-          {% csrf_token %}<input type="hidden" name="mode" value="reinscription">
-          {% if erreur and mode == 'reinscription' %}<div class="col-12"><div class="alert alert-danger py-2 mb-0"><i class="bi bi-exclamation-circle"></i> {{ erreur }}</div></div>{% endif %}
-          {% include 'pfe/_champ.html' with champ=form_reinsc.ine col='col-md-6' %}
-          {% include 'pfe/_champ.html' with champ=form_reinsc.matricule col='col-md-6' %}
-          <div class="col-12"><button class="btn btn-primary"><i class="bi bi-box-arrow-in-right"></i> Accéder à mon dossier</button></div>
-        </form>
-      {% else %}
-        <div class="alert alert-secondary mb-0"><i class="bi bi-lock"></i> Les <strong>réinscriptions en ligne</strong> sont fermées{% if session %} pour {{ session }}{% endif %}. Renseignez-vous auprès du Service de la Scolarité.</div>
-      {% endif %}
-    </div>
-    <div class="tab-pane fade {% if mode == 'master' %}show active{% endif %}" id="onglet-master">
-      {% if ouvert_master %}
-        <p class="small text-secondary">Étudiant(e) en <strong>Master</strong> (inscription ou réinscription) : saisissez l'<strong>adresse e-mail</strong> enregistrée à la scolarité. Vous recevrez un <strong>lien personnel</strong>, valable 1 heure, pour ouvrir votre dossier.</p>
-        <form method="post" novalidate class="row g-3">
-          {% csrf_token %}<input type="hidden" name="mode" value="master">
-          {% if erreur and mode == 'master' %}<div class="col-12"><div class="alert alert-danger py-2 mb-0"><i class="bi bi-exclamation-circle"></i> {{ erreur }}</div></div>{% endif %}
-          {% include 'pfe/_champ.html' with champ=form_master.email col='col-md-8' %}
-          <div class="col-12"><button class="btn btn-primary"><i class="bi bi-envelope"></i> Recevoir mon lien</button></div>
-        </form>
-      {% else %}
-        <div class="alert alert-secondary mb-0"><i class="bi bi-lock"></i> Les <strong>inscriptions en ligne</strong> sont fermées{% if session %} pour {{ session }}{% endif %}. Renseignez-vous auprès du Service de la Scolarité.</div>
-      {% endif %}
-    </div>
+<section class="vitrine-hero">
+  <div class="texte">
+    {% if session %}<p class="surtitre">Année universitaire {{ session }}</p>{% endif %}
+    <h1>Votre demande d'inscription à l'IST de Mamou, en ligne</h1>
+    <p>Choisissez la démarche qui vous concerne, préparez vos documents et envoyez votre dossier depuis votre téléphone ou un ordinateur. La scolarité vérifie ensuite votre demande.</p>
+    <a class="btn btn-or-plein" href="#demarches"><i class="bi bi-arrow-down"></i> Choisir ma démarche</a>
   </div>
+  <img src="{% static 'pfe/img/espace/campus.svg' %}?v={{ version_statique }}" width="640" height="420" alt="">
+</section>
 
-  <div class="verif-conseil mt-4">
-    <i class="bi bi-shield-lock"></i>
-    <span>Ne communiquez pas votre INE, votre PV du bac, votre matricule ni le lien reçu par e-mail. Après 5 essais manqués, l'accès est bloqué 15 minutes ; votre session se ferme seule après 30 minutes.</span>
+<h2 class="vitrine-titre" id="demarches">Quelle est votre situation ?</h2>
+<div class="demarches">
+  <article class="demarche">
+    <img src="{% static 'pfe/img/espace/inscription.svg' %}?v={{ version_statique }}" width="360" height="190" alt="">
+    <div class="corps">
+      <h3>Inscription</h3>
+      <p class="pour">Vous entrez à l'IST</p>
+      <p>Vous avez été orienté(e) à l'IST de Mamou et votre nom figure sur la liste des préinscrits.</p>
+      <p class="besoin"><i class="bi bi-key"></i> Il vous faut : <strong>INE</strong> et <strong>numéro de PV du bac</strong></p>
+      {% if ouvert_insc %}<a class="btn btn-primary" href="{% url 'espace_inscription' %}">Faire mon inscription <i class="bi bi-arrow-right"></i></a>
+      {% else %}<span class="ferme"><i class="bi bi-lock"></i> Fermée pour le moment</span>{% endif %}
+      <a class="detail" href="#detail-inscription">Voir ce qu'il faut préparer</a>
+    </div>
+  </article>
+  <article class="demarche">
+    <img src="{% static 'pfe/img/espace/reinscription.svg' %}?v={{ version_statique }}" width="360" height="190" alt="">
+    <div class="corps">
+      <h3>Réinscription</h3>
+      <p class="pour">Vous êtes déjà étudiant(e)</p>
+      <p>Vous étiez inscrit(e) à l'IST l'an dernier et vous continuez pour une nouvelle année.</p>
+      <p class="besoin"><i class="bi bi-key"></i> Il vous faut : <strong>INE</strong> et <strong>matricule</strong></p>
+      {% if ouvert_reinsc %}<a class="btn btn-primary" href="{% url 'espace_reinscription' %}">Faire ma réinscription <i class="bi bi-arrow-right"></i></a>
+      {% else %}<span class="ferme"><i class="bi bi-lock"></i> Fermée pour le moment</span>{% endif %}
+      <a class="detail" href="#detail-reinscription">Voir ce qu'il faut préparer</a>
+    </div>
+  </article>
+  <article class="demarche">
+    <img src="{% static 'pfe/img/espace/master.svg' %}?v={{ version_statique }}" width="360" height="190" alt="">
+    <div class="corps">
+      <h3>Master</h3>
+      <p class="pour">Inscription ou réinscription en Master</p>
+      <p>Vous êtes enregistré(e) en Master : tout passe par un lien personnel envoyé par e-mail.</p>
+      <p class="besoin"><i class="bi bi-key"></i> Il vous faut : votre <strong>adresse e-mail</strong> enregistrée</p>
+      {% if ouvert_master %}<a class="btn btn-primary" href="{% url 'espace_master' %}">Recevoir mon lien <i class="bi bi-arrow-right"></i></a>
+      {% else %}<span class="ferme"><i class="bi bi-lock"></i> Fermée pour le moment</span>{% endif %}
+      <a class="detail" href="#detail-master">Voir ce qu'il faut préparer</a>
+    </div>
+  </article>
+</div>
+
+<h2 class="vitrine-titre">Comment se passe votre demande</h2>
+<ol class="etapes">
+  <li><span class="num">1</span><strong>Identifiez-vous</strong><span>Avec les informations de votre démarche.</span></li>
+  <li><span class="num">2</span><strong>Complétez le dossier</strong><span>Coordonnées, photo d'identité et pièces.</span></li>
+  <li><span class="num">3</span><strong>Signez et envoyez</strong><span>Vous signez à l'écran, avec le doigt ou la souris.</span></li>
+  <li><span class="num">4</span><strong>Suivez votre demande</strong><span>Identifiez-vous de nouveau pour voir où elle en est.</span></li>
+</ol>
+<div class="vitrine-note">
+  <i class="bi bi-lightbulb"></i>
+  <span>Rassemblez <strong>toutes vos pièces avant de commencer</strong> : votre dossier reste ouvert 30 minutes et les pièces obligatoires doivent être envoyées ensemble. Chaque pièce se scanne avec le téléphone (une photo par page) ou s'envoie en PDF.</span>
+</div>
+
+<section class="detail-demarche" id="detail-inscription">
+  <div>
+    <h2><i class="bi bi-person-plus"></i> Inscription</h2>
+    <p>Pour les nouveaux étudiants orientés à l'IST de Mamou et préinscrits pour l'année.</p>
+    <h3>Pour vous identifier</h3>
+    <p>Votre <strong>INE</strong> et votre <strong>numéro de PV du bac</strong>.</p>
+    <h3>Si votre nom n'est pas trouvé</h3>
+    <p>Vérifiez vos numéros, puis adressez-vous au Service de la Scolarité.</p>
+  </div>
+  <div>
+    <h3>À préparer</h3>
+    <ul class="liste-pieces">
+      {% for nom, aide in pieces_insc %}<li><i class="bi bi-check-circle-fill"></i><span>{{ nom }}</span></li>{% endfor %}
+      <li><i class="bi bi-check-circle-fill"></i><span>Une photo d'identité récente</span></li>
+    </ul>
+    <p class="small text-secondary mb-0">Toutes ces pièces sont obligatoires.</p>
   </div>
 </section>
+
+<section class="detail-demarche" id="detail-reinscription">
+  <div>
+    <h2><i class="bi bi-arrow-repeat"></i> Réinscription</h2>
+    <p>Pour les étudiants déjà inscrits à l'IST qui continuent leur parcours. Le niveau prévu pour votre promotion vous est proposé.</p>
+    <h3>Pour vous identifier</h3>
+    <p>Votre <strong>INE</strong> et votre <strong>matricule</strong>.</p>
+    <h3>Si votre promotion n'est pas prévue en ligne</h3>
+    <p>Présentez-vous au Service de la Scolarité.</p>
+  </div>
+  <div>
+    <h3>À préparer</h3>
+    <ul class="liste-pieces">
+      {% for nom, aide in pieces_reinsc %}<li><i class="bi bi-check-circle-fill"></i><span>{{ nom }}</span></li>{% endfor %}
+      <li><i class="bi bi-check-circle-fill"></i><span>Une photo d'identité, si votre fiche n'en a pas</span></li>
+    </ul>
+  </div>
+</section>
+
+<section class="detail-demarche master" id="detail-master">
+  <div>
+    <h2><i class="bi bi-mortarboard"></i> Master en Énergie</h2>
+    <p>Une formation de professionnels des énergies renouvelables et des systèmes électriques, proposée par le Service des Études Avancées (SEA).</p>
+    <ul class="faits">
+      <li><i class="bi bi-calendar3"></i><span><strong>Durée :</strong> 4 semestres, soit 2 années académiques</span></li>
+      <li><i class="bi bi-award"></i><span><strong>Accès :</strong> licence, maîtrise ou diplôme jugé équivalent, dans les domaines de l'énergie et les spécialités affiliées</span></li>
+      <li><i class="bi bi-laptop"></i><span><strong>Cours :</strong> en ligne, en présentiel ou en hybride, les week-ends et les soirées</span></li>
+    </ul>
+    <h3>Ce que vous apprendrez</h3>
+    <ul class="points">
+      <li>Comprendre les enjeux mondiaux : consommation d'énergie, épuisement des ressources fossiles, réchauffement climatique et pollution</li>
+      <li>Utiliser les énergies solaire, éolienne, hydraulique, de biomasse et géothermique, celles des marées et des vagues, ainsi que l'hydrogène</li>
+      <li>Maîtriser la production, le stockage et l'exploitation de l'énergie</li>
+      <li>Contrôler et gérer l'énergie sur le réseau électrique</li>
+    </ul>
+    <h3>Pour vous identifier</h3>
+    <p>Saisissez votre <strong>adresse e-mail</strong> : vous recevez un lien personnel, valable 1 heure et utilisable une seule fois.</p>
+  </div>
+  <div>
+    <h3>Première inscription (M1) : à préparer</h3>
+    <ul class="liste-pieces">
+      {% for nom, aide in pieces_master %}<li><i class="bi bi-check-circle-fill"></i><span>{{ nom }}{% if aide %}<small>{{ aide }}</small>{% endif %}</span></li>{% endfor %}
+      <li><i class="bi bi-check-circle-fill"></i><span>Une photo d'identité récente<small>Une seconde photo est à remettre au Service des Études Avancées.</small></span></li>
+    </ul>
+    <h3>Réinscription (M2) : à préparer</h3>
+    <p class="small text-secondary mb-2">Seulement ce qui manque encore à votre dossier :</p>
+    <ul class="liste-pieces">
+      {% for nom, aide in pieces_master_reinsc %}<li><i class="bi bi-check-circle-fill"></i><span>{{ nom }}</span></li>{% endfor %}
+    </ul>
+  </div>
+</section>
+
+<h2 class="vitrine-titre">Besoin d'aide ?</h2>
+<div class="contacts">
+  <div class="contact">
+    <i class="bi bi-building"></i>
+    <div>
+      <strong>IST de Mamou</strong>
+      <span>Inscription et réinscription : Service de la Scolarité</span>
+      <a href="mailto:contact@ist-mamou.org">contact@ist-mamou.org</a>
+      <a href="tel:+224621292026">+224 621 29 20 26</a>
+      <a href="tel:+224628665318">+224 628 66 53 18</a>
+    </div>
+  </div>
+  <div class="contact">
+    <i class="bi bi-mortarboard"></i>
+    <div>
+      <strong>Service des Études Avancées (SEA)</strong>
+      <span>Master</span>
+      <a href="mailto:sea@ist-mamou.org">sea@ist-mamou.org</a>
+      <a href="tel:+224622288295">+224 622 28 82 95</a>
+      <a href="tel:+224621185196">+224 621 18 51 96</a>
+    </div>
+  </div>
+</div>
+
+<div class="verif-conseil mt-4">
+  <i class="bi bi-shield-lock"></i>
+  <span>Ne communiquez pas votre INE, votre PV du bac, votre matricule ni le lien reçu par e-mail. Après 5 essais manqués, l'accès est bloqué 15 minutes.</span>
+</div>
 {% endblock %}

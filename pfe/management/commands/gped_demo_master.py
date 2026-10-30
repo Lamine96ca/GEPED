@@ -10,7 +10,7 @@ Crée, s'ils n'existent pas (la commande peut être relancée sans rien duplique
     (ceux qui existent déjà : M1 / M2, sinon créés sous ces noms), la promotion PM01 prévue en M1 pour
     la session en cours ;
   - le compte « demo.master » : chef du programme (il signe les documents de ce Master) ;
-  - une étudiante préinscrite en M1, pour essayer l'onglet « Master » de l'espace étudiant
+  - une étudiante préinscrite en M1, pour essayer la démarche « Master » de l'espace étudiant
     (--email-etudiant : une adresse qui reçoit vraiment le lien, en production).
 Le mot de passe du compte est tiré au hasard et affiché UNE fois dans ce terminal (jamais enregistré
 dans le code) ; --nouveau-mot-de-passe en tire un autre. --supprimer retire le compte et l'étudiante
@@ -80,7 +80,7 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument('--email-etudiant', default=EMAIL_ETUDIANT,
-                            help="Adresse de l'étudiante de démonstration (reçoit le lien de l'onglet Master)")
+                            help="Adresse de l'étudiante de démonstration (reçoit le lien de la démarche Master)")
         parser.add_argument('--nouveau-mot-de-passe', action='store_true',
                             help="Tire un nouveau mot de passe pour un compte déjà créé")
         parser.add_argument('--supprimer', action='store_true', help="Retire le compte et l'étudiante de démonstration")
@@ -143,11 +143,11 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING(f"Mot de passe (affiché une seule fois, notez-le) : {mot_de_passe}"))
         else:
             self.stdout.write("Mot de passe inchangé (--nouveau-mot-de-passe pour en tirer un autre).")
-        self.stdout.write(f"Étudiante de démonstration : Mariama DIALLO, préinscrite en {m1.nom} — onglet Master de "
+        self.stdout.write(f"Étudiante de démonstration : Mariama DIALLO, préinscrite en {m1.nom} — démarche Master de "
                           f"/etudiant/ avec l'adresse {etudiant.email}")
         if not (session.inscriptions_ouvertes or session.reinscriptions_ouvertes):
             self.stdout.write(self.style.WARNING("Les inscriptions en ligne sont fermées : ouvrez-les dans « Demandes "
-                                                 "en ligne » pour essayer l'onglet Master."))
+                                                 "en ligne » pour essayer la démarche Master."))
 
     def supprimer(self):
         with transaction.atomic():
