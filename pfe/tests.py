@@ -1596,6 +1596,62 @@ class GpedTests(TestCase):
         a.licence = l5
         self.assertIn('aux <b>Semestres S9 et S10</b> (LICENCE 5)', contenu_inscription(a)[1][0])
 
+    def test_entete_service_des_etudes_avancees_en_master(self):
+        from unittest import mock
+        from django.utils import timezone
+        from reportlab.pdfgen.canvas import Canvas
+        from . import attestation_soutenance
+        from .attestations import pdf_attestation
+        from .models import Attestation
+        from .signataires import SERVICE_ETUDES_AVANCEES, signataire_attestation, signataire_inscription
+        master = Service.objects.create(nom='MASTER EN ENERGIE', code='M03', programme=True, cycle='Master')
+        m1 = Licence.objects.create(nom='M1')
+        e = Etudiant.objects.get(matricule='M0')
+        p = Personnel.objects.get(utilisateur__username='info')
+        Personnel.objects.filter(pk=p.pk).update(chef=True, civilite='Dr', prenom='Awa', nom='Bah', fonc='Directeur')
+        p.service.add(master)
+
+        def attestation(type_, filiere=master, licence=m1, cycle=None):
+            return Attestation(type=type_, etudiant=e, licence=licence, filiere=filiere, session=self.session,
+                               cycle=cycle, num_ref='ESSAI', date_delivrance=timezone.localdate())
+
+        def textes_dessines(produire):
+            vus = []
+            original = Canvas.drawCentredString
+
+            def espion(c, x, y, texte, *a, **k):
+                vus.append(str(texte))
+                return original(c, x, y, texte, *a, **k)
+            with mock.patch.object(Canvas, 'drawCentredString', espion):
+                produire()
+            return vus
+        # Toutes les attestations imprimées : le service, plus le programme
+        for type_ in (Attestation.ORIENTATION, Attestation.INSCRIPTION, Attestation.NIVEAU, Attestation.FIN_ETUDES):
+            a = attestation(type_, cycle='Master' if type_ == Attestation.FIN_ETUDES else None)
+            self.assertEqual(signataire_attestation(a).service, SERVICE_ETUDES_AVANCEES)
+            textes = textes_dessines(lambda: pdf_attestation(a))
+            self.assertIn(SERVICE_ETUDES_AVANCEES, textes)
+            self.assertNotIn('MASTER EN ENERGIE', textes)
+        self.assertEqual(signataire_attestation(attestation(Attestation.INSCRIPTION)).nom, 'Dr Awa BAH')
+        # Soutenance : le bandeau de gauche
+        ecrits = []
+        with mock.patch.object(attestation_soutenance, '_ecrit_espace', lambda c, x, y, texte, *a, **k: ecrits.append(texte)):
+            attestation_soutenance._bandeau(Canvas(io.BytesIO()), attestation(Attestation.SOUTENANCE, cycle='Master'), None,
+                                            'Helvetica', 'Helvetica-Bold')
+        self.assertIn(SERVICE_ETUDES_AVANCEES, ecrits)
+        # Master sans chef enregistré : la scolarité signe, l'en-tête reste celui du Master
+        self.assertEqual(signataire_attestation(attestation(Attestation.INSCRIPTION, filiere=None)).service,
+                         SERVICE_ETUDES_AVANCEES)
+        # Autres étudiants : la scolarité ; relevés et fiche d'inscription du Master : inchangés
+        autre = attestation(Attestation.INSCRIPTION, filiere=self.info, licence=self.licence)
+        self.assertEqual(signataire_attestation(autre).service, 'SERVICE SCOLARITÉ')
+        ecrits.clear()
+        with mock.patch.object(attestation_soutenance, '_ecrit_espace', lambda c, x, y, texte, *a, **k: ecrits.append(texte)):
+            attestation_soutenance._bandeau(Canvas(io.BytesIO()), autre, None, 'Helvetica', 'Helvetica-Bold')
+        self.assertIn('SERVICE DE LA SCOLARITÉ', ecrits)
+        insc = Inscription.objects.create(etudiant=e, session=self.s2425, licence=m1, filiere=master, cycle='Master')
+        self.assertEqual(signataire_inscription(insc).service, 'MASTER EN ENERGIE')
+
     def test_reference_sea_pour_le_master(self):
         from django.utils import timezone
         from .models import Attestation, Matiere, Note, ReleveNote, Semestre

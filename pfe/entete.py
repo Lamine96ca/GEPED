@@ -1,8 +1,8 @@
 """
 En-tête officiel commun aux documents PDF (relevés de notes, fiche d'inscription, attestations) :
 bandeau de l'établissement (emblème du ministère, « IST Mamou », logo), service du signataire
-(« SERVICE SCOLARITÉ », ou le programme pour un Master), coordonnées (boîte postale, e-mail et
-téléphone du chef qui signe : voir pfe/signataires.py) et trait bleu.
+(« SERVICE SCOLARITÉ », ou celui du Master), coordonnées (boîte postale, e-mail et téléphone du
+chef qui signe : voir pfe/signataires.py) et trait bleu.
 """
 import io
 from functools import lru_cache

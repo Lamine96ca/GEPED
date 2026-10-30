@@ -9,12 +9,15 @@ de l'en-tête (service, e-mail, téléphone).
 Sous la signature : la fonction du chef (fiche Personnel), puis civilité, prénom et NOM.
 L'image « signature et cachet » (signature_scolarite.png) est celle de la scolarité : un document
 signé par un chef de programme s'imprime avec son nom et un espace pour signer à la main.
+Sous le bandeau de l'en-tête : le service ; les attestations du Master portent toutes le Service des
+Études Avancées (relevés et fiche d'inscription du Master : le programme).
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from django.conf import settings
 
 MASTER = 'Master'
+SERVICE_ETUDES_AVANCEES = 'SERVICE DES ÉTUDES AVANCÉES'
 
 
 @dataclass(frozen=True)
@@ -86,7 +89,10 @@ def signataire_releve(releve, contenu):
 
 
 def signataire_attestation(attestation):
-    return signataire(attestation.filiere, attestation.cycle, attestation.licence)
+    s = signataire(attestation.filiere, attestation.cycle, attestation.licence)
+    if est_master(attestation.cycle, attestation.licence, attestation.filiere):
+        return replace(s, service=SERVICE_ETUDES_AVANCEES)
+    return s
 
 
 def signataire_inscription(inscription):

@@ -100,10 +100,10 @@ def _bandeau(c, attestation, url_verification, normale, grasse):
     c.setLineWidth(0.8)
     c.line(cx - 28, y + 2, cx + 28, y + 2)
     c.setFillColorRGB(0.8, 0.85, 0.9)
-    # Service et coordonnées du chef qui signe (scolarité, ou programme pour un Master)
+    # Service et coordonnées du chef qui signe (scolarité, ou Service des Études Avancées pour un Master)
     from .signataires import signataire_attestation
     sig = signataire_attestation(attestation)
-    service, taille = ('SERVICE DE LA SCOLARITÉ' if sig.scolarite else sig.service), 7.2
+    service, taille = sig.service.replace('SERVICE SCOLARITÉ', 'SERVICE DE LA SCOLARITÉ'), 7.2
     while stringWidth(service, normale, taille) + 0.9 * len(service) > BANDE - 14 and taille > 5:
         taille -= 0.2
     _ecrit_espace(c, cx, y - 14, service, normale, taille, 0.9, centre=True)
