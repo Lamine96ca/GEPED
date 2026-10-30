@@ -1899,7 +1899,7 @@ class GpedTests(TestCase):
         # Chaque démarche expliquée, sans formulaire ; un bouton mène à sa page d'identification
         self.assertNotContains(r, '<form')
         for attendu in (reverse('espace_inscription'), reverse('espace_master'), 'numéro de PV du bac', 'matricule',
-                        'Demande manuscrite', 'Relevé de notes de la dernière année', 'sea@ist-mamou.org',
+                        'Demande manuscrite', 'Relevé de notes de la dernière année',
                         '4 semestres', 'Fermée pour le moment'):
             self.assertContains(r, attendu)
         self.assertNotContains(r, reverse('espace_reinscription'))                  # réinscriptions fermées
@@ -1908,8 +1908,7 @@ class GpedTests(TestCase):
             self.assertNotContains(r, absent)
         self.assertNotIn('recu', ' '.join(code for code, _ in PieceDossier.TYPES))
         # Contacts : le chef de la scolarité et celui du SEA ; le compte de démonstration n'apparaît jamais
-        self.assertContains(r, 'Dr (MC) Yacouba CAMARA')
-        self.assertContains(r, 'href="tel:+224622288295"')
+        self.assertContains(r, 'Adressez-vous au Service de la Scolarité · Master')
         Personnel.objects.filter(utilisateur__username='scol').update(
             chef=True, civilite='M.', prenom='Awa', nom='Conde', fonc='Le Chef Service de la Scolarité',
             email='chef.scol@ist.gn', telephone='628620724')
@@ -1918,18 +1917,19 @@ class GpedTests(TestCase):
                                         nom='MASTER', telephone='600000099', email='demo@t.local', fonc='Démo', chef=True)
         demo.service.add(master)
         r = self.client.get(accueil)
-        for attendu in ('M. Awa CONDE', 'mailto:chef.scol@ist.gn', 'href="tel:+224628620724"', '+224 628 62 07 24',
-                        'Dr (MC) Yacouba CAMARA'):
+        for attendu in ('M. Awa CONDE', 'mailto:chef.scol@ist.gn', 'href="tel:+224628620724"', '+224 628 62 07 24'):
             self.assertContains(r, attendu)
         self.assertNotContains(r, 'demo@t.local')
         chef = Personnel.objects.get(utilisateur__username='info')
         Personnel.objects.filter(pk=chef.pk).update(chef=True, civilite='Dr', prenom='Ali', nom='Sow',
-                                                    fonc='Le Directeur du SEA', email='dir.sea@ist.gn')
+                                                    fonc='Le Directeur du SEA', email='dir.sea@ist.gn',
+                                                    telephone='622288295 / 621185196')
         chef.service.add(master)
         r = self.client.get(accueil)
-        self.assertContains(r, 'Dr Ali SOW')
-        self.assertContains(r, 'mailto:dir.sea@ist.gn')
-        self.assertNotContains(r, 'Yacouba')
+        for attendu in ('Dr Ali SOW', 'Le Directeur du SEA · Master', 'mailto:dir.sea@ist.gn', 'href="tel:+224622288295"',
+                        'href="tel:+224621185196"'):
+            self.assertContains(r, attendu)
+        self.assertNotContains(r, 'Adressez-vous au Service de la Scolarité · Master')
         # Pages d'identification ; anciens liens redirigés
         self.assertContains(self.client.get(reverse('espace_inscription')), 'i-pvbac')
         self.assertContains(self.client.get(reverse('espace_reinscription')), 'sont fermées')

@@ -58,17 +58,16 @@ def chef_programme(filiere):
 
 
 def contact_etudes_avancees():
-    """Contact public du SEA : le chef d'un programme de Master (pas le compte de démonstration), sinon l'appel à candidature."""
+    """Contact public du SEA : la fiche Personnel du chef d'un programme de Master (pas le compte de démonstration)."""
     from .management.commands.gped_demo_master import IDENTIFIANT
     from .models import Personnel
-    defaut = Signataire('Dr (MC) Yacouba CAMARA', 'Le Directeur du Service des Études Avancées',
-                        SERVICE_ETUDES_AVANCEES, 'sea@ist-mamou.org', '622 28 82 95 / 621 18 51 96', scolarite=False)
     chef = (Personnel.objects.filter(chef=True, service__programme=True, service__cycle=MASTER)
             .exclude(utilisateur__username=IDENTIFIANT).order_by('nom', 'prenom').first())
     if chef is None:
-        return defaut
-    return Signataire(chef.nom_signature, chef.fonc or defaut.fonction, SERVICE_ETUDES_AVANCEES,
-                      chef.email or defaut.email, chef.telephone or defaut.telephone, scolarite=False)
+        return Signataire('Service des Études Avancées', 'Adressez-vous au Service de la Scolarité',
+                          SERVICE_ETUDES_AVANCEES, '', '', scolarite=False)
+    return Signataire(chef.nom_signature, chef.fonc or 'Service des Études Avancées', SERVICE_ETUDES_AVANCEES,
+                      chef.email, chef.telephone, scolarite=False)
 
 
 def signataire(filiere=None, cycle=None, licence=None, master=None):
