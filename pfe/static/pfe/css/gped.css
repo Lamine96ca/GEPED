@@ -849,14 +849,14 @@ code { color: var(--encre); background: var(--survol); padding: .05rem .3rem; bo
 .page-vitrine .espace-contenu { max-width: 1080px; }
 .page-vitrine .verif-marque { max-width: 1048px; }
 .page-vitrine .verif-conseil { margin: 0; }
-.vitrine-hero { display: grid; grid-template-columns: 1.05fr 1fr; align-items: stretch; background: var(--surface); border-radius: 18px;
+.vitrine-hero { display: grid; grid-template-columns: 1fr 1.3fr; align-items: center; background: var(--surface); border-radius: 18px;
   overflow: hidden; box-shadow: 0 18px 44px -20px rgba(47, 63, 78, .35); }
 .vitrine-hero .texte { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; padding: 2.25rem 2.25rem 2.25rem 2.5rem; }
 .vitrine-hero .surtitre { margin: 0 0 .6rem; font-size: .85rem; font-weight: 700; color: var(--or-texte); }
 .vitrine-hero h1 { margin: 0 0 .8rem; font-size: clamp(1.45rem, 2.7vw, 2.05rem); line-height: 1.2; font-weight: 700; color: var(--encre); }
 .vitrine-hero p:not(.surtitre) { margin: 0 0 1.3rem; font-size: 1rem; line-height: 1.55; }
 .vitrine-hero .btn { padding: .65rem 1.15rem; font-size: 1rem; }
-.vitrine-hero img { width: 100%; height: 100%; min-height: 300px; object-fit: cover; display: block; }
+.vitrine-hero img { width: 100%; height: auto; display: block; }          /* photo entière : l'enseigne touche ses bords */
 .vitrine-titre { margin: 2.25rem 0 1rem; font-size: 1.25rem; font-weight: 700; color: var(--encre); scroll-margin-top: 1rem; }
 
 .demarches { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.1rem; }
@@ -908,10 +908,11 @@ code { color: var(--encre); background: var(--survol); padding: .05rem .3rem; bo
 .identification-tete { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 1.25rem; align-items: center; margin-bottom: 1.25rem; }
 .identification-tete img { width: 100%; height: auto; border-radius: 12px; display: block; }
 
-@media (max-width: 899.98px) {
+@media (max-width: 999.98px) {
   .vitrine-hero { grid-template-columns: 1fr; }
   .vitrine-hero .texte { padding: 1.6rem 1.4rem; }
-  .vitrine-hero img { min-height: 0; height: 210px; object-position: center 45%; }
+}
+@media (max-width: 899.98px) {
   .demarches { grid-template-columns: 1fr; }
   .demarche { flex-direction: row; }
   .demarche img { width: 38%; flex: none; aspect-ratio: auto; height: auto; object-fit: cover; }
