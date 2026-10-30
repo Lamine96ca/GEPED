@@ -1912,7 +1912,7 @@ class GpedTests(TestCase):
         self.assertContains(self.client.get(reverse('espace_reinscription')), 'sont fermées')
         self.assertRedirects(self.client.get(accueil + '?onglet=reinscription'), reverse('espace_reinscription'))
         for page in ('inscription', 'reinscription', 'master'):
-            self.assertTrue((settings.BASE_DIR / f'pfe/static/pfe/img/espace/{page}.svg').exists())
+            self.assertTrue((settings.BASE_DIR / f'pfe/static/pfe/img/espace/{page}.jpg').exists())
 
     def test_espace_master_lien_par_email(self):
         import re

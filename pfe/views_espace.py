@@ -157,7 +157,7 @@ def _demarche(request, mode):
                        MASTER: (IdentificationMasterForm, 'm')}[mode]
     form = classe(request.POST if request.method == 'POST' else None, prefix=prefixe)
     erreur = ''
-    contexte = {'session': session, 'mode': mode, 'form': form, 'ouvert': ouvert, 'image': f'pfe/img/espace/{mode}.svg'}
+    contexte = {'session': session, 'mode': mode, 'form': form, 'ouvert': ouvert, 'image': f'pfe/img/espace/{mode}.jpg'}
     if mode == MASTER and request.method == 'POST':
         attente = espace.bloque(request, request.POST.get('m-email', ''))
         if not ouvert:

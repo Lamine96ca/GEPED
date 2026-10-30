@@ -5,7 +5,7 @@
 <section class="verif-carte">
   <a class="retour-vitrine" href="{% url 'espace_accueil' %}"><i class="bi bi-arrow-left"></i> Toutes les démarches</a>
   <div class="identification-tete">
-    <img src="{% static image %}?v={{ version_statique }}" width="360" height="190" alt="">
+    <img src="{% static image %}?v={{ version_statique }}" width="475" height="274" alt="">
     <div>
       <h1 class="h4 mb-1" style="color:var(--encre)">{% if mode == 'master' %}Master{% elif mode == 'reinscription' %}Réinscription{% else %}Inscription{% endif %}</h1>
       {% if session %}<p class="text-secondary mb-2">Année universitaire <strong>{{ session }}</strong></p>{% endif %}
