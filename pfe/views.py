@@ -1044,7 +1044,8 @@ def attestations(request, type_url='inscription'):
         'complement': COMPLEMENT_ATTESTATION[type_url],
         'form': form, 'instance': instance, 'imprimer': imprimer,
         'q_etudiant': q_etudiant, 'candidats': candidats, 'q': q, 'page': page,
-        'prochaine_ref': Attestation.prochaine_reference(code),
+        'prochaine_ref': Attestation.prochaine_reference(code, master=masters is not None),
+        'ref_aussi_master': masters is None and code != Attestation.ORIENTATION,
         'actif': 'attestations',
     })
 

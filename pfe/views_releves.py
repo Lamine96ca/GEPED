@@ -112,8 +112,9 @@ def releves(request):
             pk=request.GET['imprimer']).first()
     return render(request, 'pfe/releves.html', {
         'form': form, 'q': q, 'r': r, 'etudiant': etudiant, 'candidats': candidats, 'inscriptions': inscriptions,
-        'programmes': programmes, 'page': page, 'prochaine_ref': ReleveNote.prochaine_reference(),
-        'imprimer': imprimer, 'actif': 'releves',
+        'programmes': programmes, 'page': page,
+        'prochaine_ref': ReleveNote.prochaine_reference(master=masters is not None),
+        'ref_aussi_master': masters is None, 'imprimer': imprimer, 'actif': 'releves',
         'semestres_par_licence': {str(s.pk): str(s.licence_id) for s in Semestre.objects.all()},
     })
 

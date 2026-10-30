@@ -249,14 +249,16 @@ class Attestation(models.Model):
     code_verification = models.CharField(max_length=32, unique=True, editable=False,
                                          default=nouveau_code_verification, verbose_name="Code de vérification")
 
-    # Suffixe du n° selon le type (l'orientation est en DG, les autres en SC). Le NUMÉRO, lui,
-    # est continu pour tous les types : 0139/ISTM/SC/26 puis 0140/ISTM/DG/26, etc.
+    # Suffixe du n° selon le type (l'orientation est en DG, les autres en SC, ou en SEA pour le Master).
+    # Le NUMÉRO, lui, est continu pour tous : 0139/ISTM/SC/26, 0140/ISTM/DG/26, 0141/ISTM/SEA/26, etc.
     SUFFIXES_REF = {ORIENTATION: '/ISTM/DG/'}
     SUFFIXE_REF = '/ISTM/SC/'
+    SUFFIXE_MASTER = '/ISTM/SEA/'
 
     @classmethod
-    def suffixe_pour(cls, type_attestation, annee):
-        return f"{cls.SUFFIXES_REF.get(type_attestation, cls.SUFFIXE_REF)}{str(annee)[-2:]}"
+    def suffixe_pour(cls, type_attestation, annee, master=False):
+        defaut = cls.SUFFIXE_MASTER if master else cls.SUFFIXE_REF
+        return f"{cls.SUFFIXES_REF.get(type_attestation, defaut)}{str(annee)[-2:]}"
 
     @classmethod
     def _dernier_numero(cls, annee):
@@ -269,25 +271,27 @@ class Attestation(models.Model):
         return max(numeros + [compteur])
 
     @classmethod
-    def prochaine_reference(cls, type_attestation=None, annee=None):
+    def prochaine_reference(cls, type_attestation=None, annee=None, master=False):
         """
         N° suivant, CONTINU pour tous les types d'attestation (orientation, inscription,
-        niveau, fin d'études) et repris à 0001 chaque année : 0139/ISTM/SC/26.
+        niveau, fin d'études) et repris à 0001 chaque année : 0139/ISTM/SC/26 (SEA en Master).
         Un compteur par année garde le dernier numéro attribué : même après la suppression
         d'une attestation, son numéro n'est jamais réattribué.
         """
         annee = annee or timezone.localdate().year
-        return f"{cls._dernier_numero(annee) + 1:04d}{cls.suffixe_pour(type_attestation, annee)}"
+        return f"{cls._dernier_numero(annee) + 1:04d}{cls.suffixe_pour(type_attestation, annee, master)}"
 
     def save(self, *args, **kwargs):
         if not self.num_ref:
             from django.db import transaction
+            from .signataires import est_master
             annee = timezone.localdate().year
+            master = est_master(self.cycle, self.licence, self.filiere)
             with transaction.atomic():
                 compteur, _ = CompteurAttestation.objects.select_for_update().get_or_create(annee=annee)
                 compteur.dernier = Attestation._dernier_numero(annee) + 1
                 compteur.save(update_fields=['dernier'])
-                self.num_ref = f"{compteur.dernier:04d}{Attestation.suffixe_pour(self.type, annee)}"
+                self.num_ref = f"{compteur.dernier:04d}{Attestation.suffixe_pour(self.type, annee, master)}"
                 super().save(*args, **kwargs)
             return
         super().save(*args, **kwargs)
@@ -696,7 +700,7 @@ class ReleveNote(models.Model):
       - semestre : matières d'un semestre, dans le programme, la session et la licence d'une inscription ;
       - annuel   : toutes les matières de la licence de l'inscription ;
       - extrait  : tout le parcours de l'étudiant dans UN programme (le Tronc commun a son propre extrait).
-    N° 0001/ISTM/SC/26, continu sur l'année pour tous les relevés, repris à 0001 chaque année.
+    N° 0001/ISTM/SC/26 (SEA en Master), continu sur l'année pour tous les relevés, repris à 0001 chaque année.
     """
     SEMESTRE, ANNUEL, EXTRAIT = 'S', 'A', 'E'
     TYPES = [(SEMESTRE, 'Relevé semestriel'), (ANNUEL, 'Relevé annuel'), (EXTRAIT, 'Extrait du livret')]
@@ -719,21 +723,27 @@ class ReleveNote(models.Model):
         return self.num_ref
 
     @classmethod
-    def prochaine_reference(cls, annee=None):
+    def suffixe_pour(cls, annee, master=False):
+        return f"{Attestation.SUFFIXE_MASTER if master else Attestation.SUFFIXE_REF}{str(annee)[-2:]}"
+
+    @classmethod
+    def prochaine_reference(cls, annee=None, master=False):
         annee = annee or timezone.localdate().year
         dernier = CompteurReleve.objects.filter(annee=annee).values_list('dernier', flat=True).first() or 0
-        return f"{dernier + 1:04d}/ISTM/SC/{str(annee)[-2:]}"
+        return f"{dernier + 1:04d}{cls.suffixe_pour(annee, master)}"
 
     def save(self, *args, **kwargs):
         if self.num_ref:
             return super().save(*args, **kwargs)
         from django.db import transaction
+        from .signataires import releve_est_master
         annee = timezone.localdate().year
+        master = releve_est_master(self)
         with transaction.atomic():
             compteur, _ = CompteurReleve.objects.select_for_update().get_or_create(annee=annee)
             compteur.dernier += 1
             compteur.save(update_fields=['dernier'])
-            self.num_ref = f"{compteur.dernier:04d}/ISTM/SC/{str(annee)[-2:]}"
+            self.num_ref = f"{compteur.dernier:04d}{ReleveNote.suffixe_pour(annee, master)}"
             super().save(*args, **kwargs)
 
 #ORIENTATION

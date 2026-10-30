@@ -2,7 +2,7 @@
 {% load humanize %}
 {% block titre %}Attestations{% endblock %}
 {% block titre_page %}Attestations{% endblock %}
-{% block sous_titre %}<div class="sous-titre">Même cadre et numérotation continue pour tous les types · prochain n° <strong>{{ prochaine_ref }}</strong></div>{% endblock %}
+{% block sous_titre %}<div class="sous-titre">Même cadre et numérotation continue pour tous les types · prochain n° <strong>{{ prochaine_ref }}</strong>{% if ref_aussi_master %} (SEA pour le Master){% endif %}</div>{% endblock %}
 {% block contenu %}
 
 <!-- Types d'attestation -->
@@ -33,7 +33,7 @@
           <span class="icone-carte"><i class="bi {% if instance %}bi-pencil-square{% else %}bi-file-earmark-plus{% endif %}"></i></span>
           <div>
             <h3>{% if instance %}Modifier l'attestation n° {{ instance.num_ref }}{% else %}Nouvelle attestation {{ complement }}{% endif %}</h3>
-            <p>{% if instance %}Le n° de référence et la date ne changent pas{% else %}N° attribué à l'enregistrement : <strong>{{ prochaine_ref }}</strong>{% endif %}</p>
+            <p>{% if instance %}Le n° de référence et la date ne changent pas{% else %}N° attribué à l'enregistrement : <strong>{{ prochaine_ref }}</strong>{% if ref_aussi_master %} (SEA pour le Master){% endif %}{% endif %}</p>
           </div>
         </div>
         <form method="post" novalidate>

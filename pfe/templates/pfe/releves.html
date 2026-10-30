@@ -2,7 +2,7 @@
 {% load humanize %}
 {% block titre %}Relevés de notes{% endblock %}
 {% block titre_page %}Relevés de notes{% endblock %}
-{% block sous_titre %}<div class="sous-titre">Relevé semestriel, relevé annuel et extrait du livret · numérotation propre aux relevés, reprise chaque année · prochain n° <strong>{{ prochaine_ref }}</strong></div>{% endblock %}
+{% block sous_titre %}<div class="sous-titre">Relevé semestriel, relevé annuel et extrait du livret · numérotation propre aux relevés, reprise chaque année · prochain n° <strong>{{ prochaine_ref }}</strong>{% if ref_aussi_master %} (SEA pour le Master){% endif %}</div>{% endblock %}
 {% block contenu %}
 <div class="row g-3">
   <div class="col-xl-6 d-flex flex-column gap-3">
@@ -11,7 +11,7 @@
       <div class="card-body">
         <div class="entete-carte">
           <span class="icone-carte"><i class="bi bi-file-earmark-plus"></i></span>
-          <div><h3>Nouveau relevé</h3><p>N° attribué à l'enregistrement : <strong>{{ prochaine_ref }}</strong></p></div>
+          <div><h3>Nouveau relevé</h3><p>N° attribué à l'enregistrement : <strong>{{ prochaine_ref }}</strong>{% if ref_aussi_master %} (SEA pour le Master){% endif %}</p></div>
         </div>
         <form method="post" novalidate id="form-nouveau-releve">
           {% csrf_token %}

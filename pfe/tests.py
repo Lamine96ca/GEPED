@@ -1596,6 +1596,57 @@ class GpedTests(TestCase):
         a.licence = l5
         self.assertIn('aux <b>Semestres S9 et S10</b> (LICENCE 5)', contenu_inscription(a)[1][0])
 
+    def test_reference_sea_pour_le_master(self):
+        from django.utils import timezone
+        from .models import Attestation, Matiere, Note, ReleveNote, Semestre
+        annee = str(timezone.localdate().year)[-2:]
+        master = Service.objects.create(nom='MASTER EN ENERGIE', code='M03', programme=True, cycle='Master')
+        m1 = Licence.objects.create(nom='M1')
+        s1 = Semestre.objects.create(nom='SEMESTRE 1', abrege='S1', licence=m1)
+        e = Etudiant.objects.get(matricule='M0')
+        insc = Inscription.objects.create(etudiant=e, session=self.s2425, licence=m1, filiere=master, cycle='Master')
+        self.connecter('scol')
+
+        # Numérotation continue : seul le suffixe change (numéros attribués par les écrans)
+        url = reverse('attestations_type', args=['inscription'])
+        self.assertContains(self.client.get(url), 'SEA pour le Master')
+        self.client.post(url, {'matricule': 'M0', 'licence': m1.pk})
+        self.assertEqual(Attestation.objects.get().num_ref, f'0001/ISTM/SEA/{annee}')
+        self.client.post(reverse('attestations_type', args=['niveau']), {'matricule': 'M0', 'licence': m1.pk})
+        self.assertEqual(Attestation.objects.get(type=Attestation.NIVEAU).num_ref, f'0002/ISTM/SEA/{annee}')
+        self.client.post(url, {'matricule': 'M1', 'licence': self.licence.pk})
+        self.assertEqual(Attestation.objects.get(etudiant__matricule='M1').num_ref, f'0003/ISTM/SC/{annee}')
+        self.assertEqual(Attestation.prochaine_reference(Attestation.INSCRIPTION, master=True),
+                         f'0004/ISTM/SEA/{annee}')
+        # L'orientation reste en DG, comme pour tous
+        self.assertEqual(Attestation.prochaine_reference(Attestation.ORIENTATION, master=True),
+                         f'0004/ISTM/DG/{annee}')
+        self.assertNotContains(self.client.get(reverse('attestations_type', args=['orientation'])),
+                               'SEA pour le Master')
+
+        # Relevés : semestre et extrait du Master en SEA, même compteur que les autres relevés
+        self.assertContains(self.client.get(reverse('releves')), 'SEA pour le Master')
+        matiere = Matiere.objects.create(nom='Thermique', filiere=master, semestre=s1, licence=m1, session=self.s2425,
+                                         credit=6)
+        Note.objects.create(etudiant=e, matiere=matiere, moyenne=7, moyenne_deposee=True)
+        self.client.post(reverse('releve_creer'), {'type': 'S', 'inscription': insc.pk, 'semestre': s1.pk})
+        self.assertEqual(ReleveNote.objects.get().num_ref, f'0001/ISTM/SEA/{annee}')
+        extrait = ReleveNote.objects.create(type='E', etudiant=e, filiere=master)
+        self.assertEqual(extrait.num_ref, f'0002/ISTM/SEA/{annee}')
+        autre = ReleveNote.objects.create(type='E', etudiant=e, filiere=self.info)
+        self.assertEqual(autre.num_ref, f'0003/ISTM/SC/{annee}')
+
+        # Directeur de Master : tout est annoncé en SEA
+        u = User.objects.create_user('directeur', password='x')
+        p = Personnel.objects.create(utilisateur=u, prenom='Awa', nom='Bah', telephone='901', email='dir@t.local',
+                                     fonc='Directeur du Master', chef=True)
+        p.service.add(master)
+        self.connecter('directeur')
+        self.assertContains(self.client.get(url), f'0004/ISTM/SEA/{annee}')
+        r = self.client.get(reverse('releves'))
+        self.assertContains(r, f'0004/ISTM/SEA/{annee}')
+        self.assertNotContains(r, 'SEA pour le Master')
+
     def test_attestations_programme_et_non_departement(self):
         from .attestations import contenu_fin_etudes, contenu_inscription, contenu_niveau, infos_publiques
         from .models import Attestation

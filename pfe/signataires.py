@@ -71,15 +71,18 @@ def signataire(filiere=None, cycle=None, licence=None, master=None):
     return defaut
 
 
-def signataire_releve(releve, contenu):
+def releve_est_master(releve, contenu=None):
     """Relevé ou extrait : Master si l'une des inscriptions imprimées (à défaut, du programme) est en Master."""
     from .models import Inscription
-    inscriptions = [b['inscription'] for b in contenu.get('blocs') or []] or list(
+    inscriptions = [b['inscription'] for b in (contenu or {}).get('blocs') or []] or list(
         Inscription.objects.filter(etudiant_id=releve.etudiant_id, filiere_id=releve.filiere_id)
         .select_related('licence'))
-    master = any(est_master(i.cycle, i.licence, releve.filiere) for i in inscriptions) \
+    return any(est_master(i.cycle, i.licence, releve.filiere) for i in inscriptions) \
         or est_master(None, releve.licence, releve.filiere)
-    return signataire(releve.filiere, master=master)
+
+
+def signataire_releve(releve, contenu):
+    return signataire(releve.filiere, master=releve_est_master(releve, contenu))
 
 
 def signataire_attestation(attestation):
