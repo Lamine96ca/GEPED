@@ -1573,13 +1573,28 @@ class GpedTests(TestCase):
         self.assertIn('a été inscrit·e en <b>première année du Master (M1)</b> du Programme', inscription)
         self.assertIn('pratiques de la <b>première année du Master (M1)</b> au compte', niveau)
         self.assertEqual(qr, 'première année du Master (M1)')
+        # Master : l'année seule, même quand le niveau a ses semestres
         Semestre.objects.create(nom='SEMESTRE 3', abrege='S3', licence=m2)
         Semestre.objects.create(nom='SEMESTRE 4', abrege='S4', licence=m2)
-        inscription, niveau, _ = textes(m2)
-        self.assertIn('aux <b>Semestres S3 et S4</b> de la <b>deuxième année du Master (M2)</b>', inscription)
-        self.assertIn('des Semestres <b>S3 et S4</b> de la <b>deuxième année du Master (M2)</b>', niveau)
-        # Licence : inchangé
-        self.assertIn('en <b>Licence 1</b>', textes(self.licence)[0])
+        inscription, niveau, qr = textes(m2)
+        self.assertIn('a été inscrit·e en <b>deuxième année du Master (M2)</b> du Programme', inscription)
+        self.assertIn('pratiques de la <b>deuxième année du Master (M2)</b> au compte', niveau)
+        self.assertEqual(qr, 'deuxième année du Master (M2)')
+        for texte in (inscription, niveau, qr):
+            self.assertNotIn('Semestre', texte)
+        # Les autres étudiants : les semestres restent
+        Semestre.objects.create(nom='SEMESTRE 1', abrege='S1', licence=self.licence)
+        Semestre.objects.create(nom='SEMESTRE 2', abrege='S2', licence=self.licence)
+        a = Attestation(etudiant=e, licence=self.licence, filiere=self.info, session=self.session, num_ref='ESSAI')
+        self.assertIn('aux <b>Semestres S1 et S2</b> (Licence 1)', contenu_inscription(a)[1][0])
+        self.assertIn('des Semestres <b>S1 et S2</b> (Licence 1)', contenu_niveau(a)[1][0])
+        self.assertEqual(dict(infos_publiques(a))['Niveau'], 'Semestres S1 et S2 (Licence 1)')
+        # Semestres dans l'ordre : S9 avant S10
+        l5 = Licence.objects.create(nom='LICENCE 5')
+        Semestre.objects.create(nom='SEMESTRE 9', abrege='S9', licence=l5)
+        Semestre.objects.create(nom='SEMESTRE 10', abrege='S10', licence=l5)
+        a.licence = l5
+        self.assertIn('aux <b>Semestres S9 et S10</b> (LICENCE 5)', contenu_inscription(a)[1][0])
 
     def test_attestations_programme_et_non_departement(self):
         from .attestations import contenu_fin_etudes, contenu_inscription, contenu_niveau, infos_publiques

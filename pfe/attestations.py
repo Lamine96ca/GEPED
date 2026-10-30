@@ -282,8 +282,14 @@ def niveau_en_clair(licence):
     return f"{ANNEES_MASTER[annee]} année du Master (M{annee})"
 
 
+def _est_master(attestation):
+    """Attestation d'un étudiant en Master (cycle, niveau ou programme)."""
+    from .signataires import est_master
+    return est_master(attestation.cycle, attestation.licence, attestation.filiere)
+
+
 def _semestres(licence):
-    abreges = [s.abrege or s.nom for s in Semestre.objects.filter(licence=licence).order_by('nom')]
+    abreges = [s.abrege or s.nom for s in Semestre.objects.filter(licence=licence).order_by('id')]
     if not abreges:
         return ''
     if len(abreges) == 1:
@@ -315,22 +321,25 @@ def _echap(v):
     return str(v).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
 
 
+def _inscrit_en(attestation):
+    """Master : l'année seule, sans semestres. Les autres : les semestres et le niveau."""
+    lic = attestation.licence
+    if _est_master(attestation):
+        return f"en <b>{_echap(niveau_en_clair(lic))}</b>"
+    semestres = _semestres(lic)
+    return (f"aux <b>{semestres}</b> ({_echap(niveau_reel(lic))})" if semestres
+            else f"en <b>{_echap(niveau_reel(lic))}</b>")
+
+
 def contenu_inscription(attestation):
     """Titre et paragraphes de l'attestation d'inscription / de réinscription."""
     e, lic = attestation.etudiant, attestation.licence
-    semestres = _semestres(lic)
-    if annee_master(lic):
-        niveau = (f"aux <b>{semestres}</b> de la <b>{_echap(niveau_en_clair(lic))}</b>" if semestres
-                  else f"en <b>{_echap(niveau_en_clair(lic))}</b>")
-    else:
-        niveau = (f"aux <b>{semestres}</b> ({_echap(niveau_reel(lic))})" if semestres
-                  else f"en <b>{_echap(niveau_reel(lic))}</b>")
     programme = (f" du Programme <b>{_echap(_programme_reel(attestation.filiere))}</b>"
                  if attestation.filiere else '')
     texte = (
         f"Je soussigné {_echap(_signataire(attestation).nom)},  {_echap(_signataire(attestation).fonction)} de {_echap(_conf('etablissement'))}, "
         f"atteste que l’étudiant·e : <b>{_echap(e.prenom.upper())} {_echap(e.nom.upper())},</b> "
-        f"Matricule : <b>{_echap(e.matricule or '—')}</b>, a été inscrit·e {niveau}{programme} "
+        f"Matricule : <b>{_echap(e.matricule or '—')}</b>, a été inscrit·e {_inscrit_en(attestation)}{programme} "
         f"au compte de l’année universitaire <b>{_echap(attestation.session.annee)}</b>."
     )
     fin = "En foi de quoi, la présente attestation lui est délivrée pour servir et valoir ce que de droit."
@@ -362,23 +371,26 @@ def contenu_orientation(attestation):
 
 # ---------------------------------------------------------- attestation de niveau
 
-def contenu_niveau(attestation):
-    """Cours suivis (semestres de la licence) dans une année universitaire."""
-    e, lic = attestation.etudiant, attestation.licence
+def _cours_suivis(attestation):
+    """Master : l'année seule, sans semestres. Les autres : les semestres et le niveau."""
+    lic = attestation.licence
+    if _est_master(attestation):
+        return f"de la <b>{_echap(niveau_en_clair(lic))}</b>"
     semestres = _semestres(lic)
     en_gras = semestres.replace('Semestres ', 'Semestres <b>').replace('Semestre ', 'Semestre <b>')
-    if annee_master(lic):
-        suivi = (f"des {en_gras}</b> de la <b>{_echap(niveau_en_clair(lic))}</b>" if semestres
-                 else f"de la <b>{_echap(niveau_en_clair(lic))}</b>")
-    else:
-        suivi = (f"des {en_gras}</b> ({_echap(niveau_reel(lic))})" if semestres
-                 else f"de la <b>{_echap(niveau_reel(lic))}</b>")
+    return (f"des {en_gras}</b> ({_echap(niveau_reel(lic))})" if semestres
+            else f"de la <b>{_echap(niveau_reel(lic))}</b>")
+
+
+def contenu_niveau(attestation):
+    """Cours suivis (semestres de la licence, année du Master) dans une année universitaire."""
+    e = attestation.etudiant
     departement = (f", du Programme : <b>{_echap(_programme_reel(attestation.filiere))}</b> "
                    f"de {_echap(_conf('etablissement'))}" if attestation.filiere else '')
     texte = (
         f"Je soussigné, atteste que l’étudiant·e : <b>{_echap(e.prenom.upper())} {_echap(e.nom.upper())}</b>, "
         f"Matricule : <b>{_echap(e.matricule or '—')}</b>{departement}, a suivi les cours théoriques et "
-        f"pratiques {suivi} au compte de l'année universitaire <b>{_echap(attestation.session.annee)}</b>."
+        f"pratiques {_cours_suivis(attestation)} au compte de l'année universitaire <b>{_echap(attestation.session.annee)}</b>."
     )
     fin = "En foi de quoi, la présente attestation lui est délivrée pour servir et valoir ce que de droit."
     return "ATTESTATION DE NIVEAU", [texte, fin]
@@ -568,7 +580,7 @@ def infos_publiques(attestation):
             infos.append(('Mention', mention(s.note_finale) or '—'))
     else:
         if attestation.licence:
-            semestres = _semestres(attestation.licence)
+            semestres = '' if _est_master(attestation) else _semestres(attestation.licence)
             niveau = niveau_en_clair(attestation.licence)
             infos.append(('Niveau', f"{semestres} ({niveau})" if semestres else niveau))
         if attestation.filiere:
