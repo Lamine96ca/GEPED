@@ -8,6 +8,7 @@ Espace étudiant (public, sans compte) : /etudiant/
 La page d'accueil explique chaque démarche ; chacune a ensuite sa page d'identification.
 Rien n'est appliqué à la fiche avant la validation par la scolarité (voir pfe/espace_etudiant.py).
 """
+import re
 from functools import wraps
 
 from django.contrib import messages
@@ -25,6 +26,7 @@ from .forms import (DossierEtudiantForm, IdentificationInscriptionForm, Identifi
                     IdentificationReinscriptionForm)
 from .models import DemandeEtudiant, Etudiant, Inscription, PieceDossier
 from .photos import url_photo
+from .signataires import contact_etudes_avancees, signataire
 
 ENVOI_MAX = 40 * 1024 * 1024           # taille maximale d'un envoi du dossier (photos déjà réduites : ≈ 2 à 5 Mo)
 
@@ -116,6 +118,24 @@ def _ouvertures(session):
             MASTER: inscription or reinscription}
 
 
+def _numeros(telephone):
+    """« 628620724 / 621 18 51 96 » → [(numéro affiché, lien tel:)] ; indicatif de la Guinée ajouté s'il manque."""
+    numeros = []
+    for numero in re.split(r'[/;,]', telephone or ''):
+        chiffres = re.sub(r'\D', '', numero)
+        if len(chiffres) == 9:
+            chiffres = f'224{chiffres}'
+        if len(chiffres) == 12:
+            numeros.append((f'+{chiffres[:3]} {chiffres[3:6]} {chiffres[6:8]} {chiffres[8:10]} {chiffres[10:]}', f'+{chiffres}'))
+        elif chiffres:
+            numeros.append((numero.strip(), f'+{chiffres}'))
+    return numeros
+
+
+def _contact(chef, icone, sujet):
+    return {'chef': chef, 'icone': icone, 'sujet': sujet, 'numeros': _numeros(chef.telephone)}
+
+
 def _pieces_affichees(types, master=False):
     noms = dict(PieceDossier.TYPES)
     return [(noms[t], AIDES_MASTER.get(t, '') if master else '') for t in types]
@@ -139,6 +159,8 @@ def espace_accueil(request):
         'pieces_reinsc': _pieces_affichees(PIECES[DemandeEtudiant.REINSCRIPTION]),
         'pieces_master': _pieces_affichees(PIECES_MASTER[DemandeEtudiant.INSCRIPTION], master=True),
         'pieces_master_reinsc': _pieces_affichees(OBLIGATOIRES_MASTER[DemandeEtudiant.REINSCRIPTION], master=True),
+        'contacts': [_contact(signataire(), 'bi-building', 'Inscription et réinscription'),
+                     _contact(contact_etudes_avancees(), 'bi-mortarboard', 'Master')],
     })
 
 

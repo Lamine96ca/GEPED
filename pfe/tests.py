@@ -1907,6 +1907,29 @@ class GpedTests(TestCase):
         for absent in ('GNF', 'frais', 'Frais', 'reçu de', 'Reçu', 'paiement'):
             self.assertNotContains(r, absent)
         self.assertNotIn('recu', ' '.join(code for code, _ in PieceDossier.TYPES))
+        # Contacts : le chef de la scolarité et celui du SEA ; le compte de démonstration n'apparaît jamais
+        self.assertContains(r, 'Dr (MC) Yacouba CAMARA')
+        self.assertContains(r, 'href="tel:+224622288295"')
+        Personnel.objects.filter(utilisateur__username='scol').update(
+            chef=True, civilite='M.', prenom='Awa', nom='Conde', fonc='Le Chef Service de la Scolarité',
+            email='chef.scol@ist.gn', telephone='628620724')
+        master = Service.objects.create(nom='MASTER EN ENERGIE', code='M03', programme=True, cycle='Master')
+        demo = Personnel.objects.create(utilisateur=User.objects.create_user('demo.master', password='x'), prenom='Démo',
+                                        nom='MASTER', telephone='600000099', email='demo@t.local', fonc='Démo', chef=True)
+        demo.service.add(master)
+        r = self.client.get(accueil)
+        for attendu in ('M. Awa CONDE', 'mailto:chef.scol@ist.gn', 'href="tel:+224628620724"', '+224 628 62 07 24',
+                        'Dr (MC) Yacouba CAMARA'):
+            self.assertContains(r, attendu)
+        self.assertNotContains(r, 'demo@t.local')
+        chef = Personnel.objects.get(utilisateur__username='info')
+        Personnel.objects.filter(pk=chef.pk).update(chef=True, civilite='Dr', prenom='Ali', nom='Sow',
+                                                    fonc='Le Directeur du SEA', email='dir.sea@ist.gn')
+        chef.service.add(master)
+        r = self.client.get(accueil)
+        self.assertContains(r, 'Dr Ali SOW')
+        self.assertContains(r, 'mailto:dir.sea@ist.gn')
+        self.assertNotContains(r, 'Yacouba')
         # Pages d'identification ; anciens liens redirigés
         self.assertContains(self.client.get(reverse('espace_inscription')), 'i-pvbac')
         self.assertContains(self.client.get(reverse('espace_reinscription')), 'sont fermées')

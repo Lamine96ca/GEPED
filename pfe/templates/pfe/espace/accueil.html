@@ -138,26 +138,17 @@
 
 <h2 class="vitrine-titre">Besoin d'aide ?</h2>
 <div class="contacts">
+  {% for c in contacts %}
   <div class="contact">
-    <i class="bi bi-building"></i>
+    <i class="bi {{ c.icone }}"></i>
     <div>
-      <strong>IST de Mamou</strong>
-      <span>Inscription et réinscription : Service de la Scolarité</span>
-      <a href="mailto:contact@ist-mamou.org">contact@ist-mamou.org</a>
-      <a href="tel:+224621292026">+224 621 29 20 26</a>
-      <a href="tel:+224628665318">+224 628 66 53 18</a>
+      <strong>{{ c.chef.nom }}</strong>
+      <span>{{ c.chef.fonction }} · {{ c.sujet }}</span>
+      {% if c.chef.email %}<a href="mailto:{{ c.chef.email }}">{{ c.chef.email }}</a>{% endif %}
+      {% for numero, lien in c.numeros %}<a href="tel:{{ lien }}">{{ numero }}</a>{% endfor %}
     </div>
   </div>
-  <div class="contact">
-    <i class="bi bi-mortarboard"></i>
-    <div>
-      <strong>Service des Études Avancées (SEA)</strong>
-      <span>Master</span>
-      <a href="mailto:sea@ist-mamou.org">sea@ist-mamou.org</a>
-      <a href="tel:+224622288295">+224 622 28 82 95</a>
-      <a href="tel:+224621185196">+224 621 18 51 96</a>
-    </div>
-  </div>
+  {% endfor %}
 </div>
 
 <div class="verif-conseil mt-4">
