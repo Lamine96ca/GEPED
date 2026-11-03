@@ -339,6 +339,7 @@ GPED_VERSION = '1.0'
 GPED_NOTES = {
     'note_max': 10,
     'seuil_validation': 5,                       # une matière est validée à partir de 5/10
+    'credits_passage_tronc_commun': 18,          # Tronc commun : en dessous, l'étudiant redouble
     # Moyenne d'une matière (quand le programme ne dépose pas directement la moyenne)
     'poids': {'controle': 0.25, 'tp': 0.35, 'examen': 0.40},
     'poids_sans_tp': {'controle': 0.40, 'examen': 0.60},

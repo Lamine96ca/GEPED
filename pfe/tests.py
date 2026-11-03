@@ -2269,6 +2269,40 @@ class GpedTests(TestCase):
         self.assertContains(self.client.get(url, {'type': 'inscription', 'statut': 'validee'}), 'validée ailleurs')
         self.assertContains(self.client.get(reverse('demande_detail', args=[d_insc.pk])), 'hors des demandes en ligne')
 
+    def test_espace_redoublant_tronc_commun_releve_facultatif(self):
+        from .models import DemandeEtudiant, Matiere, Note
+        from .notes import recalculer
+        self._espace()
+        s1, _ = self._semestres()
+        Session.objects.filter(pk=self.session.pk).update(reinscriptions_ouvertes=True)
+        e = Etudiant.objects.create(matricule='T1', prenom='Ali', nom='SOW', email='ali@t.local', ine='INET1',
+                                    telephone='611')
+        Inscription.objects.create(etudiant=e, session=self.s2425, licence=self.l2, filiere=self.info,
+                                   promotion=self.p18, cycle='Tronc commun')
+        algo = Matiere.objects.create(nom='Algorithmique', filiere=self.info, semestre=s1, licence=self.l2,
+                                      session=self.s2425, credit=18)
+        dossier = {'telephone': '622 00 00 01', 'email': 'ali.sow@exemple.com', 'adresse': 'Horé Fello/Mamou',
+                   'tuteur': 'Mamadou SOW', 'contact_de_tuteur': '664 00 00 02', 'licence': self.l3.pk,
+                   'boursier': 'boursier', 'type_formation': 'initiale', **signer()}
+        self.client.post(reverse('espace_accueil'), {'mode': 'reinscription', 'r-ine': 'INET1', 'r-matricule': 'T1'})
+        # Notes pas encore saisies : on ne sait pas, le relevé reste obligatoire
+        r = self.client.post(reverse('espace_dossier'), {**dossier, 'photo': photo_jpeg()})
+        self.assertContains(r, 'Obligatoire : scannez ou envoyez cette pièce.')
+        # 18 crédits validés : passant, relevé obligatoire
+        note = Note.objects.create(etudiant=e, matiere=algo, moyenne=6, moyenne_deposee=True)
+        recalculer([e.pk])
+        r = self.client.post(reverse('espace_dossier'), {**dossier, 'photo': photo_jpeg()})
+        self.assertContains(r, 'Obligatoire : scannez ou envoyez cette pièce.')
+        # Moins de 18 crédits : redoublant, il se réinscrit sans relevé
+        Note.objects.filter(pk=note.pk).update(moyenne=4, moyenne_finale=4)
+        recalculer([e.pk])
+        r = self.client.get(reverse('espace_dossier'))
+        self.assertContains(r, "vous n&#x27;avez pas validé 18 crédits en Tronc commun")
+        self.assertContains(r, '(facultatives)')
+        r = self.client.post(reverse('espace_dossier'), {**dossier, 'photo': photo_jpeg()})
+        self.assertRedirects(r, reverse('espace_confirmation'))
+        self.assertTrue(DemandeEtudiant.objects.filter(etudiant=e, type='reinscription').exists())
+
     def test_espace_etudiant_promotions_prevues_seulement(self):
         """Seules les promotions prévues pour la session (Promotion_Licence_Session) passent en ligne."""
         self._espace()

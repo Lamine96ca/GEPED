@@ -84,6 +84,8 @@ AIDES_MASTER = {
                                     "la charte de formation en master.",
     PieceDossier.CV: "Actualisé.",
 }
+AIDE_REDOUBLANT_TC = ("Facultatif : vous n'avez pas validé 18 crédits en Tronc commun, vous vous réinscrivez "
+                      "comme redoublant(e).")
 MASTER = 'master'                       # démarche de l'espace (la demande reste une inscription ou une réinscription)
 DEMARCHES = {DemandeEtudiant.INSCRIPTION: 'espace_inscription', DemandeEtudiant.REINSCRIPTION: 'espace_reinscription',
              MASTER: 'espace_master'}
@@ -95,8 +97,10 @@ def pieces_demandees(type_demande, master=False):
     return (PIECES_MASTER if master else PIECES)[type_demande]
 
 
-def pieces_obligatoires(type_demande, master=False):
-    return (OBLIGATOIRES_MASTER if master else OBLIGATOIRES).get(type_demande, [])
+def pieces_obligatoires(type_demande, master=False, redoublant_tc=False):
+    """Redoublant du Tronc commun (moins de 18 crédits validés) : le relevé de notes est facultatif."""
+    obligatoires = (OBLIGATOIRES_MASTER if master else OBLIGATOIRES).get(type_demande, [])
+    return [t for t in obligatoires if t != PieceDossier.RELEVE_NOTES] if redoublant_tc else obligatoires
 
 
 def _piece_deja_deposee(etudiant, type_piece, session):
@@ -306,6 +310,9 @@ def espace_dossier(request):
         messages.success(request, f"Votre {demande.get_type_display().lower()} pour {session} est déjà validée.")
         return redirect('espace_accueil')
     niveaux, suivant = espace.niveaux_proposes(insc, session) if reinscription else ([], None)
+    # Redoublant du Tronc commun : peut se réinscrire sans envoyer son relevé
+    redoublant_tc = reinscription and not master and espace.redoublant_tronc_commun(insc)
+    obligatoires = pieces_obligatoires(type_demande, master, redoublant_tc)
 
     # Contacts VIDES : l'étudiant les saisit lui-même (à jour) ; ceux d'une demande déjà envoyée sont repris
     initial = {}
@@ -338,7 +345,7 @@ def espace_dossier(request):
                 except ValidationError as e:
                     erreurs_pieces[t] = ' '.join(e.messages)
         # Pièces obligatoires : envoyées maintenant, ou déjà dans le dossier
-        for t in pieces_obligatoires(type_demande, master):
+        for t in obligatoires:
             if t not in preparees and t not in erreurs_pieces and not _piece_deja_deposee(etudiant, t, session):
                 erreurs_pieces[t] = "Obligatoire : scannez ou envoyez cette pièce."
         if not erreurs_pieces:
@@ -387,7 +394,7 @@ def espace_dossier(request):
                                   bool(demande.licence_id)))
         recapitulatif.append(("Photo d'identité", bool(demande.photo) or bool(url_photo(etudiant))))
         recapitulatif += [(dict(PieceDossier.TYPES)[t], t in deposees) for t in pieces_demandees(type_demande, master)
-                          if t in deposees or t in pieces_obligatoires(type_demande, master)]
+                          if t in deposees or t in obligatoires]
         recapitulatif.append(('Signature', bool(demande.signature)))
     return render(request, 'pfe/espace/dossier.html', {
         'recapitulatif': recapitulatif,
@@ -403,9 +410,11 @@ def espace_dossier(request):
         'departement': _nom_departement(insc.filiere) if insc.filiere else '',
         'programme': insc.filiere.nom if insc.filiere else '',        # nom réel : la description porte souvent le département
         'pieces': [(t, dict(PieceDossier.TYPES)[t], deposees.get(t), erreurs_pieces.get(t),
-                    t in pieces_obligatoires(type_demande, master), AIDES_MASTER.get(t, '') if master else '')
+                    t in obligatoires, AIDES_MASTER.get(t, '') if master else
+                    (AIDE_REDOUBLANT_TC if redoublant_tc and t == PieceDossier.RELEVE_NOTES else ''))
                    for t in pieces_demandees(type_demande, master)],
-        'toutes_obligatoires': set(pieces_demandees(type_demande, master)) == set(pieces_obligatoires(type_demande, master)),
+        'toutes_obligatoires': set(pieces_demandees(type_demande, master)) == set(obligatoires),
+        'aucune_obligatoire': not obligatoires,
         'expire_minutes': max(1, int((a['expire'] - __import__('time').time()) // 60)),
     })
 
