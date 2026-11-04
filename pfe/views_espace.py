@@ -305,6 +305,9 @@ def espace_dossier(request):
     master = bool(a.get('master'))
     reinscription = type_demande == DemandeEtudiant.REINSCRIPTION
     demande = DemandeEtudiant.objects.filter(etudiant=etudiant, session=session, type=type_demande).first()
+    if demande and demande.statut == DemandeEtudiant.VALIDEE and reinscription \
+            and espace.rouvrir_demandes(etudiant.pk, session.pk):
+        demande.refresh_from_db()           # validée, mais son inscription a été supprimée : à refaire
     if demande and demande.statut == DemandeEtudiant.VALIDEE:
         espace.fermer_acces(request)
         messages.success(request, f"Votre {demande.get_type_display().lower()} pour {session} est déjà validée.")

@@ -428,6 +428,20 @@ def cloturer_traitees_ailleurs(session=None):
     return len(a_clore)
 
 
+def rouvrir_demandes(etudiant_id, session_id):
+    """
+    Inscription de la session supprimée : la réinscription validée repasse « En attente », l'étudiant
+    peut refaire (ou corriger) sa demande en ligne et la scolarité la traiter de nouveau.
+    Renvoie le nombre de demandes rouvertes.
+    """
+    if Inscription.objects.filter(etudiant_id=etudiant_id, session_id=session_id).exists():
+        return 0
+    return DemandeEtudiant.objects.filter(
+        etudiant_id=etudiant_id, session_id=session_id, type=DemandeEtudiant.REINSCRIPTION,
+        statut=DemandeEtudiant.VALIDEE).update(statut=DemandeEtudiant.EN_ATTENTE, traitee_le=None,
+                                               traitee_par=None, date_maj=timezone.now())
+
+
 def refuser(demande, utilisateur, motif):
     from .models import stockage_prive
     if demande.photo:

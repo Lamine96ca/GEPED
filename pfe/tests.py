@@ -2322,6 +2322,42 @@ class GpedTests(TestCase):
         self.assertContains(self.client.get(url, {'type': 'inscription', 'statut': 'validee'}), 'validée ailleurs')
         self.assertContains(self.client.get(reverse('demande_detail', args=[d_insc.pk])), 'hors des demandes en ligne')
 
+    def test_inscription_supprimee_la_demande_en_ligne_est_rouverte(self):
+        from django.utils import timezone
+        from .models import DemandeEtudiant
+        self._espace()
+        Session.objects.filter(pk=self.session.pk).update(reinscriptions_ouvertes=True)
+        e = Etudiant.objects.create(matricule='R9', prenom='Ali', nom='SOW', email='ali@t.local', ine='INER9',
+                                    telephone='611')
+        Inscription.objects.create(etudiant=e, session=self.s2425, licence=self.l2, filiere=self.info,
+                                   promotion=self.p18, cycle='Licence')
+        nouvelle = Inscription.objects.create(etudiant=e, session=self.session, licence=self.l3, filiere=self.info,
+                                              promotion=self.p18, cycle='Licence')
+        d = DemandeEtudiant.objects.create(etudiant=e, session=self.session, type=DemandeEtudiant.REINSCRIPTION,
+                                           statut=DemandeEtudiant.VALIDEE, licence=self.l3, traitee_le=timezone.now())
+        # La scolarité supprime l'inscription de l'année : la demande repasse en attente
+        self.connecter('scol')
+        self.client.post(reverse('inscription_supprimer', args=[nouvelle.pk]))
+        d.refresh_from_db()
+        self.assertEqual((d.statut, d.traitee_le), (DemandeEtudiant.EN_ATTENTE, None))
+        # L'étudiant peut refaire sa demande en ligne
+        self.client.logout()
+        r = self.client.post(reverse('espace_accueil'), {'mode': 'reinscription', 'r-ine': 'INER9', 'r-matricule': 'R9'})
+        self.assertRedirects(r, reverse('espace_dossier'))
+        r = self.client.get(reverse('espace_dossier'))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'Certification et signature')                 # le formulaire, pas « déjà validée »
+        # Supprimée sans passer par Django (validée sans inscription) : rouverte quand l'étudiant revient
+        DemandeEtudiant.objects.filter(pk=d.pk).update(statut=DemandeEtudiant.VALIDEE)
+        self.assertEqual(self.client.get(reverse('espace_dossier')).status_code, 200)
+        self.assertEqual(DemandeEtudiant.objects.get(pk=d.pk).statut, DemandeEtudiant.EN_ATTENTE)
+        # Une autre inscription de la session reste : la demande validée ne bouge pas
+        Inscription.objects.create(etudiant=e, session=self.session, licence=self.l3, filiere=self.gc,
+                                   promotion=self.p18, cycle='Licence')
+        DemandeEtudiant.objects.filter(pk=d.pk).update(statut=DemandeEtudiant.VALIDEE)
+        Inscription.objects.filter(etudiant=e, session=self.s2425).delete()
+        self.assertEqual(DemandeEtudiant.objects.get(pk=d.pk).statut, DemandeEtudiant.VALIDEE)
+
     def test_espace_redoublant_tronc_commun_releve_facultatif(self):
         from .models import DemandeEtudiant, Matiere, Note
         from .notes import recalculer
