@@ -181,9 +181,9 @@
       {% if page.has_other_pages %}
         <div class="pied-tableau d-flex justify-content-end">
           <ul class="pagination pagination-sm mb-0">
-            {% if page.has_previous %}<li class="page-item"><a class="page-link" href="?r={{ r|urlencode }}&page={{ page.previous_page_number }}"><i class="bi bi-chevron-left"></i></a></li>{% endif %}
+            {% if page.has_previous %}<li class="page-item"><a class="page-link" href="?{% if etudiant %}etudiant={{ etudiant.pk }}&{% endif %}r={{ r|urlencode }}&page={{ page.previous_page_number }}"><i class="bi bi-chevron-left"></i></a></li>{% endif %}
             <li class="page-item active"><span class="page-link">{{ page.number }} / {{ page.paginator.num_pages }}</span></li>
-            {% if page.has_next %}<li class="page-item"><a class="page-link" href="?r={{ r|urlencode }}&page={{ page.next_page_number }}"><i class="bi bi-chevron-right"></i></a></li>{% endif %}
+            {% if page.has_next %}<li class="page-item"><a class="page-link" href="?{% if etudiant %}etudiant={{ etudiant.pk }}&{% endif %}r={{ r|urlencode }}&page={{ page.next_page_number }}"><i class="bi bi-chevron-right"></i></a></li>{% endif %}
           </ul>
         </div>
       {% endif %}

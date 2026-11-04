@@ -1344,6 +1344,29 @@ class GpedTests(TestCase):
         self.assertNotEqual(self.client.get(reverse('admin:pfe_reglageaffichage_change', args=[reglage.pk])).status_code,
                             200)
 
+    def test_releves_et_attestations_30_par_page(self):
+        from .models import Attestation, ReleveNote
+        e = Etudiant.objects.get(matricule='M0')
+        rel = [ReleveNote.objects.create(type='E', etudiant=e, filiere=self.info) for _ in range(35)]
+        att = [Attestation.objects.create(type=Attestation.INSCRIPTION, etudiant=e, licence=self.licence,
+                                          filiere=self.info, session=self.session) for _ in range(35)]
+        self.connecter('scol')
+        # Relevés : les 35 (réglage par défaut : 50) sur deux pages, la recherche aussi
+        r = self.client.get(reverse('releves'))
+        self.assertEqual((len(r.context['page']), r.context['page'].paginator.num_pages), (30, 2))
+        self.assertContains(r, '1 / 2')
+        r = self.client.get(reverse('releves'), {'page': 2})
+        self.assertEqual([x.pk for x in r.context['page']], [x.pk for x in reversed(rel[:5])])
+        self.assertEqual(len(self.client.get(reverse('releves'), {'r': 'SC', 'page': 2}).context['page']), 5)
+        # Étudiant ouvert : il reste ouvert en changeant de page
+        self.assertContains(self.client.get(reverse('releves'), {'etudiant': e.pk}), f'?etudiant={e.pk}&r=&page=2')
+        # Attestations : même chose
+        url = reverse('attestations_type', args=['inscription'])
+        r = self.client.get(url)
+        self.assertEqual((len(r.context['page']), r.context['page'].paginator.num_pages), (30, 2))
+        self.assertEqual(len(self.client.get(url, {'page': 2}).context['page']), 5)
+        self.assertEqual({x.pk for x in self.client.get(url, {'page': 2}).context['page']}, {x.pk for x in att[:5]})
+
     def test_super_utilisateur_modifie_les_notes_sans_justificatif(self):
         from django.contrib.auth.models import User
         from .forms import ImportNotesForm

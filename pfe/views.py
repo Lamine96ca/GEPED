@@ -1033,7 +1033,7 @@ def attestations(request, type_url='inscription'):
     if q:
         enregistrees = enregistrees.filter(Q(num_ref__icontains=q) | Q(etudiant__matricule__icontains=q)
                                            | Q(etudiant__nom__icontains=q) | Q(etudiant__prenom__icontains=q))
-    page = Paginator(enregistrees.order_by('-date_delivrance', '-id'), 25).get_page(request.GET.get('page'))
+    page = Paginator(enregistrees.order_by('-date_delivrance', '-id'), 30).get_page(request.GET.get('page'))
 
     imprimer = None
     if request.GET.get('imprimer', '').isdigit():
