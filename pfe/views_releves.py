@@ -107,12 +107,12 @@ def releves(request):
                                        | Q(etudiant__nom__icontains=r) | Q(etudiant__prenom__icontains=r))
         if session_id:
             delivres = delivres.filter(session_id=session_id)
-        page = Paginator(delivres, 30).get_page(request.GET.get('page'))
+        page = Paginator(delivres, 25).get_page(request.GET.get('page'))
     else:
         # Sans recherche : le nombre fixé dans l'espace admin (Réglages d'affichage), plus les relevés délivrés depuis,
-        # 30 par page
+        # 25 par page
         affiches = ReglageAffichage.actuel().releves_affiches(delivres)
-        page = Paginator(affiches, 30).get_page(request.GET.get('page'))
+        page = Paginator(affiches, 25).get_page(request.GET.get('page'))
     imprimer = None
     if _entier(request.GET.get('imprimer')):
         imprimer = _releves_geres(request).select_related('etudiant', 'filiere', 'session', 'semestre', 'licence').filter(

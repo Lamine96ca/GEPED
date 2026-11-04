@@ -1039,7 +1039,7 @@ def attestations(request, type_url='inscription'):
     if session_id:
         enregistrees = enregistrees.filter(Q(session_id=session_id)
                                            | Q(session__isnull=True, session_actuelle_id=session_id))
-    page = Paginator(enregistrees.order_by('-date_delivrance', '-id'), 30).get_page(request.GET.get('page'))
+    page = Paginator(enregistrees.order_by('-date_delivrance', '-id'), 25).get_page(request.GET.get('page'))
 
     imprimer = None
     if request.GET.get('imprimer', '').isdigit():
