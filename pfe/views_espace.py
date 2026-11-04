@@ -84,8 +84,7 @@ AIDES_MASTER = {
                                     "la charte de formation en master.",
     PieceDossier.CV: "Actualisé.",
 }
-AIDE_REDOUBLANT_TC = ("Facultatif : vous n'avez pas validé 18 crédits en Tronc commun, vous vous réinscrivez "
-                      "comme redoublant(e).")
+AIDE_TRONC_COMMUN = "Facultatif pour les étudiants du Tronc commun (admis ou redoublants)."
 MASTER = 'master'                       # démarche de l'espace (la demande reste une inscription ou une réinscription)
 DEMARCHES = {DemandeEtudiant.INSCRIPTION: 'espace_inscription', DemandeEtudiant.REINSCRIPTION: 'espace_reinscription',
              MASTER: 'espace_master'}
@@ -97,10 +96,10 @@ def pieces_demandees(type_demande, master=False):
     return (PIECES_MASTER if master else PIECES)[type_demande]
 
 
-def pieces_obligatoires(type_demande, master=False, redoublant_tc=False):
-    """Redoublant du Tronc commun (moins de 18 crédits validés) : le relevé de notes est facultatif."""
+def pieces_obligatoires(type_demande, master=False, tronc_commun=False):
+    """Tronc commun (admis ou redoublant) : le relevé de notes est facultatif."""
     obligatoires = (OBLIGATOIRES_MASTER if master else OBLIGATOIRES).get(type_demande, [])
-    return [t for t in obligatoires if t != PieceDossier.RELEVE_NOTES] if redoublant_tc else obligatoires
+    return [t for t in obligatoires if t != PieceDossier.RELEVE_NOTES] if tronc_commun else obligatoires
 
 
 def _piece_deja_deposee(etudiant, type_piece, session):
@@ -313,9 +312,9 @@ def espace_dossier(request):
         messages.success(request, f"Votre {demande.get_type_display().lower()} pour {session} est déjà validée.")
         return redirect('espace_accueil')
     niveaux, suivant = espace.niveaux_proposes(insc, session) if reinscription else ([], None)
-    # Redoublant du Tronc commun : peut se réinscrire sans envoyer son relevé
-    redoublant_tc = reinscription and not master and espace.redoublant_tronc_commun(insc)
-    obligatoires = pieces_obligatoires(type_demande, master, redoublant_tc)
+    # Tronc commun (admis ou redoublant) : peut se réinscrire sans envoyer son relevé
+    tronc_commun = reinscription and not master and espace.est_tronc_commun(insc)
+    obligatoires = pieces_obligatoires(type_demande, master, tronc_commun)
 
     # Contacts VIDES : l'étudiant les saisit lui-même (à jour) ; ceux d'une demande déjà envoyée sont repris
     initial = {}
@@ -414,7 +413,7 @@ def espace_dossier(request):
         'programme': insc.filiere.nom if insc.filiere else '',        # nom réel : la description porte souvent le département
         'pieces': [(t, dict(PieceDossier.TYPES)[t], deposees.get(t), erreurs_pieces.get(t),
                     t in obligatoires, AIDES_MASTER.get(t, '') if master else
-                    (AIDE_REDOUBLANT_TC if redoublant_tc and t == PieceDossier.RELEVE_NOTES else ''))
+                    (AIDE_TRONC_COMMUN if tronc_commun and t == PieceDossier.RELEVE_NOTES else ''))
                    for t in pieces_demandees(type_demande, master)],
         'toutes_obligatoires': set(pieces_demandees(type_demande, master)) == set(obligatoires),
         'aucune_obligatoire': not obligatoires,

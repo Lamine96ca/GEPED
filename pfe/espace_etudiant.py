@@ -308,17 +308,9 @@ def niveaux_prevus(derniere, session):
     return sorted(memes or prevus, key=_rang)
 
 
-def redoublant_tronc_commun(derniere):
-    """Tronc commun : moins de 18 crédits validés dans l'année (résultat calculé) → redoublant.
-    Sans résultat (notes pas encore saisies), on ne sait pas : ce n'est pas un redoublant."""
-    from .models import Resultat
-    from .notes import regles
-    if 'Tronc commun' not in (derniere.cycle, getattr(derniere.filiere, 'cycle', None)):
-        return False
-    annee = Resultat.objects.filter(niveau=Resultat.ANNEE, etudiant_id=derniere.etudiant_id,
-                                    filiere_id=derniere.filiere_id, session_id=derniere.session_id,
-                                    licence_id=derniere.licence_id).first()
-    return annee is not None and annee.credits_valides < regles()['credits_passage_tronc_commun']
+def est_tronc_commun(derniere):
+    """Dernière inscription en Tronc commun (cycle de l'inscription ou du programme)."""
+    return 'Tronc commun' in (derniere.cycle, getattr(derniere.filiere, 'cycle', None))
 
 
 def niveaux_proposes(derniere, session):
