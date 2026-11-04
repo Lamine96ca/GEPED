@@ -91,6 +91,43 @@ class GpedTests(TestCase):
         # un programme ne peut pas élargir son périmètre via les filtres
         self.assertEqual(self.donnees(programme=self.gc.id)['total'], 0)
 
+    def test_recherche_des_fonctionnalites_selon_les_droits(self):
+        """Chacun ne trouve que ce qu'il peut ouvrir : tout ce qui est proposé s'ouvre, le reste est refusé."""
+        from .fonctionnalites import CATALOGUE
+        master = Service.objects.create(nom='MASTER EN ENERGIE', code='M03', programme=True, cycle='Master')
+        p = Personnel.objects.create(utilisateur=User.objects.create_user('directeur', password='x'), prenom='Awa',
+                                     nom='Bah', telephone='901', email='dir@t.local', fonc='Directeur', chef=True)
+        p.service.add(master)
+        User.objects.create_superuser('admin', password='x')
+        tous = {reverse(nom, args=args) for _, _, _, _, nom, args, _, _ in CATALOGUE} - {reverse('espace_accueil')}
+        attendus = {
+            'scol': ({"Importer une liste d'étudiants", 'Ouvrir ou fermer les inscriptions en ligne', 'Relevés de notes',
+                      "Attestation d'inscription", 'Saisie des notes'}, {'Personnel', 'Sessions (années académiques)'}),
+            'dep': ({'Liste des étudiants', 'Matières', 'Statistiques', 'Mon compte'},
+                    {'Relevés de notes', "Attestation d'inscription", 'Saisie des notes', 'Demandes en ligne'}),
+            'info': ({'Saisie des notes', 'Résultats et délibérations', 'Liste des soutenances'},
+                     {'Relevés de notes', "Attestation de niveau", 'Inscrire un étudiant', 'Demandes en ligne'}),
+            'directeur': ({'Relevés de notes', "Attestation d'inscription", 'Demandes en ligne', 'Inscrire un étudiant'},
+                          {"Importer une liste d'étudiants", 'Ouvrir ou fermer les inscriptions en ligne', 'Personnel'}),
+            'admin': ({'Personnel', 'Sessions (années académiques)', "Réglages d'affichage", 'Espace administration'},
+                      set()),
+        }
+        for login, (oui, non) in attendus.items():
+            self.connecter(login)
+            r = self.client.get(reverse('tableau_de_bord'))
+            self.assertContains(r, 'id="rf-catalogue"')
+            fonctions = r.context['fonctionnalites']
+            titres = {f['t'] for f in fonctions}
+            self.assertLessEqual(oui, titres, login)
+            self.assertFalse(non & titres, login)
+            for f in fonctions:
+                self.assertEqual(self.client.get(f['u']).status_code, 200, (login, f['t']))
+            for url in tous - {f['u'] for f in fonctions}:
+                self.assertIn(self.client.get(url).status_code, (302, 403), (login, url))
+        # Pas connecté : ni champ ni catalogue
+        self.client.logout()
+        self.assertNotContains(self.client.get(reverse('login')), 'rf-catalogue')
+
     def test_scolarite_reconnue_par_son_nom(self):
         """« Service Scolarité » (code 0000, comme dans la base de l'IST) donne le rôle scolarité."""
         svc = Service.objects.create(nom='Service Scolarité', code='0000')

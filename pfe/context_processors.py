@@ -36,6 +36,9 @@ def gped(request):
         if profil.est_scolarite:
             from .views_demandes import nb_demandes_en_attente
             contexte['nb_demandes'] = nb_demandes_en_attente()
+        # Recherche des fonctionnalités du bandeau : seulement celles que cet utilisateur peut ouvrir
+        from .fonctionnalites import fonctionnalites
+        contexte['fonctionnalites'] = fonctionnalites(profil, request.user)
     return contexte
 
 

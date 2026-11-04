@@ -20,7 +20,21 @@
       <small>IST de Mamou · Gestion pédagogique</small>
     </span>
   </a>
-  <div class="ms-auto dropdown">
+  {% if fonctionnalites %}
+  <div class="recherche-fonctions ms-auto" data-recherche-fonctions>
+    <button type="button" class="btn btn-entete px-2 rf-loupe" data-rf-ouvrir aria-label="Rechercher une fonctionnalité"><i class="bi bi-search fs-5"></i></button>
+    <div class="rf-boite" role="search">
+      <i class="bi bi-search rf-icone"></i>
+      <input type="search" class="form-control" id="rf-champ" placeholder="Rechercher une fonctionnalité…" autocomplete="off" spellcheck="false"
+             role="combobox" aria-expanded="false" aria-controls="rf-liste" aria-autocomplete="list" aria-label="Rechercher une fonctionnalité">
+      <kbd class="rf-raccourci" title="Raccourci clavier">Ctrl K</kbd>
+      <button type="button" class="btn-close rf-fermer" data-rf-fermer aria-label="Fermer la recherche"></button>
+      <ul class="rf-liste" id="rf-liste" role="listbox" aria-label="Fonctionnalités" hidden></ul>
+    </div>
+  </div>
+  {{ fonctionnalites|json_script:"rf-catalogue" }}
+  {% endif %}
+  <div class="{% if not fonctionnalites %}ms-auto {% endif %}dropdown">
     <button class="btn btn-entete d-flex align-items-center gap-2" data-bs-toggle="dropdown" aria-expanded="false">
       <span class="avatar {% if photo_compte %}a-photo{% endif %}" data-apercu="compte" {% if photo_compte %}style="background-image:url('{{ photo_compte }}')"{% endif %}>{% if user.first_name %}{{ user.first_name|first }}{{ user.last_name|first }}{% else %}{{ user.username|slice:":2" }}{% endif %}</span>
       <span class="d-none d-md-inline text-start lh-sm">
@@ -171,6 +185,7 @@
 </div>
 <script src="{% static 'pfe/vendor/bootstrap/bootstrap.bundle.min.js' %}?v={{ version_statique }}"></script>
 <script src="{% static 'pfe/js/gped-reseau.js' %}?v={{ version_statique }}"></script>
+{% if fonctionnalites %}<script src="{% static 'pfe/js/gped-recherche.js' %}?v={{ version_statique }}"></script>{% endif %}
 {% block scripts %}{% endblock %}
 </body>
 </html>
