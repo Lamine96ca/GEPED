@@ -16,7 +16,7 @@ from django.utils.text import slugify
 from django.views.decorators.http import require_POST
 
 from .forms import ReleveForm
-from .models import Etudiant, Inscription, ReglageAffichage, ReleveNote, Semestre, Service
+from .models import Etudiant, Inscription, ReglageAffichage, ReleveNote, Semestre, Service, Session
 from .pdf_releves import pdf_releve
 from .releves import a_des_notes, contenu, parcours, perimetres_notes, recherche, releve_existant
 from .roles import etudiants_geres, etudiants_requise, get_profil
@@ -96,11 +96,17 @@ def releves(request):
             p.a_des_notes = any(n[0] == p.pk for n in notes)
 
     r = (request.GET.get('r') or '').strip()
+    sessions = Session.objects.order_by('-annee')
+    session_id = _entier(request.GET.get('session'))
     delivres = _releves_geres(request).select_related('etudiant', 'filiere', 'session', 'licence', 'semestre')
-    if r:
-        # La recherche porte sur tous les relevés, même ceux que la liste n'affiche pas
-        delivres = delivres.filter(Q(num_ref__icontains=r) | Q(etudiant__matricule__icontains=r)
-                                   | Q(etudiant__nom__icontains=r) | Q(etudiant__prenom__icontains=r))
+    if r or session_id:
+        # La recherche (texte, session) porte sur tous les relevés, même ceux que la liste n'affiche pas ;
+        # un extrait n'a pas de session : il n'est trouvé que sans filtre de session
+        if r:
+            delivres = delivres.filter(Q(num_ref__icontains=r) | Q(etudiant__matricule__icontains=r)
+                                       | Q(etudiant__nom__icontains=r) | Q(etudiant__prenom__icontains=r))
+        if session_id:
+            delivres = delivres.filter(session_id=session_id)
         page = Paginator(delivres, 30).get_page(request.GET.get('page'))
     else:
         # Sans recherche : le nombre fixé dans l'espace admin (Réglages d'affichage), plus les relevés délivrés depuis,
@@ -113,7 +119,7 @@ def releves(request):
             pk=request.GET['imprimer']).first()
     return render(request, 'pfe/releves.html', {
         'form': form, 'q': q, 'r': r, 'etudiant': etudiant, 'candidats': candidats, 'inscriptions': inscriptions,
-        'programmes': programmes, 'page': page,
+        'programmes': programmes, 'page': page, 'sessions': sessions, 'session_id': session_id,
         'prochaine_ref': ReleveNote.prochaine_reference(master=masters is not None),
         'ref_aussi_master': masters is None, 'imprimer': imprimer, 'actif': 'releves',
         'semestres_par_licence': {str(s.pk): str(s.licence_id) for s in Semestre.objects.all()},

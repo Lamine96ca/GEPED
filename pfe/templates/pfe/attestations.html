@@ -153,8 +153,12 @@
           <span class="icone-carte"><i class="bi bi-archive"></i></span>
           <div><h3>Attestations enregistrées</h3>{# Nombre d'attestations masqué pour l'instant, à remettre : <p>{{ page.paginator.count|intcomma }} attestation{{ page.paginator.count|pluralize }} {{ complement }}</p> #}</div>
         </div>
-        <form method="get" style="min-width:240px">
-          <div class="champ-icone"><i class="bi bi-search"></i>
+        <form method="get" class="d-flex flex-wrap gap-2">
+          <select name="session" class="form-select form-select-sm" style="height:38px;width:auto" title="Session" onchange="this.form.submit()">
+            <option value="">Toutes les sessions</option>
+            {% for s in sessions %}<option value="{{ s.pk }}"{% if s.pk == session_id %} selected{% endif %}>{{ s.annee }}{% if s.en_cours %} (en cours){% endif %}</option>{% endfor %}
+          </select>
+          <div class="champ-icone" style="min-width:240px"><i class="bi bi-search"></i>
             <input type="search" name="q" value="{{ q }}" class="form-control form-control-sm" style="height:38px" placeholder="N° réf., matricule, nom">
           </div>
         </form>
@@ -187,7 +191,7 @@
               </td>
             </tr>
           {% empty %}
-            <tr><td colspan="7"><div class="etat-vide"><i class="bi bi-inbox"></i>Aucune attestation {{ complement }} enregistrée{% if q %} pour « {{ q }} »{% endif %}.</div></td></tr>
+            <tr><td colspan="7"><div class="etat-vide"><i class="bi bi-inbox"></i>Aucune attestation {{ complement }} enregistrée{% if q %} pour « {{ q }} »{% endif %}{% if session_id %} pour cette session{% endif %}.</div></td></tr>
           {% endfor %}
           </tbody>
         </table>
@@ -195,9 +199,9 @@
       {% if page.has_other_pages %}
         <div class="pied-tableau d-flex justify-content-end">
           <ul class="pagination pagination-sm mb-0">
-            {% if page.has_previous %}<li class="page-item"><a class="page-link" href="?q={{ q|urlencode }}&page={{ page.previous_page_number }}"><i class="bi bi-chevron-left"></i></a></li>{% endif %}
+            {% if page.has_previous %}<li class="page-item"><a class="page-link" href="?q={{ q|urlencode }}&session={{ session_id|default_if_none:"" }}&page={{ page.previous_page_number }}"><i class="bi bi-chevron-left"></i></a></li>{% endif %}
             <li class="page-item active"><span class="page-link">{{ page.number }} / {{ page.paginator.num_pages }}</span></li>
-            {% if page.has_next %}<li class="page-item"><a class="page-link" href="?q={{ q|urlencode }}&page={{ page.next_page_number }}"><i class="bi bi-chevron-right"></i></a></li>{% endif %}
+            {% if page.has_next %}<li class="page-item"><a class="page-link" href="?q={{ q|urlencode }}&session={{ session_id|default_if_none:"" }}&page={{ page.next_page_number }}"><i class="bi bi-chevron-right"></i></a></li>{% endif %}
           </ul>
         </div>
       {% endif %}

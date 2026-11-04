@@ -1359,13 +1359,43 @@ class GpedTests(TestCase):
         self.assertEqual([x.pk for x in r.context['page']], [x.pk for x in reversed(rel[:5])])
         self.assertEqual(len(self.client.get(reverse('releves'), {'r': 'SC', 'page': 2}).context['page']), 5)
         # Étudiant ouvert : il reste ouvert en changeant de page
-        self.assertContains(self.client.get(reverse('releves'), {'etudiant': e.pk}), f'?etudiant={e.pk}&r=&page=2')
+        self.assertContains(self.client.get(reverse('releves'), {'etudiant': e.pk}), f'?etudiant={e.pk}&r=&session=&page=2')
         # Attestations : même chose
         url = reverse('attestations_type', args=['inscription'])
         r = self.client.get(url)
         self.assertEqual((len(r.context['page']), r.context['page'].paginator.num_pages), (30, 2))
         self.assertEqual(len(self.client.get(url, {'page': 2}).context['page']), 5)
         self.assertEqual({x.pk for x in self.client.get(url, {'page': 2}).context['page']}, {x.pk for x in att[:5]})
+
+    def test_releves_et_attestations_par_session(self):
+        from .models import Attestation, ReleveNote
+        e = Etudiant.objects.get(matricule='M0')
+        annuel = ReleveNote.objects.create(type='A', etudiant=e, filiere=self.info, session=self.s2425,
+                                           licence=self.licence)
+        ReleveNote.objects.create(type='A', etudiant=e, filiere=self.info, session=self.session, licence=self.licence)
+        ReleveNote.objects.create(type='E', etudiant=e, filiere=self.info)               # extrait : sans session
+        ancienne = Attestation.objects.create(type=Attestation.INSCRIPTION, etudiant=e, licence=self.licence,
+                                              filiere=self.info, session=self.s2425)
+        Attestation.objects.create(type=Attestation.INSCRIPTION, etudiant=e, licence=self.licence,
+                                   filiere=self.info, session=self.session)
+        fin = Attestation.objects.create(type=Attestation.FIN_ETUDES, etudiant=e, licence=self.licence,
+                                         filiere=self.info, session_actuelle=self.s2425)
+        self.connecter('scol')
+        r = self.client.get(reverse('releves'))
+        self.assertEqual(len(r.context['page']), 3)
+        self.assertContains(r, f'<option value="{self.s2425.pk}">')
+        r = self.client.get(reverse('releves'), {'session': self.s2425.pk})
+        self.assertEqual([x.pk for x in r.context['page']], [annuel.pk])
+        self.assertContains(r, f'<option value="{self.s2425.pk}" selected>')
+        self.assertEqual(len(self.client.get(reverse('releves'), {'session': self.s2425.pk, 'r': 'SOW'})
+                             .context['page']), 0)
+        url = reverse('attestations_type', args=['inscription'])
+        self.assertEqual(len(self.client.get(url).context['page']), 2)
+        self.assertEqual([x.pk for x in self.client.get(url, {'session': self.s2425.pk}).context['page']],
+                         [ancienne.pk])
+        # Sans session (fin d'études) : celle où elle a été délivrée
+        r = self.client.get(reverse('attestations_type', args=['fin-etudes']), {'session': self.s2425.pk})
+        self.assertEqual([x.pk for x in r.context['page']], [fin.pk])
 
     def test_super_utilisateur_modifie_les_notes_sans_justificatif(self):
         from django.contrib.auth.models import User

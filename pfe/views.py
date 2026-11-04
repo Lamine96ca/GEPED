@@ -1033,6 +1033,12 @@ def attestations(request, type_url='inscription'):
     if q:
         enregistrees = enregistrees.filter(Q(num_ref__icontains=q) | Q(etudiant__matricule__icontains=q)
                                            | Q(etudiant__nom__icontains=q) | Q(etudiant__prenom__icontains=q))
+    # Par session : celle de l'attestation, sinon (fin d'études, orientation…) celle où elle a été délivrée
+    sessions = Session.objects.order_by('-annee')
+    session_id = int(request.GET['session']) if request.GET.get('session', '').isdigit() else None
+    if session_id:
+        enregistrees = enregistrees.filter(Q(session_id=session_id)
+                                           | Q(session__isnull=True, session_actuelle_id=session_id))
     page = Paginator(enregistrees.order_by('-date_delivrance', '-id'), 30).get_page(request.GET.get('page'))
 
     imprimer = None
@@ -1044,6 +1050,7 @@ def attestations(request, type_url='inscription'):
         'complement': COMPLEMENT_ATTESTATION[type_url],
         'form': form, 'instance': instance, 'imprimer': imprimer,
         'q_etudiant': q_etudiant, 'candidats': candidats, 'q': q, 'page': page,
+        'sessions': sessions, 'session_id': session_id,
         'prochaine_ref': Attestation.prochaine_reference(code, master=masters is not None),
         'ref_aussi_master': masters is None and code != Attestation.ORIENTATION,
         'actif': 'attestations',
