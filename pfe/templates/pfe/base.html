@@ -110,9 +110,6 @@
       {% endif %}
       {% if profil.gere_etudiants %}
         <a class="nav-link {% if actif == 'releves' %}active{% endif %}" href="{% url 'releves' %}"><i class="bi bi-file-earmark-spreadsheet"></i> Relevés de notes</a>
-        {% if user.is_superuser %}
-          <a class="nav-link {% if actif == 'personnel' %}active{% endif %}" href="{% url 'personnel_liste' %}"><i class="bi bi-person-badge"></i> Personnel</a>
-        {% endif %}
       {% endif %}
       <!-- 3. Matières -->
       <a class="nav-link {% if actif == 'matieres' %}active{% endif %}" href="{% url 'matieres_liste' %}"><i class="bi bi-journal-bookmark"></i> Matières</a>
@@ -158,6 +155,10 @@
             <a class="nav-link {% if actif == 'sout_importer' %}active{% endif %}" href="{% url 'soutenances_importer' %}">Importer</a>
           </div>
         </div>
+      {% endif %}
+      <!-- Personnel : administrateurs -->
+      {% if profil.gere_etudiants and user.is_superuser %}
+        <a class="nav-link {% if actif == 'personnel' %}active{% endif %}" href="{% url 'personnel_liste' %}"><i class="bi bi-person-badge"></i> Personnel</a>
       {% endif %}
       <!-- 4. Mon compte -->
       <a class="nav-link {% if actif == 'compte' %}active{% endif %}" href="{% url 'mon_compte' %}"><i class="bi bi-person-gear"></i> Mon compte</a>
