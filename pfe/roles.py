@@ -240,6 +240,16 @@ def attestations_visibles(profil):
     return qs.filter(filiere_id__in=profil.masters_diriges) if profil.masters_diriges else qs.none()
 
 
+def conges_requis(vue):
+    """Accorder, modifier, lever ou annuler un congé académique : chef de la scolarité ou super utilisateur."""
+    @wraps(vue)
+    def wrapper(request, *args, **kwargs):
+        if not get_profil(request).est_chef_scolarite:
+            raise PermissionDenied("Congés académiques : réservé au chef de la scolarité et à l'administrateur.")
+        return vue(request, *args, **kwargs)
+    return wrapper
+
+
 def scolarite_requise(vue):
     @wraps(vue)
     def wrapper(request, *args, **kwargs):

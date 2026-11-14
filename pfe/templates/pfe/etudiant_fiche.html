@@ -34,6 +34,7 @@
     <span class="puce"><i class="bi bi-calendar3"></i> Session {{ inscription.session }}</span>
     {% if inscription.redouble %}<span class="puce"><i class="bi bi-arrow-repeat"></i> Redoublant</span>{% else %}<span class="puce"><i class="bi bi-check2-circle"></i> Passant</span>{% endif %}
     {% if etudiant.preinscrit %}<span class="puce"><i class="bi bi-hourglass-split"></i> Préinscrit</span>{% endif %}
+    {% if conge %}<span class="puce puce-conge"><i class="bi bi-pause-circle"></i> {% if conge.en_cours %}En congé académique{% else %}Année suspendue (congé levé){% endif %}</span>{% endif %}
   </div>
   {% if gere %}
     <div class="actions">
@@ -54,7 +55,7 @@
         <a class="btn btn-verre" href="{% url 'attestations_type' 'inscription' %}?matricule={{ etudiant.matricule|urlencode }}&licence={{ inscription.licence_id }}"
            title="Attestation d'inscription pour {{ inscription.licence }} · {{ inscription.session }}"><i class="bi bi-file-earmark-pdf"></i> Attestation</a>
       {% endif %}
-      <a href="{% url 'inscription_creer' %}?etudiant={{ etudiant.pk }}" class="btn btn-verre"><i class="bi bi-arrow-repeat"></i> Réinscrire</a>
+      {% if not conge_en_cours %}<a href="{% url 'inscription_creer' %}?etudiant={{ etudiant.pk }}" class="btn btn-verre"><i class="bi bi-arrow-repeat"></i> Réinscrire</a>{% endif %}
       <a href="{% url 'inscription_modifier' inscription.pk %}" class="btn btn-or-plein"><i class="bi bi-pencil"></i> Modifier</a>
     </div>
   {% endif %}
@@ -79,6 +80,73 @@
       </div>
     </div>
 
+    {% if conge or peut_gerer_conges and not etudiant.preinscrit %}
+    <!-- Congé académique : l'inscription de l'année est suspendue -->
+    <div class="card carte-gped" id="conge">
+      <div class="card-body">
+        <div class="entete-carte">
+          <span class="icone-carte"><i class="bi bi-pause-circle"></i></span>
+          <div><h3>Congé académique</h3>
+            <p>{% if conge %}{% if conge.en_cours %}En cours · inscription {{ inscription.session }} suspendue{% else %}Levé le {{ conge.levee_le|date:"d/m/Y" }} · année {{ inscription.session }} suspendue{% endif %}{% else %}Aucun congé pour {{ inscription.session }}{% endif %}</p></div>
+        </div>
+        {% if conge %}
+          <ul class="infos-compte">
+            <li><i class="bi bi-chat-left-text"></i><div><div class="lib">Motif</div><div class="val">{{ conge.motif|linebreaksbr }}</div></div></li>
+            <li><i class="bi bi-calendar-range"></i><div><div class="lib">Période</div><div class="val">Du {{ conge.date_debut|date:"d/m/Y" }}{% if conge.date_fin %} au {{ conge.date_fin|date:"d/m/Y" }}{% endif %}</div></div></li>
+            <li><i class="bi bi-person-check"></i><div><div class="lib">Enregistré le</div><div class="val">{{ conge.date_creation|date:"d/m/Y" }}{% if conge.accorde_par %} · {{ conge.accorde_par.get_full_name|default:conge.accorde_par.username }}{% endif %}</div></div></li>
+          </ul>
+          {% if gere and conge.justificatif %}
+            <a class="btn btn-sm btn-light" href="{% url 'conge_justificatif' conge.pk %}" target="_blank" rel="noopener"><i class="bi bi-file-earmark-pdf"></i> Justificatif ({{ conge.pages }} page{{ conge.pages|pluralize }}, {{ conge.taille|filesizeformat }})</a>
+          {% endif %}
+          {% if peut_gerer_conges %}
+            <div class="d-flex flex-wrap gap-2 mt-3">
+              {% if conge.en_cours %}
+                <form method="post" action="{% url 'conge_lever' conge.pk %}" onsubmit="return confirm('Lever le congé ? L’étudiant pourra de nouveau s’inscrire, au même niveau. L’année {{ inscription.session|escapejs }} reste suspendue.');">
+                  {% csrf_token %}<input type="hidden" name="suivant" value="{{ request.get_full_path }}#conge">
+                  <button class="btn btn-sm btn-primary"><i class="bi bi-play-circle"></i> Lever le congé</button>
+                </form>
+              {% endif %}
+              <button class="btn btn-sm btn-light" type="button" data-bs-toggle="collapse" data-bs-target="#form-conge" aria-expanded="false" aria-controls="form-conge"><i class="bi bi-pencil"></i> Modifier</button>
+              <form method="post" action="{% url 'conge_annuler' conge.pk %}" onsubmit="return confirm('Annuler ce congé (saisi par erreur) ? Il est supprimé avec son justificatif et l’inscription n’est plus suspendue.');">
+                {% csrf_token %}<input type="hidden" name="suivant" value="{{ request.get_full_path }}#conge">
+                <button class="btn btn-sm btn-danger-doux"><i class="bi bi-x-circle"></i> Annuler le congé</button>
+              </form>
+            </div>
+          {% endif %}
+        {% elif conge_en_cours %}
+          <div class="small text-secondary"><i class="bi bi-info-circle"></i> Un congé est déjà en cours pour {{ conge_en_cours.inscription.session }} : levez-le d'abord.</div>
+        {% elif peut_gerer_conges %}
+          <p class="small text-secondary mb-2">L'inscription de l'année est suspendue : l'étudiant sort de la liste, des statistiques et des notes ; relevés et attestations restent possibles. Aucune nouvelle inscription tant que le congé n'est pas levé.</p>
+          <button class="btn btn-sm btn-or-plein" type="button" data-bs-toggle="collapse" data-bs-target="#form-conge" aria-expanded="false" aria-controls="form-conge"><i class="bi bi-pause-circle"></i> Mettre en congé académique</button>
+        {% endif %}
+        {% if peut_gerer_conges and conge or peut_gerer_conges and not conge_en_cours %}
+          <form method="post" action="{% url 'conge_enregistrer' inscription.pk %}" enctype="multipart/form-data" class="collapse mt-3" id="form-conge">
+            {% csrf_token %}<input type="hidden" name="suivant" value="{{ request.get_full_path }}#conge">
+            <div class="row g-2">
+              <div class="col-12">
+                <label class="form-label small mb-1" for="motif-conge">Motif <span class="text-danger">*</span></label>
+                <textarea id="motif-conge" name="motif" class="form-control" rows="2" required maxlength="1000" placeholder="Ex. raisons de santé, autre formation…">{{ conge.motif|default:"" }}</textarea>
+              </div>
+              <div class="col-6">
+                <label class="form-label small mb-1" for="debut-conge">Début <span class="text-danger">*</span></label>
+                <input id="debut-conge" type="date" name="date_debut" class="form-control" required value="{% if conge %}{{ conge.date_debut|date:'Y-m-d' }}{% else %}{% now 'Y-m-d' %}{% endif %}">
+              </div>
+              <div class="col-6">
+                <label class="form-label small mb-1" for="fin-conge">Fin (facultatif)</label>
+                <input id="fin-conge" type="date" name="date_fin" class="form-control" value="{{ conge.date_fin|date:'Y-m-d' }}">
+              </div>
+              <div class="col-12">
+                <div class="form-label small mb-1">Justificatif {% if conge %}<span class="text-secondary">(renvoyez-le seulement pour le remplacer)</span>{% else %}<span class="text-danger">*</span>{% endif %}</div>
+                {% include 'pfe/_depot_piece.html' with nom='justificatif' %}
+              </div>
+              <div class="col-12"><button class="btn btn-primary btn-sm"><i class="bi bi-check2"></i> {% if conge %}Enregistrer les modifications{% else %}Accorder le congé{% endif %}</button></div>
+            </div>
+          </form>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
     <div class="card carte-gped">
       <div class="card-body">
         <div class="entete-carte">
@@ -90,7 +158,7 @@
             <a class="etape {% if i.pk == inscription.pk %}actuelle{% endif %}" href="{% url 'etudiant_fiche' i.pk %}">
               <span class="point"><i class="bi {% if i.pk == inscription.pk %}bi-geo-alt-fill{% else %}bi-circle{% endif %}"></i></span>
               <div style="min-width:0">
-                <div class="titre">{{ i.session }} · {{ i.licence }}</div>
+                <div class="titre">{{ i.session }} · {{ i.licence }}{% if i.conge %} <span class="pill pill-attention">Congé</span>{% endif %}</div>
                 <div class="detail">{{ i.filiere|default:"Sans programme" }}{% if i.semestre %} · {{ i.semestre }}{% endif %}{% if i.promotion %} · {{ i.promotion }}{% endif %}</div>
               </div>
             </a>

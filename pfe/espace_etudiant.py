@@ -110,6 +110,8 @@ HORS_PROMOTION = ("Votre promotion n'est pas prévue pour les inscriptions en li
                   "présentez-vous au Service de la Scolarité.")
 
 
+EN_CONGE = ("Vous êtes en congé académique : aucune inscription n'est possible tant que votre congé n'est pas "
+            "levé. Adressez-vous au Service de la Scolarité.")
 VERS_MASTER = ("Étudiant(e) en Master : utilisez la démarche « Master » avec votre adresse e-mail ; vous recevrez "
                "un lien personnel.")
 
@@ -183,6 +185,9 @@ def reinscription_master(derniere, session):
 
 def _verifier_ancien(e, session):
     """Ancien étudiant pas encore inscrit dans la session, d'une promotion prévue : sa dernière inscription."""
+    from .conges import conge_en_cours
+    if conge_en_cours(e.pk) is not None:
+        raise Refus(EN_CONGE)
     if e.etudiant_inscription.filter(session=session).exists():
         raise Refus(f"Vous êtes déjà inscrit(e) pour {session} : adressez-vous à la scolarité pour toute "
                     f"modification.")
@@ -298,10 +303,19 @@ def _famille(licence):
     return 'ANNEE' if 'ANN' in nom else re.sub(r'[\s\d]+', '', nom)
 
 
+def apres_conge(derniere):
+    """La dernière inscription est une année en congé académique (levé) : la reprise se fait au même niveau."""
+    from .models import CongeAcademique
+    return derniere is not None and CongeAcademique.objects.filter(inscription_id=derniere.pk).exists()
+
+
 def niveaux_prevus(derniere, session):
     """Niveaux prévus pour la promotion de l'étudiant dans la session (Promotion_Licence_Session),
-    de la même écriture que son dernier niveau quand c'est possible."""
+    de la même écriture que son dernier niveau quand c'est possible. Après un congé académique :
+    le même niveau (l'année du congé ne compte pas)."""
     from .models import Licence
+    if apres_conge(derniere):
+        return [derniere.licence]
     prevus = list(Licence.objects.filter(licence_promotion_session__promotion_id=derniere.promotion_id,
                                          licence_promotion_session__session=session).distinct())
     memes = [l for l in prevus if _famille(l) == _famille(derniere.licence)]
@@ -330,7 +344,8 @@ def prevision_reinscription(demande):
     niveaux = niveaux_prevus(d, demande.session) if d else []
     licence = demande.licence or (niveaux[0] if niveaux else (d.licence if d else None))
     return {'licence': licence, 'promotion': d.promotion if d else None, 'filiere': d.filiere if d else None,
-            'cycle': d.cycle if d else None, 'redouble': bool(d and licence and licence.pk == d.licence_id)}
+            'cycle': d.cycle if d else None,
+            'redouble': bool(d and licence and licence.pk == d.licence_id and not apres_conge(d))}
 
 
 def appliquer(demande, utilisateur, inscription=None):
@@ -375,6 +390,8 @@ def appliquer(demande, utilisateur, inscription=None):
             stockage.delete(demande.photo.name)
             demande.photo = ''
         if demande.type == DemandeEtudiant.REINSCRIPTION:
+            from .conges import bloquer_inscription
+            bloquer_inscription(e.pk)                   # ValidationError : congé académique en cours
             choix = {**prevision_reinscription(demande), **(inscription or {})}
             licence = choix['licence']
             if licence:

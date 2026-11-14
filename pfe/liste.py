@@ -103,7 +103,7 @@ def filtrer(profil, params):
     Applique le périmètre du profil puis les filtres de la requête.
     `params` : QueryDict (GET). Renvoie (queryset, session_id).
     """
-    qs = inscriptions_visibles(profil)
+    qs = inscriptions_visibles(profil).filter(conge__isnull=True)      # année en congé académique : suspendue
 
     # Aucune session choisie (ou « toutes ») : toutes les sessions ; sinon, la session choisie
     session_id = _entier(params.get('session'))

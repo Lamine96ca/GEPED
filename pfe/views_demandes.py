@@ -13,7 +13,7 @@ from collections import defaultdict
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.core.exceptions import PermissionDenied
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.db.models import Count, F, Q
 from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404, redirect, render
@@ -139,7 +139,11 @@ def demande_detail(request, pk):
             if inscription is False:
                 messages.error(request, "Choisissez le niveau, la promotion et le programme de l'inscription.")
                 return redirect(f"{request.path}")
-            espace.appliquer(demande, request.user, inscription)
+            try:
+                espace.appliquer(demande, request.user, inscription)
+            except ValidationError as erreur:
+                messages.error(request, ' '.join(erreur.messages))
+                return redirect(f"{request.path}")
             if demande.type == DemandeEtudiant.REINSCRIPTION:
                 messages.success(request, f"Réinscription validée : {e.prenom} {e.nom} est inscrit(e) en "
                                           f"{demande.licence} pour {demande.session}.")

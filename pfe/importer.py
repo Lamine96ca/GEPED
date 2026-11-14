@@ -560,12 +560,18 @@ def importer_etudiants(fichier, simulation=False, cycle=None, preinscription=Fal
             deja.update(Inscription.objects.filter(etudiant_id__in=etu_ids[i:i + 500])
                         .values_list('etudiant_id', 'session_id', 'licence_id'))
 
+        from .conges import etudiants_en_conge
+        en_conge = etudiants_en_conge(etu_ids)          # congé académique en cours : aucune inscription
         a_creer = []
         for numero, data, insc, k in valides:
             if k in rejetes:
                 rapport.erreur(numero, f"e-mail {nouveaux[k]['email']} déjà utilisé par un autre étudiant")
                 continue
             etu_id = ids[k]
+            if etu_id in en_conge:
+                rapport.erreur(numero, f"{etiquettes[k]} est en congé académique : aucune inscription tant que le "
+                                       f"congé n'est pas levé")
+                continue
             if (etu_id, insc['session'].pk, insc['licence'].pk) in deja:
                 rapport.doublons.append((numero, f"{etiquettes[k]} · {insc['licence']} · {insc['session']} : "
                                                  f"déjà inscrit(e) dans gePed"))

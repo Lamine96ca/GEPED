@@ -1,0 +1,64 @@
+{% extends 'pfe/base.html' %}
+{% load humanize %}
+{% block titre %}Congés académiques{% endblock %}
+{% block titre_page %}Congés académiques{% endblock %}
+{% block sous_titre %}<div class="sous-titre">Inscriptions suspendues : hors de la liste des étudiants, des statistiques et des notes · un congé s'accorde depuis la fiche de l'étudiant</div>{% endblock %}
+{% block contenu %}
+<div class="card carte-gped liste">
+  <div class="card-header">
+    <form method="get" class="d-flex flex-wrap gap-2">
+      <select name="session" class="form-select form-select-sm" style="height:38px;width:auto" title="Session" onchange="this.form.submit()">
+        <option value="">Toutes les sessions</option>
+        {% for s in sessions %}<option value="{{ s.pk }}"{% if s.pk == session_id %} selected{% endif %}>{{ s.annee }}{% if s.en_cours %} (en cours){% endif %}</option>{% endfor %}
+      </select>
+      <select name="etat" class="form-select form-select-sm" style="height:38px;width:auto" title="État" onchange="this.form.submit()">
+        <option value="">En cours et levés</option>
+        <option value="en_cours"{% if etat == 'en_cours' %} selected{% endif %}>En cours</option>
+        <option value="leves"{% if etat == 'leves' %} selected{% endif %}>Levés</option>
+      </select>
+      <div class="champ-icone" style="min-width:240px"><i class="bi bi-search"></i>
+        <input type="search" name="q" value="{{ q }}" class="form-control form-control-sm" style="height:38px" placeholder="Matricule, nom, INE">
+      </div>
+    </form>
+  </div>
+  <div class="px-4 pt-3 small text-secondary"><i class="bi bi-pause-circle text-primary"></i> {{ page.paginator.count|intcomma }} congé{{ page.paginator.count|pluralize }} · {{ en_cours|intcomma }} en cours au total</div>
+  <div class="table-responsive mt-2">
+    <table class="table table-etudiants mb-0">
+      <thead><tr><th>Étudiant</th><th>Année suspendue</th><th>Période</th><th>Motif</th><th>État</th><th class="text-end"></th></tr></thead>
+      <tbody>
+      {% for c in page %}
+        <tr style="cursor:default">
+          <td><a href="{% url 'etudiant_fiche' c.inscription_id %}#conge" style="color:var(--encre);font-weight:600">{{ c.inscription.etudiant.nom }}</a> {{ c.inscription.etudiant.prenom }}
+            <div class="matricule text-secondary">{{ c.inscription.etudiant.matricule|default:"" }}</div></td>
+          <td style="white-space:normal">{{ c.inscription.session }} · {{ c.inscription.licence }}<div class="small text-secondary">{{ c.inscription.filiere|default:"Sans programme" }}</div></td>
+          <td class="text-nowrap">{{ c.date_debut|date:"d/m/Y" }}{% if c.date_fin %} → {{ c.date_fin|date:"d/m/Y" }}{% endif %}</td>
+          <td style="white-space:normal;min-width:180px;max-width:320px">{{ c.motif|truncatechars:120 }}</td>
+          <td>{% if c.en_cours %}<span class="pill pill-attention">En cours</span>{% else %}<span class="pill pill-succes">Levé le {{ c.levee_le|date:"d/m/Y" }}</span>{% endif %}</td>
+          <td class="text-end text-nowrap">
+            {% if c.justificatif %}<a class="btn btn-icone" href="{% url 'conge_justificatif' c.pk %}" target="_blank" rel="noopener" title="Justificatif (PDF)"><i class="bi bi-file-earmark-pdf"></i></a>{% endif %}
+            <a class="btn btn-icone" href="{% url 'etudiant_fiche' c.inscription_id %}#conge" title="Fiche de l'étudiant"><i class="bi bi-person-lines-fill"></i></a>
+            {% if profil.est_chef_scolarite and c.en_cours %}
+              <form method="post" action="{% url 'conge_lever' c.pk %}" class="d-inline" onsubmit="return confirm('Lever le congé de {{ c.inscription.etudiant.prenom|escapejs }} {{ c.inscription.etudiant.nom|escapejs }} ? Il pourra de nouveau s’inscrire, au même niveau.');">
+                {% csrf_token %}<input type="hidden" name="suivant" value="{{ request.get_full_path }}">
+                <button class="btn btn-sm btn-light" title="Lever le congé"><i class="bi bi-play-circle"></i> Lever</button>
+              </form>
+            {% endif %}
+          </td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="6"><div class="etat-vide"><i class="bi bi-pause-circle"></i>Aucun congé académique{% if q or session_id or etat %} avec ces filtres{% endif %}.</div></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if page.has_other_pages %}
+    <div class="pied-tableau d-flex justify-content-end">
+      <ul class="pagination pagination-sm mb-0">
+        {% if page.has_previous %}<li class="page-item"><a class="page-link" href="?q={{ q|urlencode }}&session={{ session_id|default_if_none:'' }}&etat={{ etat }}&page={{ page.previous_page_number }}"><i class="bi bi-chevron-left"></i></a></li>{% endif %}
+        <li class="page-item active"><span class="page-link">{{ page.number }} / {{ page.paginator.num_pages }}</span></li>
+        {% if page.has_next %}<li class="page-item"><a class="page-link" href="?q={{ q|urlencode }}&session={{ session_id|default_if_none:'' }}&etat={{ etat }}&page={{ page.next_page_number }}"><i class="bi bi-chevron-right"></i></a></li>{% endif %}
+      </ul>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

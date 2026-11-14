@@ -218,6 +218,8 @@ def importer_notes(fichier, profil, utilisateur=None, simulation=False, pdf_ense
             return None
         return trouvees[0]
 
+    from .conges import etudiants_en_conge
+    en_conge = etudiants_en_conge({e.pk for e in etudiants.values()}) if sans_inscription else set()
     valides, vues, hors_perimetre = [], {}, []
     a_inscrire = defaultdict(list)          # (étudiant, session) -> [(n° de ligne, matière)] : inscription automatique
     for numero, matricule, session, programme, nom_matiere, valeurs in brutes:
@@ -232,6 +234,10 @@ def importer_notes(fichier, profil, utilisateur=None, simulation=False, pdf_ense
         candidates = [x for x in inscriptions.get((etu.pk, session.pk), [])
                       if programme is None or x.filiere_id == programme.pk]
         if not inscrit:
+            if etu.pk in en_conge:
+                rapport.erreur(numero, f"{matricule} est en congé académique : aucune inscription en {session} tant "
+                                       f"que le congé n'est pas levé")
+                continue
             if not profil.est_scolarite:
                 rapport.erreur(numero, f"{matricule} n'est pas inscrit en {session} : faites inscrire l'étudiant "
                                        f"par la scolarité")

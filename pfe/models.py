@@ -474,6 +474,43 @@ class PieceDossier(models.Model):
         return f"{self.get_type_display()} · {self.etudiant}"
 
 
+class CongeAcademique(models.Model):
+    """
+    Congé académique d'un étudiant : l'inscription de l'année concernée est SUSPENDUE (gardée, jamais
+    supprimée). Elle ne figure plus dans la liste des étudiants, les statistiques, les grilles de notes
+    ni les résultats ; les relevés et les attestations restent possibles. Tant que le congé n'est pas
+    levé, aucune nouvelle inscription n'est possible. Après la levée, la reprise se fait au même niveau.
+    Accordé, levé ou annulé par le chef de la scolarité ou un super utilisateur.
+    Justificatif : un seul fichier, mêmes règles que les pièces du dossier (PDF compressé, stockage privé).
+    """
+    inscription = models.OneToOneField(Inscription, on_delete=models.CASCADE, related_name='conge',
+                                       verbose_name='Inscription suspendue')
+    motif = models.TextField('Motif')
+    date_debut = models.DateField('Début du congé')
+    date_fin = models.DateField('Fin du congé', null=True, blank=True)
+    justificatif = models.FileField('Justificatif (PDF)', upload_to='conges/%Y', storage=stockage_prive, blank=True)
+    pages = models.PositiveSmallIntegerField('Pages', default=0)
+    taille = models.PositiveIntegerField('Taille (octets)', default=0)
+    accorde_par = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+                                    verbose_name='Enregistré par')
+    date_creation = models.DateTimeField('Enregistré le', auto_now_add=True)
+    levee_le = models.DateTimeField('Levé le', null=True, blank=True)
+    levee_par = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+                                  verbose_name='Levé par')
+
+    class Meta:
+        verbose_name = 'Congé académique'
+        verbose_name_plural = 'Congés académiques'
+        ordering = ['-date_debut', '-id']
+
+    def __str__(self):
+        return f"Congé académique {self.inscription.session} · {self.inscription.etudiant}"
+
+    @property
+    def en_cours(self):
+        return self.levee_le is None
+
+
 class DemandeEtudiant(models.Model):
     """
     Demande déposée par l'étudiant depuis l'espace étudiant (sans compte) :

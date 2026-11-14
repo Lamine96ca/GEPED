@@ -139,6 +139,12 @@ class InscriptionForm(BootstrapMixin, forms.ModelForm):
         """unique_together (etudiant, session, licence) : l'étudiant n'est pas encore lié au formulaire."""
         if not etudiant.pk:            # nouvel étudiant : aucune inscription possible
             return True
+        if not self.instance.pk:       # congé académique en cours : aucune nouvelle inscription
+            from .conges import conge_en_cours, message_blocage
+            conge = conge_en_cours(etudiant.pk)
+            if conge is not None:
+                self.add_error(None, message_blocage(conge))
+                return False
         session, licence = self.cleaned_data.get('session'), self.cleaned_data.get('licence')
         doublon = Inscription.objects.filter(etudiant=etudiant, session=session, licence=licence)
         if self.instance.pk:

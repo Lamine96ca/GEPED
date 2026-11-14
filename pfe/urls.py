@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import views, views_demandes, views_notes, views_personnel, views_releves, views_soutenances
+from . import views, views_conges, views_demandes, views_notes, views_personnel, views_releves, views_soutenances
 
 urlpatterns = [
     path('', views.tableau_de_bord, name='tableau_de_bord'),
@@ -26,6 +26,11 @@ urlpatterns = [
     path('scolarite/inscriptions/<int:pk>/fiche.pdf', views.inscription_fiche_pdf, name='inscription_fiche_pdf'),
     path('scolarite/inscriptions/<int:pk>/supprimer/', views.inscription_supprimer, name='inscription_supprimer'),
     path('scolarite/importer/', views.importer, name='importer'),
+    path('scolarite/conges/', views_conges.conges_liste, name='conges_liste'),
+    path('scolarite/inscriptions/<int:pk>/conge/', views_conges.conge_enregistrer, name='conge_enregistrer'),
+    path('scolarite/conges/<int:pk>/lever/', views_conges.conge_lever, name='conge_lever'),
+    path('scolarite/conges/<int:pk>/annuler/', views_conges.conge_annuler, name='conge_annuler'),
+    path('scolarite/conges/<int:pk>/justificatif/', views_conges.conge_justificatif, name='conge_justificatif'),
     path('scolarite/importer/modele/', views.modele_import, name='modele_import'),
     path('matieres/', views.matieres_liste, name='matieres_liste'),
     path('matieres/ajouter/', views.matiere_creer, name='matiere_creer'),

@@ -2359,6 +2359,85 @@ class GpedTests(TestCase):
         self.assertContains(self.client.get(url, {'type': 'inscription', 'statut': 'validee'}), 'validée ailleurs')
         self.assertContains(self.client.get(reverse('demande_detail', args=[d_insc.pk])), 'hors des demandes en ligne')
 
+    def test_conge_academique(self):
+        from .models import Attestation, CongeAcademique, Matiere, Note, Resultat, stockage_prive
+        from .notes import recalculer
+        from .views_notes import inscrits_de
+        from . import espace_etudiant as espace
+        dossier = self._espace()
+        Session.objects.filter(pk=self.session.pk).update(reinscriptions_ouvertes=True)
+        s3, _ = self._semestres()
+        e = Etudiant.objects.create(matricule='CONGE1', prenom='Awa', nom='KABA', email='awa@t.local', ine='INEC1',
+                                    telephone='612')
+        Inscription.objects.create(etudiant=e, session=self.s2425, licence=self.l2, filiere=self.info,
+                                   promotion=self.p18, cycle='Licence')
+        annee = Inscription.objects.create(etudiant=e, session=self.session, licence=self.licence, filiere=self.info,
+                                           promotion=self.p18, cycle='Licence')
+        algo = Matiere.objects.create(nom='Algo', filiere=self.info, semestre=s3, licence=self.licence,
+                                      session=self.session, credit=6)
+        Note.objects.create(etudiant=e, matiere=algo, moyenne=7, moyenne_deposee=True)
+        recalculer([e.pk])
+        self.assertTrue(Resultat.objects.filter(etudiant=e, session=self.session).exists())
+        url = reverse('conge_enregistrer', args=[annee.pk])
+        demande = {'motif': 'Raisons de santé', 'date_debut': '2026-01-10'}
+        justificatif = lambda: SimpleUploadedFile('conge.pdf', b'%PDF-1.4 justificatif')  # noqa: E731
+
+        # Droits : ni la scolarité (non chef), ni un chef de programme ; le chef de la scolarité oui
+        for login in ('scol', 'info'):
+            self.connecter(login)
+            self.assertEqual(self.client.post(url, {**demande, 'justificatif': justificatif()}).status_code, 403)
+        self.assertNotContains(self.client.get(reverse('etudiant_fiche', args=[annee.pk])), 'Mettre en congé académique')
+        Personnel.objects.filter(utilisateur__username='scol').update(chef=True)
+        self.connecter('scol')
+        self.assertContains(self.client.get(reverse('etudiant_fiche', args=[annee.pk])), 'Mettre en congé académique')
+        self.client.post(url, demande)                                       # justificatif obligatoire
+        self.assertFalse(CongeAcademique.objects.exists())
+        self.client.post(url, {**demande, 'justificatif': justificatif()})
+        conge = CongeAcademique.objects.get(inscription=annee)
+        self.assertTrue(conge.en_cours)
+        self.assertTrue(stockage_prive().exists(conge.justificatif.name))
+        self.assertIn('prive', stockage_prive().path(conge.justificatif.name))
+        self.assertEqual(self.client.get(reverse('conge_justificatif', args=[conge.pk]))['Content-Type'],
+                         'application/pdf')
+        self.assertContains(self.client.get(reverse('etudiant_fiche', args=[annee.pk])), 'En congé académique')
+        self.assertContains(self.client.get(reverse('conges_liste')), 'KABA')
+
+        # Année suspendue : hors de la liste, des grilles de notes et des résultats
+        self.assertNotIn('CONGE1', str(self.donnees(session=self.session.pk)['lignes']))
+        self.assertNotIn(annee, list(inscrits_de(algo)))
+        self.assertFalse(Resultat.objects.filter(etudiant=e, session=self.session).exists())
+        # Attestation et relevé restent possibles
+        self.client.post(reverse('attestations_type', args=['inscription']), {'matricule': 'CONGE1', 'licence': self.licence.pk})
+        self.assertTrue(Attestation.objects.filter(etudiant=e).exists())
+        self.assertEqual(self.client.get(reverse('releves'), {'etudiant': e.pk}).status_code, 200)
+
+        # Congé en cours : aucune inscription (scolarité, en ligne)
+        r = self.client.get(reverse('inscription_creer'), {'etudiant': e.pk})
+        self.assertRedirects(r, f"{reverse('etudiant_fiche', args=[annee.pk])}#conge", fetch_redirect_response=False)
+        with self.assertRaises(espace.Refus):
+            espace.identifier_reinscription('INEC1', 'CONGE1', self.session)
+
+        # Levée : il peut se réinscrire, au même niveau, sans être redoublant ; l'année reste suspendue
+        self.client.post(reverse('conge_lever', args=[conge.pk]))
+        conge.refresh_from_db()
+        self.assertFalse(conge.en_cours)
+        suivante = Session.objects.create(annee='2026-2027')
+        self.assertEqual(espace.niveaux_prevus(annee, suivante), [self.licence])
+        self.assertEqual(self.client.get(reverse('inscription_creer'), {'etudiant': e.pk}).status_code, 200)
+        self.assertNotIn('CONGE1', str(self.donnees(session=self.session.pk)['lignes']))
+
+        # Annulation (saisi par erreur) : supprimé avec son fichier, l'année redevient normale
+        nom = conge.justificatif.name
+        self.client.post(reverse('conge_annuler', args=[conge.pk]))
+        self.assertFalse(CongeAcademique.objects.exists())
+        self.assertFalse(stockage_prive().exists(nom))
+        self.assertIn('CONGE1', str(self.donnees(session=self.session.pk)['lignes']))
+        self.assertTrue(Resultat.objects.filter(etudiant=e, session=self.session).exists())
+        # Chef de département : pas d'accès à la liste des congés
+        self.connecter('dep')
+        self.assertEqual(self.client.get(reverse('conges_liste')).status_code, 403)
+        self.assertTrue(dossier)
+
     def test_inscription_supprimee_la_demande_en_ligne_est_rouverte(self):
         from django.utils import timezone
         from .models import DemandeEtudiant

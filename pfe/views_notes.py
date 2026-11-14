@@ -89,7 +89,7 @@ def _cascade(profil, f):
 def inscrits_de(matiere):
     """Étudiants inscrits (pas préinscrits) dans le programme, la session et la licence de la matière."""
     return (Inscription.objects.filter(filiere_id=matiere.filiere_id, session_id=matiere.session_id,
-                                       licence_id=matiere.licence_id, etudiant__preinscrit=False)
+                                       licence_id=matiere.licence_id, etudiant__preinscrit=False, conge__isnull=True)
             .select_related('etudiant').order_by('etudiant__nom', 'etudiant__prenom'))
 
 
@@ -118,7 +118,8 @@ def notes_matieres(request):
     if triplets:
         for t in (Inscription.objects.filter(filiere_id__in={t[0] for t in triplets},
                                              session_id__in={t[1] for t in triplets},
-                                             licence_id__in={t[2] for t in triplets}, etudiant__preinscrit=False)
+                                             licence_id__in={t[2] for t in triplets}, etudiant__preinscrit=False,
+                                             conge__isnull=True)
                   .values_list('filiere_id', 'session_id', 'licence_id').annotate(n=Count('id'))):
             effectifs[t[:3]] = t[3]
     delibres = semestres_delibres(matieres)
@@ -415,7 +416,8 @@ def notes_resultats(request):
                         .annotate(nb_notes=Count('notes', filter=Q(notes__moyenne_finale__isnull=False)))
                         .order_by('nom'))
         inscrits = list(Inscription.objects.filter(filiere_id=f['programme'], session_id=f['session'],
-                                                   licence_id=semestre.licence_id, etudiant__preinscrit=False)
+                                                   licence_id=semestre.licence_id, etudiant__preinscrit=False,
+                                                   conge__isnull=True)
                         .values_list('etudiant_id', flat=True))
         if matieres and inscrits:
             recalculer(inscrits)                       # toujours à jour (nouvelle matière, note modifiée…)

@@ -71,7 +71,7 @@ def _repartition_par_sexe(qs, champ, defaut, trier_par_effectif=False, limite=No
 def tableau_de_bord(request):
     profil = get_profil(request)
     session = liste.session_par_defaut()
-    qs = inscriptions_visibles(profil)
+    qs = inscriptions_visibles(profil).filter(conge__isnull=True)      # congés académiques : hors des effectifs
     if session:
         qs = qs.filter(session=session)
 
@@ -302,12 +302,14 @@ def _inscription_visible(request, pk):
 def etudiant_fiche(request, pk):
     inscription = _inscription_visible(request, pk)
     historique = inscriptions_visibles(get_profil(request)).filter(
-        etudiant=inscription.etudiant).select_related('session', 'licence', 'semestre', 'filiere', 'promotion'
+        etudiant=inscription.etudiant).select_related('session', 'licence', 'semestre', 'filiere', 'promotion', 'conge'
                                                        ).order_by('-session__annee')
-    from .models import PieceDossier
+    from . import conges
+    from .models import CongeAcademique, PieceDossier
     profil = get_profil(request)
     # Scolarité, ou directeur de Master pour une inscription dans un de ses Masters
     gere = inscriptions_gerees(profil).filter(pk=inscription.pk).exists()
+    conge = CongeAcademique.objects.filter(inscription=inscription).select_related('accorde_par', 'levee_par').first()
     return render(request, 'pfe/etudiant_fiche.html', {
         'inscription': inscription,
         'etudiant': inscription.etudiant,
@@ -319,6 +321,10 @@ def etudiant_fiche(request, pk):
         # Dossier (pièces) : documents personnels, pour ceux qui gèrent l'étudiant
         'pieces': (inscription.etudiant.pieces.select_related('session', 'utilisateur') if gere else None),
         'types_pieces': PieceDossier.TYPES,
+        # Congé académique : celui de cette inscription, et celui en cours (qui bloque toute inscription)
+        'conge': conge,
+        'conge_en_cours': conges.conge_en_cours(inscription.etudiant_id),
+        'peut_gerer_conges': gere and profil.est_chef_scolarite,
     })
 
 
@@ -493,6 +499,11 @@ def inscription_creer(request):
     etudiant = None
     if request.GET.get('etudiant'):
         etudiant = get_object_or_404(etudiants_geres(profil), pk=request.GET['etudiant'])
+        from .conges import conge_en_cours, message_blocage
+        conge = conge_en_cours(etudiant.pk)
+        if conge is not None:                     # aucune inscription tant que le congé n'est pas levé
+            messages.error(request, message_blocage(conge))
+            return redirect(f"{reverse('etudiant_fiche', args=[conge.inscription_id])}#conge")
     if request.method == 'POST':
         form_etu = EtudiantForm(request.POST, request.FILES, instance=etudiant, prefix='etu', scolarite=scolarite)
         form_insc = InscriptionForm(request.POST, prefix='insc', programmes=programmes)
@@ -544,16 +555,17 @@ def _prevision_reinscription(etudiant):
     """
     if etudiant is None:
         return {}
-    from .espace_etudiant import niveaux_prevus
+    from .espace_etudiant import apres_conge, niveaux_prevus
     session = liste.session_par_defaut()
     d = _derniere_inscription(etudiant)
     if d is None or session is None or d.session_id == session.pk:
         return {}
-    niveaux = niveaux_prevus(d, session)
+    niveaux = niveaux_prevus(d, session)          # après un congé académique : le même niveau
     licence = niveaux[0] if niveaux else None
     return {k: v for k, v in {
         'session': session.pk, 'cycle': d.cycle, 'filiere': d.filiere_id, 'promotion': d.promotion_id,
-        'licence': licence.pk if licence else None, 'redouble': bool(licence and licence.pk == d.licence_id),
+        'licence': licence.pk if licence else None,
+        'redouble': bool(licence and licence.pk == d.licence_id and not apres_conge(d)),
     }.items() if v not in (None, '')}
 
 
@@ -666,7 +678,9 @@ def statistiques(request):
     cycles = dict(Inscription.CYCLE_CHOICES)
     cycle = g.get('cycle') if g.get('cycle') in cycles else ''
 
-    base = inscriptions_visibles(profil).filter(etudiant__preinscrit=False)
+    # Congés académiques : hors des effectifs, comptés à part
+    base = inscriptions_visibles(profil).filter(etudiant__preinscrit=False, conge__isnull=True)
+    conges_annee = inscriptions_visibles(profil).filter(conge__isnull=False)
     resultats = Resultat.objects.filter(niveau=Resultat.ANNEE, filiere__isnull=False)
     sout = Soutenance.objects.all()
     if profil.role == 'programme':
@@ -674,11 +688,13 @@ def statistiques(request):
         sout = sout.filter(filiere_id__in=profil.programme_ids)
     if cycle:
         base, resultats, sout = base.filter(cycle=cycle), resultats.filter(cycle=cycle), sout.filter(cycle=cycle)
+        conges_annee = conges_annee.filter(cycle=cycle)
     if programme_id:
-        base = base.filter(filiere_id=programme_id)
+        base, conges_annee = base.filter(filiere_id=programme_id), conges_annee.filter(filiere_id=programme_id)
         resultats, sout = resultats.filter(filiere_id=programme_id), sout.filter(filiere_id=programme_id)
     if session_id:
         resultats, sout = resultats.filter(session_id=session_id), sout.filter(session_id=session_id)
+        conges_annee = conges_annee.filter(session_id=session_id)
     s = st.calculer(base, session_id, resultats, sout)
     session_choisie = next((x for x in sessions if x.pk == session_id), None)
     programme_choisi = next((p for p in programmes if p.pk == programme_id), None)
@@ -695,6 +711,7 @@ def statistiques(request):
         **s, 'sessions': sessions, 'liste_programmes': programmes, 'cycles': Inscription.CYCLE_CHOICES,
         'filtres': {'session': session_id, 'programme': programme_id, 'cycle': cycle},
         'filtres_texte': filtres_texte, 'params': params.urlencode(), 'actif': 'statistiques',
+        'nb_conges': conges_annee.count(),
         'blocs_reussite': [('Réussite par programme', s['reussite']['programmes'], 'col-xl-7'),
                            ('Réussite par niveau', s['reussite']['niveaux'], 'col-xl-5')],
     })

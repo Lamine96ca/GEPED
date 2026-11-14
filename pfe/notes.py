@@ -278,7 +278,8 @@ def recalculer(etudiant_ids):
     ids = list({i for i in etudiant_ids if i})
     if not ids:
         return
-    inscriptions = list(Inscription.objects.filter(etudiant_id__in=ids, filiere__isnull=False)
+    # Année en congé académique : suspendue, elle ne compte pas (ni moyenne, ni rang, ni cycle)
+    inscriptions = list(Inscription.objects.filter(etudiant_id__in=ids, filiere__isnull=False, conge__isnull=True)
                         .select_related('session'))
     triplets = {(i.filiere_id, i.session_id, i.licence_id) for i in inscriptions}
     matieres_par_triplet = defaultdict(list)
@@ -327,10 +328,13 @@ def recalculer(etudiant_ids):
             notes_manquantes=sum(a['notes_manquantes'] for _, a in retenues)))
 
     with transaction.atomic():
-        Resultat.objects.filter(etudiant_id__in=ids).delete()
+        anciens = Resultat.objects.filter(etudiant_id__in=ids)
+        # Groupes d'où un résultat disparaît (congé académique) : leurs rangs sont refaits aussi
+        groupes = set(anciens.values_list('niveau', 'filiere_id', 'session_id'))
+        anciens.delete()
         Resultat.objects.bulk_create(nouveaux, batch_size=500)
         # Rangs : on reprend tous les étudiants des groupes touchés (pas seulement ceux recalculés)
-        groupes = {(x.niveau, x.filiere_id, x.session_id) for x in nouveaux}
+        groupes |= {(x.niveau, x.filiere_id, x.session_id) for x in nouveaux}
         concernes = []
         for niveau, filiere_id, session_id in groupes:
             concernes.extend(Resultat.objects.filter(niveau=niveau, filiere_id=filiere_id, session_id=session_id))
