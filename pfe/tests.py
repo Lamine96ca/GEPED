@@ -1294,6 +1294,8 @@ class GpedTests(TestCase):
                                    f'moyenne_{e1.pk}': '6,5', f'rattrapage_{e1.pk}': '7'})
         self.assertRedirects(r, url)
         n0, n1 = Note.objects.get(etudiant=e0, matiere=algo), Note.objects.get(etudiant=e1, matiere=algo)
+        self.assertEqual((n0.saisie_par.username, n0.import_saisie), ('info', None))     # auteur de la saisie
+        self.assertIsNotNone(n0.date_saisie)
         self.assertEqual((n0.moyenne, n0.moyenne_finale, n0.moyenne_deposee), (7.2, 7.2, False))
         self.assertEqual((n1.moyenne, n1.moyenne_finale, n1.par_session), (6.5, 7, True))
         self.assertTrue(Resultat.objects.filter(etudiant=e0, niveau=Resultat.SEMESTRE, semestre=s1).exists())
@@ -1314,14 +1316,37 @@ class GpedTests(TestCase):
         self.assertEqual((h.utilisateur.username, h.motif), ('info', 'Erreur de report'))
         self.assertTrue((pathlib_path(dossier) / 'prive' / h.justificatif.name).exists())
 
-        # Délibéré, année en cours : toujours modifiable par le chef de programme (motif + PDF)
+        # Délibéré : fermé au chef de programme, sauf pendant une autorisation du chef de la scolarité
         Deliberation.objects.create(filiere=self.info, session=self.session, semestre=s1)
-        self.assertNotContains(self.client.get(url), 'disabled')
+        r = self.client.get(url)
+        self.assertContains(r, 'disabled')
+        self.assertContains(r, 'autorisation du chef de la scolarité')
+        self.assertNotContains(r, 'bi-clock-history')                         # historique : pas pour un programme
+        modif_jury = {**modif, f'examen_{e0.pk}': '10', 'motif': 'PV du jury'}
+        self.assertEqual(self.client.post(url, {**modif_jury, 'justificatif': SimpleUploadedFile('pv.pdf', b'%PDF-1.4 pv')})
+                         .status_code, 403)
+        import datetime
+        from django.utils import timezone
+        from .models import AutorisationNotes
+        a = AutorisationNotes.objects.create(session=self.session, date_debut=timezone.localdate(),
+                                             date_fin=timezone.localdate() + datetime.timedelta(days=3))
+        a.programmes.set([self.gc])                                           # autre programme : toujours fermé
+        a.licences.set([self.licence])
+        self.assertContains(self.client.get(url), 'disabled')
+        a.programmes.add(self.info)
+        r = self.client.get(url)
+        self.assertNotContains(r, 'disabled')
+        self.assertContains(r, "Autorisation de la scolarité jusqu'au")
         with override_settings(BASE_DIR=pathlib_path(dossier)):
-            self.client.post(url, {**modif, f'examen_{e0.pk}': '10', 'motif': 'PV du jury',
-                                   'justificatif': SimpleUploadedFile('pv.pdf', b'%PDF-1.4 pv')})
+            self.client.post(url, {**modif_jury, 'justificatif': SimpleUploadedFile('pv.pdf', b'%PDF-1.4 pv')})
         h = NoteHistorique.objects.filter(apres_deliberation=True).get()
         self.assertEqual((h.motif, h.apres['examen']), ('PV du jury', 10))
+        # La scolarité modifie un semestre délibéré sans autorisation ; elle voit l'historique de chaque note
+        a.delete()
+        self.connecter('scol')
+        r = self.client.get(url)
+        self.assertNotContains(r, 'disabled')
+        self.assertContains(r, reverse('note_historique', args=[n0.pk]))
 
     def test_admin_niveaux_des_promotions(self):
         from django.contrib.auth.models import User
@@ -1435,6 +1460,7 @@ class GpedTests(TestCase):
         self.assertEqual([x.pk for x in r.context['page']], [fin.pk])
 
     def test_super_utilisateur_modifie_les_notes_sans_justificatif(self):
+        self._prive()
         from django.contrib.auth.models import User
         from .forms import ImportNotesForm
         from .models import Note, NoteHistorique
@@ -1538,9 +1564,18 @@ class GpedTests(TestCase):
         Personnel.objects.filter(utilisateur__username='info').update(chef=True)
         self.connecter('info')
         self.assertEqual(self.client.post(url, post).status_code, 403)
-        # Informatique devient son propre département : son chef peut modifier
+        # Même chef de département : un programme ne rouvre une année écoulée que sur autorisation
         Service.objects.filter(pk=self.info.pk).update(departement=self.info)
-        self.assertContains(self.client.get(url), 'En tant que chef')
+        self.assertContains(self.client.get(url), 'disabled')
+        import datetime
+        from django.utils import timezone
+        from .models import AutorisationNotes
+        a = AutorisationNotes.objects.create(session=self.s2425, date_debut=timezone.localdate(),
+                                             date_fin=timezone.localdate() + datetime.timedelta(days=1))
+        a.programmes.set([self.info])
+        a.licences.set([self.l2])
+        self.assertNotContains(self.client.get(url), 'disabled')
+        a.delete()
         # Chef de la scolarité : peut modifier
         Personnel.objects.filter(utilisateur__username='scol').update(chef=True)
         self.connecter('scol')
@@ -1597,6 +1632,17 @@ class GpedTests(TestCase):
             self.connecter('scol')
             self.client.post(reverse('piece_supprimer', args=[p.pk]))
             self.assertFalse(PieceDossier.objects.exists())
+
+    def _prive(self):
+        """Stockage privé temporaire : un import réel garde le fichier importé et le PDF de l'enseignant."""
+        import shutil, tempfile
+        from django.test import override_settings
+        dossier = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, dossier, True)
+        reglages = override_settings(BASE_DIR=pathlib_path(dossier))
+        reglages.enable()
+        self.addCleanup(reglages.disable)
+        return dossier
 
     def _espace(self):
         """Espace étudiant : cache local (essais limités) et dossier privé temporaires."""
@@ -2587,6 +2633,7 @@ class GpedTests(TestCase):
 
     def test_import_notes_inscrit_automatiquement(self):
         """Notes d'une session où l'étudiant n'est pas inscrit : la scolarité l'y inscrit automatiquement."""
+        self._prive()
         from .import_notes import importer_notes
         from .models import Matiere, Note
         from .roles import get_profil
@@ -2781,6 +2828,7 @@ class GpedTests(TestCase):
         self.assertEqual(f.save().nom_signature, 'Mme Awa BAH')
 
     def test_import_des_notes(self):
+        self._prive()
         from .import_matieres import ImportRefuse
         from .import_notes import importer_notes
         from .models import Deliberation, Note, NoteHistorique
@@ -2853,16 +2901,41 @@ class GpedTests(TestCase):
                                    ['M2', 'Topographie', '2025-2026', None, None, None, 6, None]), info,
                            pdf_enseignant=pdf())
         self.assertEqual(Note.objects.get(etudiant__matricule='M0', matiere=anglais).moyenne_finale, 6.5)  # inchangée
-        # Semestre délibéré de l'année en cours : la note est mise à jour (avec le PDF)
+        # Semestre délibéré : fermé au programme, sauf pendant une autorisation du chef de la scolarité
         Deliberation.objects.create(filiere=self.info, session=self.session, semestre=s1)
+        ligne_deliberee = ['M0', 'Anglais', '2025-2026', None, None, None, 8, None]
+        r = importer_notes(fichier(ligne_deliberee), info, User.objects.get(username='info'), pdf_enseignant=pdf())
+        self.assertEqual(r.mises_a_jour, 0)
+        self.assertIn('sans autorisation de la scolarité', r.erreurs[0][1])
+        import datetime
+        from django.utils import timezone
+        from .models import AutorisationNotes
+        aujourd_hui = timezone.localdate()
+        passee = AutorisationNotes.objects.create(session=self.session, date_debut=aujourd_hui - datetime.timedelta(10),
+                                                  date_fin=aujourd_hui - datetime.timedelta(1))
+        passee.programmes.set([self.info])
+        passee.licences.set([anglais.licence])
+        r = importer_notes(fichier(ligne_deliberee), info, User.objects.get(username='info'), pdf_enseignant=pdf())
+        self.assertEqual(r.mises_a_jour, 0)                                   # autorisation terminée
+        passee.date_fin = aujourd_hui
+        passee.save()
         with override_settings(BASE_DIR=pathlib_path(dossier)):
-            r = importer_notes(fichier(['M0', 'Anglais', '2025-2026', None, None, None, 8, None]), info,
-                               User.objects.get(username='info'), pdf_enseignant=pdf())
+            r = importer_notes(fichier(ligne_deliberee), info, User.objects.get(username='info'),
+                               pdf_enseignant=pdf())
         self.assertEqual((r.mises_a_jour, r.erreurs), (1, []))
-        # Journal : le chef de programme voit le PDF de son import
+        h = NoteHistorique.objects.filter(import_notes__utilisateur__username='info').get()
+        self.assertTrue(h.apres_deliberation)
+        # Le fichier importé est gardé (stockage privé), avec le programme de la personne qui importe
+        imp = h.import_notes
+        self.assertTrue((pathlib_path(dossier) / 'prive' / imp.fichier_importe.name).exists())
+        self.assertEqual(list(imp.services.all()), [self.info])
+        # Journal : le chef de programme voit le PDF et le fichier de son import
         imp = ImportNotes.objects.filter(utilisateur__username='info').get()
         with override_settings(BASE_DIR=pathlib_path(dossier)):
             self.assertEqual(self.client.get(reverse('notes_import_pdf', args=[imp.pk]))['Content-Type'], 'application/pdf')
+            r = self.client.get(reverse('notes_import_excel', args=[imp.pk]))
+            self.assertEqual(r.status_code, 200)
+            self.assertIn('attachment', r['Content-Disposition'])
         self.assertContains(self.client.get(reverse('notes_importer')), 'Derniers imports')
 
         # Année écoulée : notes manquantes créées ; note déjà enregistrée modifiée seulement par un chef
@@ -2879,6 +2952,128 @@ class GpedTests(TestCase):
         self.assertIn('année écoulée', r.erreurs[0][1])
         self.assertEqual(Note.objects.get(etudiant=e0, matiere=reseaux).moyenne_finale, 6)
         self.assertEqual(self.client.get(reverse('notes_modele')).status_code, 200)
+
+    def test_direction_des_etudes_et_suivi_des_notes(self):
+        import datetime
+        from django.core.files.base import ContentFile
+        from django.utils import timezone
+        from .models import AutorisationNotes, CongeAcademique, ImportNotes, Note, NoteHistorique, stockage_prive
+        self._prive()
+        s1, algo, _ = self._preparer_notes()
+        dge = Service.objects.create(nom='DIRECTION GENERALE DES ETUDES', code='0000')    # sans accents ni casse
+        u = User.objects.create_user('dge', password='x')
+        Personnel.objects.create(utilisateur=u, prenom='d', nom='G', telephone='99', email='dge@t.local',
+                                 fonc='Directeur').service.add(dge)
+        e0 = Etudiant.objects.get(matricule='M0')
+        note = Note.objects.create(etudiant=e0, matiere=algo, moyenne=8, moyenne_deposee=True)
+        imp = ImportNotes.objects.create(
+            fichier='notes_algo.xlsx', programmes='Informatique',
+            fichier_importe=stockage_prive().save('imports_notes/2026/notes_algo.xlsx', ContentFile(b'PK excel')),
+            pdf_enseignant=stockage_prive().save('justificatifs/imports_notes/2026/fiche.pdf', ContentFile(b'%PDF-1.4')))
+        imp.services.set([self.info])
+        h = NoteHistorique.objects.create(note=note, utilisateur=User.objects.get(username='info'),
+                                          avant={'moyenne': 7}, apres={'moyenne': 8}, motif='Erreur de report',
+                                          import_notes=imp, justificatif=imp.pdf_enseignant.name)
+        conge = CongeAcademique.objects.create(inscription=Inscription.objects.get(etudiant__matricule='M2'),
+                                               motif='Santé', date_debut=timezone.localdate())
+
+        # Direction Générale des Études : consulte tout, ne modifie rien
+        self.connecter('dge')
+        self.assertEqual(self.donnees()['total'], 2)                         # M2 en congé : hors de la liste
+        self.assertEqual(self.client.get(reverse('statistiques')).status_code, 200)
+        r = self.client.get(reverse('notes_liste'))
+        self.assertContains(r, 'N0')
+        self.assertContains(r, reverse('note_historique', args=[note.pk]))
+        self.assertNotContains(r, 'href="/notes/"')                           # pas de saisie
+        self.assertNotContains(r, reverse('notes_saisie', args=[algo.pk]))
+        self.assertEqual(self.client.get(reverse('notes_resultats'), {
+            'session': self.session.pk, 'programme': self.info.pk, 'semestre': s1.pk}).status_code, 200)
+        for url in (reverse('notes_saisie', args=[algo.pk]), reverse('notes_importer'), reverse('notes_matieres'),
+                    reverse('notes_autorisations')):
+            self.assertEqual(self.client.get(url).status_code, 403, url)
+        self.assertEqual(self.client.post(reverse('notes_deliberer'), {
+            'session': self.session.pk, 'programme': self.info.pk, 'semestre': s1.pk}).status_code, 403)
+        self.assertContains(self.client.get(reverse('notes_historique')), 'Erreur de report')
+        r = self.client.get(reverse('note_historique', args=[note.pk]))
+        self.assertContains(r, 'Erreur de report')
+        self.assertContains(r, reverse('notes_import_excel', args=[imp.pk]))
+        self.assertEqual(self.client.get(reverse('notes_historique_justificatif', args=[h.pk]))['Content-Type'],
+                         'application/pdf')
+        r = self.client.get(reverse('notes_imports'))
+        self.assertContains(r, 'notes_algo.xlsx')
+        self.assertContains(r, 'Informatique')
+        r = self.client.get(reverse('notes_import_excel', args=[imp.pk]))
+        self.assertEqual((r.status_code, b''.join(r.streaming_content)), (200, b'PK excel'))
+        self.assertIn('attachment', r['Content-Disposition'])
+        r = self.client.get(reverse('conges_liste'))
+        self.assertContains(r, '>N2</a>')
+        self.assertNotContains(r, reverse('conge_justificatif', args=[conge.pk]))
+        self.assertNotContains(r, reverse('conge_lever', args=[conge.pk]))
+        self.assertEqual(self.client.get(reverse('conge_justificatif', args=[conge.pk])).status_code, 403)
+        self.assertEqual(self.client.post(reverse('conge_lever', args=[conge.pk])).status_code, 403)
+        # Autre direction (même rôle « département ») : ni notes, ni historique, ni congés
+        self.connecter('dep')
+        for url in (reverse('notes_liste'), reverse('notes_historique'), reverse('notes_imports'),
+                    reverse('conges_liste'), reverse('note_historique', args=[note.pk])):
+            self.assertEqual(self.client.get(url).status_code, 403, url)
+        self.assertEqual(self.client.get(reverse('notes_import_excel', args=[imp.pk])).status_code, 404)
+        # Chef de programme : ni historique ni page des fichiers importés
+        self.connecter('info')
+        self.assertEqual(self.client.get(reverse('notes_historique')).status_code, 403)
+        self.assertEqual(self.client.get(reverse('notes_imports')).status_code, 403)
+
+        # Autorisations : la scolarité consulte, seul le chef (ou l'admin) accorde et clôt
+        self.connecter('scol')
+        r = self.client.get(reverse('notes_autorisations'))
+        self.assertNotContains(r, "Accorder l'autorisation")
+        demande = {'programmes': [self.info.pk, self.gc.pk], 'licences': [self.licence.pk], 'session': self.session.pk,
+                   'date_debut': timezone.localdate().isoformat(),
+                   'date_fin': (timezone.localdate() + datetime.timedelta(days=5)).isoformat(), 'motif': 'Réclamations'}
+        self.assertEqual(self.client.post(reverse('notes_autorisation_creer'), demande).status_code, 403)
+        User.objects.create_superuser('chef', password='x')
+        self.client.login(username='chef', password='x')
+        self.assertContains(self.client.get(reverse('notes_autorisations')), "Accorder l'autorisation")
+        self.client.post(reverse('notes_autorisation_creer'), {**demande, 'date_fin': '2000-01-01'})
+        self.assertFalse(AutorisationNotes.objects.exists())                  # fin avant le début : refusée
+        self.client.post(reverse('notes_autorisation_creer'), demande)
+        a = AutorisationNotes.objects.get()
+        self.assertEqual((set(a.programmes.all()), a.etat), ({self.info, self.gc}, 'en_cours'))
+        self.client.post(reverse('notes_autorisation_clore', args=[a.pk]))
+        self.assertFalse(AutorisationNotes.objects.exists())                  # commencée aujourd'hui : supprimée
+
+    def test_notes_triees_par_promotion(self):
+        """La promotion d'une note est celle de l'inscription (session, programme, niveau de la matière)."""
+        import io
+        import openpyxl
+        from .models import Note, NoteHistorique
+        s1, algo, _ = self._preparer_notes()
+        e0, e1 = Etudiant.objects.get(matricule='M0'), Etudiant.objects.get(matricule='M1')
+        Inscription.objects.filter(etudiant=e0, session=self.session).update(promotion=self.p18)
+        Inscription.objects.filter(etudiant=e1, session=self.session).update(promotion=self.p20)
+        n0 = Note.objects.create(etudiant=e0, matiere=algo, moyenne=8, moyenne_deposee=True)
+        Note.objects.create(etudiant=e1, matiere=algo, moyenne=4, moyenne_deposee=True)
+        NoteHistorique.objects.create(note=n0, avant={'moyenne': 7}, apres={'moyenne': 8}, motif='Report')
+        self.connecter('scol')
+        r = self.client.get(reverse('notes_liste'), {'promotion': self.p18.pk})
+        self.assertContains(r, '>N0</b>')
+        self.assertNotContains(r, '>N1</b>')
+        self.assertContains(r, 'id="f-promotion"')
+        r = self.client.get(reverse('notes_liste'), {'tri': 'promotion', 'ordre': 'desc'})
+        self.assertLess(r.content.index(b'>N1</b>'), r.content.index(b'>N0</b>'))     # P20 avant P18
+        ws = openpyxl.load_workbook(io.BytesIO(self.client.get(reverse('notes_liste'), {
+            'promotion': self.p20.pk, 'export': 'xlsx'}).content)).active
+        lignes = list(ws.values)
+        self.assertEqual((len(lignes), lignes[1][lignes[0].index('Promotion')]), (2, 'P20'))
+        params = {'session': self.session.pk, 'programme': self.info.pk, 'semestre': s1.pk}
+        r = self.client.get(reverse('notes_resultats'), {**params, 'promotion': self.p20.pk})
+        self.assertContains(r, '>N1</b>')
+        self.assertNotContains(r, '>N0</b>')
+        r = self.client.get(reverse('notes_saisie', args=[algo.pk]), {'promotion': self.p18.pk})
+        self.assertContains(r, '>N0</b>')
+        self.assertNotContains(r, '>N1</b>')
+        self.assertContains(r, 'M0 · P18')
+        self.assertContains(self.client.get(reverse('notes_historique'), {'promotion': self.p18.pk}), 'Report')
+        self.assertNotContains(self.client.get(reverse('notes_historique'), {'promotion': self.p20.pk}), 'Report')
 
     def test_resultats_et_deliberation(self):
         from .models import Deliberation, Note
@@ -3428,12 +3623,14 @@ class GpedTests(TestCase):
         ws = openpyxl.load_workbook(io.BytesIO(r.content)).active
         lignes = list(ws.iter_rows(values_only=True))
         self.assertEqual(lignes[0][:4], ('Matricule', 'Nom', 'Prénom', 'Matière'))
-        self.assertEqual(sorted((l[0], l[3], l[16], l[18]) for l in lignes[1:]),
+        self.assertEqual(lignes[0][10], 'Promotion')
+        self.assertEqual(sorted((l[0], l[3], l[17], l[19]) for l in lignes[1:]),
                          [('M0', 'Algorithmique', 8, 'non'), ('M1', 'Anglais', 6, 'oui')])
         self.connecter('dep')
         self.assertEqual(self.client.get(url).status_code, 403)
 
     def test_fichier_xlsx_endommage_repare_automatiquement(self):
+        self._prive()
         import zipfile
         from .import_matieres import importer_matieres
         from .import_notes import importer_notes

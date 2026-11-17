@@ -35,6 +35,18 @@ def _matieres(profil, user):         # @gestion_matieres_requise : scolarité, c
     return profil.gere_matieres
 
 
+def _lit_notes(profil, user):        # @lecture_notes_requise : + Direction Générale des Études
+    return profil.lit_notes
+
+
+def _suivi_notes(profil, user):      # @suivi_notes_requis : scolarité, admin, Direction Générale des Études
+    return profil.voit_suivi_notes
+
+
+def _conges(profil, user):           # @lecture_conges_requise
+    return profil.voit_conges
+
+
 def _superuser(profil, user):        # @superuser_requis
     return user.is_superuser
 
@@ -86,7 +98,7 @@ CATALOGUE = [
     ('Étudiants', 'Congés académiques',
      "Étudiants en congé : inscription de l'année suspendue, justificatif, levée du congé.",
      'congé congés académique suspendre suspension suspendu interruption pause reprise lever justificatif',
-     'conges_liste', (), 'bi-pause-circle', _etudiants),
+     'conges_liste', (), 'bi-pause-circle', _conges),
     ('Étudiants', 'Statistiques', "Effectifs par niveau, programme, sexe et âge, redoublants, export Excel.",
      'statistiques effectifs chiffres graphique redoublants filles garçons hommes femmes âge', 'statistiques', (),
      'bi-bar-chart', _acces),
@@ -114,7 +126,7 @@ CATALOGUE = [
     ('Pédagogie', 'Importer des matières', "Importer les matières d'un fichier Excel.",
      'matières cours import importer Excel fichier', 'matieres_importer', (), 'bi-upload', _matieres),
     ('Notes', 'Liste des notes', "Toutes les notes saisies, avec filtres ; corriger la note d'un étudiant.",
-     NOTES + ' liste corriger modifier', 'notes_liste', (), 'bi-123', _matieres),
+     NOTES + ' liste corriger modifier', 'notes_liste', (), 'bi-123', _lit_notes),
     ('Notes', 'Saisie des notes', "Saisir les notes d'une matière (session, programme, niveau, semestre).",
      NOTES + ' saisie saisir rattrapage grille', 'notes_matieres', (), 'bi-pencil-square', _matieres),
     ('Notes', 'Importer des notes', "Importer les notes d'une matière depuis un fichier Excel.",
@@ -122,7 +134,19 @@ CATALOGUE = [
     ('Notes', 'Résultats et délibérations',
      "Moyennes, crédits, rangs et mentions par semestre, année et cycle ; procès-verbal de délibération.",
      'résultats délibération délibérations PV procès-verbal moyenne rang classement mention admis ajourné crédits',
-     'notes_resultats', (), 'bi-clipboard-data', _matieres),
+     'notes_resultats', (), 'bi-clipboard-data', _lit_notes),
+    ('Notes', 'Historique des notes',
+     "Qui a modifié quelle note, quand, avant / après, motif, justificatif et fichier importé d'origine.",
+     NOTES + ' historique modification modifié trace traçabilité auteur qui justificatif audit',
+     'notes_historique', (), 'bi-clock-history', _suivi_notes),
+    ('Notes', 'Fichiers importés',
+     "Fichiers Excel et PDF de l'enseignant de chaque import de notes, avec le programme qui importe.",
+     NOTES + ' import importés fichier Excel PDF enseignant télécharger journal',
+     'notes_imports', (), 'bi-file-earmark-arrow-up', _suivi_notes),
+    ('Notes', 'Autorisations de modification',
+     "Rouvrir aux programmes, pour une période, les notes d'un niveau délibéré ou d'une année écoulée.",
+     NOTES + ' autorisation autoriser rouvrir ouvrir délibéré période date début fin programme niveau',
+     'notes_autorisations', (), 'bi-unlock', _scolarite),
     ('Soutenances', 'Liste des soutenances', "Soutenances enregistrées : jury, date, note.",
      SOUTENANCE + ' liste', 'soutenances', (), 'bi-mortarboard', _matieres),
     ('Soutenances', 'Ajouter une soutenance', "Enregistrer une soutenance : étudiant, jury, date et salle.",

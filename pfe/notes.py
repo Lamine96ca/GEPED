@@ -75,6 +75,35 @@ def appliquer_saisie(note, valeurs):
     note.calculer()
 
 
+# ---------------------------------------------------------------- promotion d'une note
+# Une note n'a pas de promotion à elle : c'est celle de l'inscription de l'étudiant dans la session,
+# le programme et le niveau de la matière (une seule par étudiant, session, programme et niveau).
+
+def _inscription_de_la_note(prefixe=''):
+    from django.db.models import OuterRef
+    from .models import Inscription
+    return Inscription.objects.filter(etudiant_id=OuterRef(f'{prefixe}etudiant_id'),
+                                      session_id=OuterRef(f'{prefixe}matiere__session_id'),
+                                      filiere_id=OuterRef(f'{prefixe}matiere__filiere_id'),
+                                      licence_id=OuterRef(f'{prefixe}matiere__licence_id'))
+
+
+def avec_promotion(qs, prefixe=''):
+    """Ajoute `promotion_nom` (et `promotion_id_note`) aux notes ; `prefixe` : 'note__' pour l'historique."""
+    from django.db.models import Subquery
+    from django.db.models.functions import Length
+    inscription = _inscription_de_la_note(prefixe).order_by('pk')
+    return qs.annotate(promotion_nom=Subquery(inscription.values('promotion__nom')[:1]),
+                       promotion_id_note=Subquery(inscription.values('promotion_id')[:1])
+                       ).annotate(promotion_long=Length('promotion_nom'))    # tri naturel : P2 avant P10
+
+
+def filtrer_promotion(qs, promotion_id, prefixe=''):
+    """Notes dont l'étudiant était inscrit dans cette promotion (session, programme et niveau de la matière)."""
+    from django.db.models import Exists
+    return qs.filter(Exists(_inscription_de_la_note(prefixe).filter(promotion_id=promotion_id)))
+
+
 def semestres_delibres(matieres):
     """{(programme, session, semestre)} délibérés parmi ceux des matières données."""
     from .models import Deliberation
@@ -124,37 +153,75 @@ def session_ecoulee(session):
     return bool(session and courante and _debut(session.annee) < _debut(courante.annee))
 
 
-def peut_modifier(profil, matiere, delibere=None):
+def autorisations_actives(matieres):
+    """{(programme, session, licence)} ouverts aujourd'hui par une autorisation du chef de la scolarité."""
+    from django.utils import timezone
+    from .models import AutorisationNotes
+    cles = {(m.filiere_id, m.session_id, m.licence_id) for m in matieres}
+    if not cles:
+        return set()
+    aujourd_hui = timezone.localdate()
+    ouvertes = set()
+    qs = (AutorisationNotes.objects.filter(session_id__in={c[1] for c in cles}, date_debut__lte=aujourd_hui,
+                                           date_fin__gte=aujourd_hui)
+          .prefetch_related('programmes', 'licences'))
+    for a in qs:
+        for p in a.programmes.all():
+            for l in a.licences.all():
+                if (p.pk, a.session_id, l.pk) in cles:
+                    ouvertes.add((p.pk, a.session_id, l.pk))
+    return ouvertes
+
+
+def peut_modifier(profil, matiere, delibere=None, ouvertes=None, ecoulee=None):
     """
-    Année en cours (délibérée ou non) : la scolarité et le chef du programme, avec motif et PDF pour
-    toute modification. Année écoulée : seulement un chef (chef de la scolarité, chef du département
-    du programme) ou un super utilisateur.
+    Scolarité : année en cours (délibérée ou non), avec motif et PDF pour toute modification ;
+    année écoulée : seulement le chef de la scolarité ou un super utilisateur.
+    Programme : ses notes tant que le semestre n'est pas délibéré (année en cours) ; un semestre
+    délibéré ou une année écoulée ne s'ouvre que pendant une autorisation du chef de la scolarité
+    (programme, session, niveau, du … au …). `delibere`, `ouvertes`, `ecoulee` : déjà calculés.
     """
     dans_perimetre = profil.est_scolarite or (profil.role == 'programme' and matiere.filiere_id in profil.programme_ids)
     if not dans_perimetre:
         return False
-    if session_ecoulee(matiere.session):
-        return profil.est_chef_de(matiere.filiere)
+    if ecoulee is None:
+        ecoulee = session_ecoulee(matiere.session)
+    if profil.est_scolarite:
+        return profil.est_chef_de(matiere.filiere) if ecoulee else True
+    if delibere is None:
+        delibere = est_delibere(matiere)
+    if ecoulee or delibere:
+        if ouvertes is None:
+            ouvertes = autorisations_actives([matiere])
+        return (matiere.filiere_id, matiere.session_id, matiere.licence_id) in ouvertes
     return True
 
 
-def enregistrer_notes(changements, utilisateur, apres_deliberation=False, motif='', justificatif=None):
+def enregistrer_notes(changements, utilisateur, apres_deliberation=False, motif='', justificatif=None,
+                      import_notes=None):
     """
     changements : [(note existante ou None, etudiant_id, matiere, valeurs)].
-    Crée ou modifie les notes ; chaque MODIFICATION est tracée (avant / après, auteur, motif,
-    justificatif enregistré une seule fois). `justificatif` : fichier envoyé, ou nom d'un fichier déjà
-    rangé dans le stockage privé (PDF de l'enseignant d'un import). Renvoie (créées, modifiées).
+    Crée ou modifie les notes. Une CRÉATION garde son auteur, sa date et l'import d'où elle vient ;
+    chaque MODIFICATION est tracée (avant / après, auteur, motif, justificatif enregistré une seule
+    fois, import). `justificatif` : fichier envoyé, ou nom d'un fichier déjà rangé dans le stockage
+    privé (PDF de l'enseignant d'un import). `apres_deliberation` : booléen, ou {matière: booléen}.
+    Renvoie (créées, modifiées).
     """
+    from django.utils import timezone
     from .models import Note, NoteHistorique, stockage_prive
     nom_justificatif = justificatif if isinstance(justificatif, str) else ''
     if justificatif and not isinstance(justificatif, str):
-        from django.utils import timezone
-        nom_justificatif = stockage_prive().save(f"justificatifs/notes/{timezone.now():%Y}/{justificatif.name}",
-                                                 justificatif)
+        from .import_notes import _nom_court
+        nom_justificatif = stockage_prive().save(
+            f"justificatifs/notes/{timezone.now():%Y}/{_nom_court(justificatif.name, 'justificatif.pdf')}",
+            justificatif, max_length=200)
+    auteur = utilisateur if getattr(utilisateur, 'pk', None) else None
+    maintenant = timezone.now()
     creees, modifiees, historiques = [], [], []
     for note, etudiant_id, matiere, valeurs in changements:
         if note is None:
-            note = Note(etudiant_id=etudiant_id, matiere=matiere)
+            note = Note(etudiant_id=etudiant_id, matiere=matiere, saisie_par=auteur, date_saisie=maintenant,
+                        import_saisie=import_notes)
             appliquer_saisie(note, valeurs)
             creees.append(note)
             continue
@@ -162,12 +229,13 @@ def enregistrer_notes(changements, utilisateur, apres_deliberation=False, motif=
             continue                                         # rien n'a changé
         avant = _etat(note)
         appliquer_saisie(note, valeurs)
-        from django.utils import timezone
-        note.date_maj = timezone.now()                       # bulk_update ne remplit pas auto_now
+        note.date_maj = maintenant                           # bulk_update ne remplit pas auto_now
         modifiees.append(note)
-        historiques.append(NoteHistorique(note=note, utilisateur=utilisateur, avant=avant, apres=_etat(note),
-                                          apres_deliberation=apres_deliberation, motif=motif,
-                                          justificatif=nom_justificatif))
+        delibere = (apres_deliberation.get(matiere.pk, False) if isinstance(apres_deliberation, dict)
+                    else apres_deliberation)
+        historiques.append(NoteHistorique(note=note, utilisateur=auteur, avant=avant, apres=_etat(note),
+                                          apres_deliberation=delibere, motif=motif,
+                                          justificatif=nom_justificatif, import_notes=import_notes))
     Note.objects.bulk_create(creees, batch_size=500)
     if modifiees:
         Note.objects.bulk_update(modifiees, ['controle', 'tp', 'examen', 'moyenne', 'moyenne_deposee', 'rattrapage',

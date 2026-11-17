@@ -37,7 +37,8 @@ from django.db import transaction
 from .import_matieres import ImportRefuse
 from .importer import _index_programmes, cle, cle_session, lire_lignes, texte
 from .models import Etudiant, Inscription, Matiere, Note, Session
-from .notes import CHAMPS_SAISIE, en_note, enregistrer_notes, recalculer, saisie_de, session_ecoulee, verifier_pdf
+from .notes import (CHAMPS_SAISIE, autorisations_actives, en_note, enregistrer_notes, peut_modifier, recalculer,
+                    saisie_de, semestres_delibres, session_ecoulee, verifier_pdf)
 
 OBLIGATOIRES = ['matricule', 'matiere', 'session']
 COLONNES = OBLIGATOIRES + ['programme'] + list(CHAMPS_SAISIE)
@@ -109,6 +110,17 @@ def _inscrire(a_inscrire, etudiants):
         crees.append((numero, etu.matricule, f"{etu.prenom} {etu.nom}", insc.session, insc.licence, insc.filiere,
                        insc.promotion))
     return crees
+
+
+def _nom_court(nom, defaut):
+    """Nom de fichier sûr et court (le chemin complet doit tenir dans le champ en base)."""
+    from pathlib import PurePath
+    from django.utils.text import get_valid_filename
+    try:
+        p = PurePath(get_valid_filename(PurePath(str(nom or '')).name))
+    except Exception:
+        return defaut
+    return f"{p.stem[:80]}{p.suffix[:6].lower()}" if p.stem else defaut
 
 
 def importer_notes(fichier, profil, utilisateur=None, simulation=False, pdf_enseignant=None):
@@ -304,6 +316,8 @@ def importer_notes(fichier, profil, utilisateur=None, simulation=False, pdf_ense
                                          matiere_id__in={p[1] for p in paires_ids}):
                 existantes[(n.etudiant_id, n.matiere_id)] = n
             changements = []
+            delibres = semestres_delibres([m for _, _, m, _ in retenues])
+            ouvertes = set() if profil.est_scolarite else autorisations_actives([m for _, _, m, _ in retenues])
             for numero, etu, matiere, valeurs in retenues:
                 note = existantes.get((etu.pk, matiere.pk))
                 if note is not None:
@@ -312,9 +326,18 @@ def importer_notes(fichier, profil, utilisateur=None, simulation=False, pdf_ense
                     if saisie_de(note) == valeurs:
                         rapport.inchangees += 1
                         continue
-                    if matiere.session_id not in ecoulees:
-                        ecoulees[matiere.session_id] = session_ecoulee(matiere.session)
-                    if ecoulees[matiere.session_id] and not profil.est_chef_de(matiere.filiere):
+                if matiere.session_id not in ecoulees:
+                    ecoulees[matiere.session_id] = session_ecoulee(matiere.session)
+                delibere = (matiere.filiere_id, matiere.session_id, matiere.semestre_id) in delibres
+                # Programme : un semestre délibéré ou une année écoulée ne s'ouvre que sur autorisation
+                if not profil.est_scolarite and not peut_modifier(profil, matiere, delibere, ouvertes,
+                                                                  ecoulees[matiere.session_id]):
+                    quoi = "année écoulée" if ecoulees[matiere.session_id] else "semestre délibéré"
+                    rapport.erreur(numero, f"{etu.matricule} · {matiere.nom} ({matiere.licence.nom}, {matiere.session}) : "
+                                           f"{quoi}, import impossible sans autorisation de la scolarité")
+                    continue
+                if note is not None:
+                    if ecoulees[matiere.session_id] and profil.est_scolarite and not profil.est_chef_de(matiere.filiere):
                         rapport.erreur(numero, f"{etu.matricule} · {matiere.nom} ({matiere.session}) : année écoulée, "
                                                f"la note déjà enregistrée ne peut être modifiée que par un chef")
                         continue
@@ -324,21 +347,39 @@ def importer_notes(fichier, profil, utilisateur=None, simulation=False, pdf_ense
                         continue
                 changements.append((note, etu.pk, matiere, valeurs))
             nom_pdf = ''
-            if pdf_enseignant and changements and not simulation:
-                from django.utils import timezone
-                from .models import stockage_prive
-                nom_pdf = stockage_prive().save(
-                    f"justificatifs/imports_notes/{timezone.now():%Y}/{pdf_enseignant.name}", pdf_enseignant)
             nom_fichier = getattr(fichier, 'name', '')
-            rapport.creees, rapport.mises_a_jour = enregistrer_notes(
-                changements, utilisateur, motif=f"Import du fichier {nom_fichier}".strip(), justificatif=nom_pdf)
-            recalculer({etu.pk for _, etu, _, _ in retenues})
+            journal = None
             if changements and not simulation:
-                from .models import ImportNotes
-                rapport.journal = ImportNotes.objects.create(
+                # Import réel : le fichier importé et le PDF de l'enseignant sont gardés (stockage privé),
+                # avec le service de la personne qui importe ; chaque note créée ou modifiée y renvoie
+                from django.utils import timezone
+                from .models import ImportNotes, stockage_prive
+                annee = f"{timezone.now():%Y}"
+                if pdf_enseignant:
+                    pdf_enseignant.seek(0)
+                    nom_pdf = stockage_prive().save(
+                        f"justificatifs/imports_notes/{annee}/{_nom_court(pdf_enseignant.name, 'enseignant.pdf')}",
+                        pdf_enseignant, max_length=200)
+                nom_excel = ''
+                if hasattr(fichier, 'seek'):
+                    fichier.seek(0)
+                    nom_excel = stockage_prive().save(f"imports_notes/{annee}/{_nom_court(nom_fichier, 'notes.xlsx')}",
+                                                      fichier, max_length=200)
+                journal = ImportNotes.objects.create(
                     utilisateur=utilisateur if getattr(utilisateur, 'pk', None) else None, fichier=nom_fichier[:255],
-                    pdf_enseignant=nom_pdf, creees=rapport.creees, modifiees=rapport.mises_a_jour,
+                    fichier_importe=nom_excel, pdf_enseignant=nom_pdf,
                     programmes=', '.join(sorted({m.filiere.nom for _, _, m, _ in changements}))[:255])
+                journal.services.set(profil.services)
+            rapport.creees, rapport.mises_a_jour = enregistrer_notes(
+                changements, utilisateur, motif=f"Import du fichier {nom_fichier}".strip(), justificatif=nom_pdf,
+                import_notes=journal,
+                apres_deliberation={m.pk: (m.filiere_id, m.session_id, m.semestre_id) in delibres
+                                    for _, _, m, _ in changements})
+            recalculer({etu.pk for _, etu, _, _ in retenues})
+            if journal is not None:
+                journal.creees, journal.modifiees = rapport.creees, rapport.mises_a_jour
+                journal.save(update_fields=['creees', 'modifiees'])
+                rapport.journal = journal
             if simulation:
                 transaction.set_rollback(True)
     rapport.erreurs.sort()

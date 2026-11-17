@@ -20,9 +20,11 @@ from .forms import ImportNotesForm
 from .import_notes import OBLIGATOIRES as OBLIGATOIRES_NOTES, importer_notes, modele_notes_xlsx
 from .models import (Deliberation, Etudiant, ImportNotes, Inscription, Licence, Matiere, Note, Resultat, Semestre,
                      Session)
-from .notes import (CHAMPS_SAISIE, MOTIF_SUPER_UTILISATEUR, en_note, enregistrer_notes, est_delibere, peut_modifier,
-                    recalculer, regles, saisie_de, semestres_delibres, session_ecoulee, verifier_pdf)
-from .roles import gestion_matieres_requise, get_profil, matieres_visibles, programmes_du_profil, scolarite_requise
+from .notes import (CHAMPS_SAISIE, MOTIF_SUPER_UTILISATEUR, avec_promotion, en_note, enregistrer_notes, est_delibere,
+                    filtrer_promotion, peut_modifier, recalculer, regles, saisie_de, semestres_delibres,
+                    session_ecoulee, verifier_pdf)
+from .roles import (gestion_matieres_requise, get_profil, lecture_notes_requise, matieres_visibles,
+                    programmes_du_profil, scolarite_requise)
 
 LIBELLES = {'controle': 'Contrôle', 'tp': 'TP', 'examen': 'Examen', 'moyenne': 'Moyenne', 'rattrapage': 'Rattrapage'}
 
@@ -42,7 +44,8 @@ def _filtres(request, profil):
         session_id = courante.pk if courante else None
     programmes = list(programmes_du_profil(profil))
     f = {'session': session_id, 'programme': _entier(g.get('programme')), 'licence': _entier(g.get('licence')),
-         'semestre': _entier(g.get('semestre')), 'q': (g.get('q') or '').strip()}
+         'semestre': _entier(g.get('semestre')), 'promotion': _entier(g.get('promotion')),
+         'q': (g.get('q') or '').strip()}
     if len(programmes) == 1:
         f['programme'] = programmes[0].pk
     if f['programme'] and f['programme'] not in {p.pk for p in programmes}:
@@ -50,9 +53,24 @@ def _filtres(request, profil):
     return f, sessions, programmes
 
 
+def promotions_de(f):
+    """Promotions proposées : celles des inscriptions de la session et du programme choisis (+ celle choisie)."""
+    from .models import Promotion
+    inscriptions = Inscription.objects.filter(promotion__isnull=False)
+    if f.get('session'):
+        inscriptions = inscriptions.filter(session_id=f['session'])
+    if f.get('programme'):
+        inscriptions = inscriptions.filter(filiere_id=f['programme'])
+    if f.get('licence'):
+        inscriptions = inscriptions.filter(licence_id=f['licence'])
+    from django.db.models.functions import Length
+    return Promotion.objects.filter(Q(pk__in=inscriptions.values('promotion_id')) | Q(pk=f.get('promotion') or 0)
+                                    ).order_by(Length('nom'), 'nom')
+
+
 def _contexte_filtres(f, sessions, programmes):
     from .models import Licence
-    return {'filtres': f, 'sessions': sessions, 'programmes': programmes,
+    return {'filtres': f, 'sessions': sessions, 'programmes': programmes, 'promotions': promotions_de(f),
             'licences': Licence.objects.order_by('id'),
             'semestres': Semestre.objects.select_related('licence').order_by('licence_id', 'id')}
 
@@ -142,7 +160,15 @@ def notes_saisie(request, pk):
                                 pk=pk)
     delibere = est_delibere(matiere)
     modifiable = peut_modifier(profil, matiere, delibere)
-    inscrits = inscrits_de(matiere)
+    inscrits = inscrits_de(matiere).select_related('promotion')
+    from .models import Promotion
+    from django.db.models.functions import Length
+    promotions_matiere = list(Promotion.objects.filter(pk__in=inscrits.values('promotion_id'))
+                              .order_by(Length('nom'), 'nom'))
+    # Filtre par promotion : seuls ses étudiants sont affichés (et enregistrés)
+    promotion = _entier(request.GET.get('promotion'))
+    if promotion:
+        inscrits = inscrits.filter(promotion_id=promotion)
     # Depuis la liste des notes (crayon) : seulement cet étudiant, puis retour à la liste après l'enregistrement
     seul = _entier(request.GET.get('etudiant'))
     if seul:
@@ -156,8 +182,8 @@ def notes_saisie(request, pk):
 
     if request.method == 'POST':
         if not modifiable:
-            raise PermissionDenied("Année écoulée : seul un chef (scolarité ou département) ou un super utilisateur "
-                                   "peut modifier ces notes.")
+            raise PermissionDenied("Notes fermées : semestre délibéré ou année écoulée. Seule la scolarité peut les "
+                                   "modifier, ou un programme pendant une autorisation du chef de la scolarité.")
         motif = (request.POST.get('motif') or '').strip()
         changements = []
         for insc in inscrits:
@@ -212,7 +238,7 @@ def notes_saisie(request, pk):
         etu, note = insc.etudiant, notes.get(insc.etudiant_id)
         saisie = saisie_de(note)
         lignes.append({
-            'etudiant': etu, 'note': note,
+            'etudiant': etu, 'note': note, 'promotion': insc.promotion,
             'champs': [{'nom': c, 'libelle': LIBELLES[c],
                         'valeur': valeurs_postees.get((etu.pk, c), '' if saisie[c] is None else _fmt(saisie[c])),
                         'erreur': erreurs.get((etu.pk, c)),
@@ -220,9 +246,23 @@ def notes_saisie(request, pk):
                                     and note.moyenne is not None else ''} for c in CHAMPS_SAISIE],
         })
     nb_notes = sum(1 for n in notes.values() if n.moyenne_finale is not None)
+    if profil.voit_suivi_notes and notes:              # lien « historique » sur les notes modifiées
+        from .models import NoteHistorique
+        modifiees = set(NoteHistorique.objects.filter(note__matiere=matiere).values_list('note_id', flat=True))
+        for l in lignes:
+            l['modifiee'] = bool(l['note'] and l['note'].pk in modifiees)
+    from .models import AutorisationNotes
+    from django.utils import timezone
+    aujourd_hui = timezone.localdate()
+    autorisation = None
+    if profil.role == 'programme' and modifiable:
+        autorisation = (AutorisationNotes.objects.filter(
+            programmes=matiere.filiere_id, session_id=matiere.session_id, licences=matiere.licence_id,
+            date_debut__lte=aujourd_hui, date_fin__gte=aujourd_hui).order_by('-date_fin').first())
     return render(request, 'pfe/notes_saisie.html', {
         'matiere': matiere, 'lignes': lignes, 'delibere': delibere, 'modifiable': modifiable,
-        'ecoulee': session_ecoulee(matiere.session),
+        'ecoulee': session_ecoulee(matiere.session), 'autorisation': autorisation,
+        'promotions_matiere': promotions_matiere, 'promotion_choisie': promotion,
         'deliberation': Deliberation.objects.filter(filiere_id=matiere.filiere_id, session_id=matiere.session_id,
                                                     semestre_id=matiere.semestre_id).select_related('par').first(),
         'erreurs': bool(erreurs), 'erreur_motif': erreur_motif, 'motif': request.POST.get('motif', ''),
@@ -250,6 +290,7 @@ TRIS_NOTES = {
     'semestre': ('Semestre', ['matiere__semestre_id']),
     'programme': ('Programme', ['matiere__filiere__nom']),
     'session': ('Session', ['matiere__session__annee']),
+    'promotion': ('Promotion', ['promotion_long', 'promotion_nom']),
     'finale': ('Finale', ['moyenne_finale']),
 }
 
@@ -261,6 +302,9 @@ def _notes_filtrees(profil, f, g):
                        ('matiere__licence_id', 'licence'), ('matiere__semestre_id', 'semestre')):
         if f[cle]:
             qs = qs.filter(**{champ: f[cle]})
+    if f.get('promotion'):
+        qs = filtrer_promotion(qs, f['promotion'])
+    qs = avec_promotion(qs)
     if f['q']:
         q = f['q']
         qs = qs.filter(Q(etudiant__matricule__icontains=q) | Q(etudiant__nom__icontains=q)
@@ -288,7 +332,7 @@ def _notes_filtrees(profil, f, g):
 
 
 @login_required
-@gestion_matieres_requise
+@lecture_notes_requise
 def notes_liste(request):
     """Toutes les notes du périmètre (scolarité : toutes ; chef de programme : ses programmes)."""
     profil = get_profil(request)
@@ -324,7 +368,7 @@ def _export_notes(qs):
     wb = openpyxl.Workbook(write_only=True)
     ws = wb.create_sheet('Notes')
     entetes = ['Matricule', 'Nom', 'Prénom', 'Matière', 'Code', 'Crédits', 'Semestre', 'Licence', 'Programme',
-               'Session', 'Contrôle', 'TP', 'Examen', 'Moyenne', 'Moyenne déposée', 'Rattrapage', 'Moyenne finale',
+               'Session', 'Promotion', 'Contrôle', 'TP', 'Examen', 'Moyenne', 'Moyenne déposée', 'Rattrapage', 'Moyenne finale',
                'Mention', 'Validée en session', 'Validée']
     style = (Font(bold=True, color='FFFFFF'), PatternFill('solid', fgColor='41627C'))
     ligne = []
@@ -336,7 +380,7 @@ def _export_notes(qs):
     for n in qs.iterator(chunk_size=2000):
         e, m = n.etudiant, n.matiere
         ws.append([e.matricule, e.nom, e.prenom, m.nom, m.code, m.credit, m.semestre.nom, m.licence.nom,
-                   str(m.filiere or ''), m.session.annee, n.controle, n.tp, n.examen, n.moyenne,
+                   str(m.filiere or ''), m.session.annee, n.promotion_nom or '', n.controle, n.tp, n.examen, n.moyenne,
                    'oui' if n.moyenne_deposee else 'non', n.rattrapage, n.moyenne_finale, n.mention,
                    'oui' if n.par_session else 'non', 'oui' if n.validee else 'non'])
     flux = io.BytesIO()
@@ -378,18 +422,41 @@ def notes_importer(request):
     })
 
 
-@login_required
-@gestion_matieres_requise
-def notes_import_pdf(request, pk):
-    """PDF de l'enseignant d'un import : la scolarité, ou la personne qui a fait l'import."""
+def _fichier_import(request, pk, champ):
+    """
+    Fichier gardé d'un import (PDF de l'enseignant ou fichier Excel importé) : la scolarité, la Direction
+    Générale des Études, ou la personne qui a fait l'import. Consultation seule : jamais remplacé.
+    """
     from django.http import FileResponse
+    from .models import stockage_prive
     profil = get_profil(request)
     imp = get_object_or_404(ImportNotes, pk=pk)
-    if not imp.pdf_enseignant or not (profil.est_scolarite or imp.utilisateur_id == request.user.id):
+    fichier = getattr(imp, champ)
+    proprietaire = imp.utilisateur_id == request.user.id and profil.gere_matieres
+    if not fichier or not (profil.voit_suivi_notes or proprietaire):
         raise Http404
-    from .models import stockage_prive
-    return FileResponse(stockage_prive().open(imp.pdf_enseignant.name, 'rb'), content_type='application/pdf',
-                        filename=imp.pdf_enseignant.name.rsplit('/', 1)[-1])
+    nom = fichier.name.rsplit('/', 1)[-1]
+    if champ == 'pdf_enseignant':
+        reponse = FileResponse(stockage_prive().open(fichier.name, 'rb'), content_type='application/pdf', filename=nom)
+    else:
+        types = {'.csv': 'text/csv',
+                 '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}
+        type_ = types.get(nom[nom.rfind('.'):].lower(), 'application/octet-stream')
+        reponse = FileResponse(stockage_prive().open(fichier.name, 'rb'), content_type=type_, as_attachment=True,
+                               filename=nom)
+    reponse['X-Content-Type-Options'] = 'nosniff'
+    reponse['Cache-Control'] = 'private, no-store'
+    return reponse
+
+
+@login_required
+def notes_import_pdf(request, pk):
+    return _fichier_import(request, pk, 'pdf_enseignant')
+
+
+@login_required
+def notes_import_excel(request, pk):
+    return _fichier_import(request, pk, 'fichier_importe')
 
 
 @login_required
@@ -404,7 +471,7 @@ def notes_modele(request):
 # ------------------------------------------------------------------ résultats et délibérations
 
 @login_required
-@gestion_matieres_requise
+@lecture_notes_requise
 def notes_resultats(request):
     """Résultats d'un semestre (programme + session + semestre) et sa délibération."""
     profil = get_profil(request)
@@ -415,15 +482,23 @@ def notes_resultats(request):
         matieres = list(Matiere.objects.filter(filiere_id=f['programme'], session_id=f['session'], semestre=semestre)
                         .annotate(nb_notes=Count('notes', filter=Q(notes__moyenne_finale__isnull=False)))
                         .order_by('nom'))
-        inscrits = list(Inscription.objects.filter(filiere_id=f['programme'], session_id=f['session'],
-                                                   licence_id=semestre.licence_id, etudiant__preinscrit=False,
-                                                   conge__isnull=True)
-                        .values_list('etudiant_id', flat=True))
+        promos = dict(Inscription.objects.filter(filiere_id=f['programme'], session_id=f['session'],
+                                                 licence_id=semestre.licence_id, etudiant__preinscrit=False,
+                                                 conge__isnull=True)
+                      .values_list('etudiant_id', 'promotion__nom'))
+        inscrits = list(promos)
         if matieres and inscrits:
             recalculer(inscrits)                       # toujours à jour (nouvelle matière, note modifiée…)
-        resultats = list(Resultat.objects.filter(niveau=Resultat.SEMESTRE, filiere_id=f['programme'],
-                                                 session_id=f['session'], semestre=semestre)
-                         .select_related('etudiant').order_by('rang', 'etudiant__nom'))
+        resultats = Resultat.objects.filter(niveau=Resultat.SEMESTRE, filiere_id=f['programme'],
+                                            session_id=f['session'], semestre=semestre)
+        if f['promotion']:                             # rangs : ceux de tout le semestre
+            from .models import Promotion
+            nom_promo = Promotion.objects.filter(pk=f['promotion']).values_list('nom', flat=True).first()
+            inscrits = [e for e, p in promos.items() if p == nom_promo]
+            resultats = resultats.filter(etudiant_id__in=inscrits)
+        resultats = list(resultats.select_related('etudiant').order_by('rang', 'etudiant__nom'))
+        for r in resultats:
+            r.promotion_nom = promos.get(r.etudiant_id)
         moyennes = [r.moyenne for r in resultats if r.moyenne is not None]
         contexte.update({
             'semestre': semestre, 'matieres': matieres, 'resultats': resultats, 'nb_inscrits': len(inscrits),

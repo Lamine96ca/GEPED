@@ -17,21 +17,21 @@
   <div class="card carte-gped liste mb-3">{% include 'pfe/_cascade_matiere.html' %}</div>
 {% endif %}
 
-{% if ecoulee %}
+{% if ecoulee or delibere %}
   <div class="alert {% if modifiable %}alert-warning{% else %}alert-secondary{% endif %} d-flex gap-2 align-items-start">
     <i class="bi bi-lock-fill mt-1"></i>
     <div>
-      <strong>Année écoulée ({{ matiere.session.annee }})</strong> : ces notes sont considérées comme délibérées.
-      {% if modifiable %}En tant que chef, vous pouvez encore les modifier : indiquez le motif et joignez le justificatif PDF ; chaque modification est tracée.
-      {% else %}Seul un chef (chef de la scolarité ou du département) ou un super utilisateur peut les modifier.{% endif %}
-    </div>
-  </div>
-{% elif delibere %}
-  <div class="alert alert-warning d-flex gap-2 align-items-start">
-    <i class="bi bi-lock-fill mt-1"></i>
-    <div>
-      <strong>Semestre délibéré</strong>{% if deliberation %} le {{ deliberation.date|date:"d/m/Y à H:i" }}{% if deliberation.par %} par {{ deliberation.par.get_full_name|default:deliberation.par.username }}{% endif %}{% endif %}.
-      Les notes restent modifiables jusqu'à la fin de l'année : indiquez le motif et joignez le justificatif PDF ; chaque modification est tracée.
+      {% if ecoulee %}<strong>Année écoulée ({{ matiere.session.annee }})</strong> : ces notes sont considérées comme délibérées.
+      {% else %}<strong>Semestre délibéré</strong>{% if deliberation %} le {{ deliberation.date|date:"d/m/Y à H:i" }}{% if deliberation.par %} par {{ deliberation.par.get_full_name|default:deliberation.par.username }}{% endif %}{% endif %}.{% endif %}
+      {% if autorisation %}
+        <strong>Autorisation de la scolarité jusqu'au {{ autorisation.date_fin|date:"d/m/Y" }}</strong> : vous pouvez saisir et modifier ces notes (motif et justificatif PDF pour toute modification ; chaque modification est tracée).
+      {% elif modifiable %}
+        Vous pouvez encore les modifier : indiquez le motif et joignez le justificatif PDF ; chaque modification est tracée.
+      {% elif profil.role == 'programme' %}
+        Notes fermées : seule une <strong>autorisation du chef de la scolarité</strong> (période limitée) permet de les saisir, de les modifier ou de les importer.
+      {% else %}
+        Seul le chef de la scolarité ou un super utilisateur peut les modifier.
+      {% endif %}
     </div>
   </div>
 {% endif %}
@@ -45,6 +45,16 @@
         <span class="icone-carte"><i class="bi bi-table"></i></span>
         <div><h3>{{ lignes|length }} étudiant{{ lignes|length|pluralize }} inscrit{{ lignes|length|pluralize }}</h3><p>{{ nb_notes }} note{{ nb_notes|pluralize }} saisie{{ nb_notes|pluralize }} · ABS = 0</p></div>
       </div>
+      {% if promotions_matiere|length > 1 or promotion_choisie %}
+        <div>
+          <label class="form-label small text-secondary mb-1" for="f-promotion-saisie">Promotion</label>
+          <select id="f-promotion-saisie" class="form-select form-select-sm" style="min-width:140px"
+                  onchange="var u = new URL(location.href); if (this.value) { u.searchParams.set('promotion', this.value); } else { u.searchParams.delete('promotion'); } location.href = u.toString();">
+            <option value="">Toutes</option>
+            {% for p in promotions_matiere %}<option value="{{ p.pk }}"{% if p.pk == promotion_choisie %} selected{% endif %}>{{ p.nom }}</option>{% endfor %}
+          </select>
+        </div>
+      {% endif %}
       <div class="small text-secondary" style="max-width:520px">
         <i class="bi bi-calculator"></i> Moyenne = contrôle 25 % + TP 35 % + examen 40 % (sans TP : 40 % + 60 %).
         Si vous remplissez <strong>Moyenne</strong>, elle est prise telle quelle. Le <strong>rattrapage</strong> remplace la moyenne s'il est meilleur (« Session »).
@@ -54,12 +64,12 @@
       <table class="table table-etudiants mb-0 grille-notes">
         <thead><tr><th style="width:3rem">#</th><th>Étudiant</th>
           <th class="text-center">Contrôle</th><th class="text-center">TP</th><th class="text-center">Examen</th>
-          <th class="text-center">Moyenne</th><th class="text-center">Rattrapage</th><th class="text-center">Finale</th><th>Mention</th></tr></thead>
+          <th class="text-center">Moyenne</th><th class="text-center">Rattrapage</th><th class="text-center">Finale</th><th>Mention</th>{% if profil.voit_suivi_notes %}<th class="text-end" title="Historique">Hist.</th>{% endif %}</tr></thead>
         <tbody>
         {% for l in lignes %}
           <tr style="cursor:default" data-ligne>
             <td class="text-secondary">{{ forloop.counter }}</td>
-            <td style="min-width:200px"><b style="color:var(--encre);font-weight:600">{{ l.etudiant.nom }}</b> {{ l.etudiant.prenom }}<div class="matricule text-secondary">{{ l.etudiant.matricule|default:"" }}</div></td>
+            <td style="min-width:200px"><b style="color:var(--encre);font-weight:600">{{ l.etudiant.nom }}</b> {{ l.etudiant.prenom }}<div class="matricule text-secondary">{{ l.etudiant.matricule|default:"" }}{% if l.promotion %} · {{ l.promotion.nom }}{% endif %}</div></td>
             {% for c in l.champs %}
               <td class="text-center">
                 <input type="text" inputmode="decimal" name="{{ c.nom }}_{{ l.etudiant.pk }}" value="{{ c.valeur }}" data-champ="{{ c.nom }}"
@@ -71,6 +81,9 @@
             {% endfor %}
             <td class="text-center"><span class="finale {% if l.note.moyenne_finale is not None %}{% if l.note.validee %}ok{% else %}ko{% endif %}{% endif %}" data-finale>{% if l.note.moyenne_finale is not None %}{{ l.note.moyenne_finale|floatformat:"-2" }}{% else %}—{% endif %}</span></td>
             <td class="text-nowrap" data-mention>{{ l.note.mention }}{% if l.note.par_session %} <span class="pill pill-accent">Session</span>{% endif %}</td>
+            {% if profil.voit_suivi_notes %}
+              <td class="text-end">{% if l.note %}<a class="btn btn-icone{% if not l.modifiee %} text-secondary{% endif %}" href="{% url 'note_historique' l.note.pk %}" title="{% if l.modifiee %}Note modifiée : voir l'historique et les fichiers{% else %}Saisie de la note (auteur, fichiers){% endif %}"><i class="bi bi-clock-history"></i>{% if l.modifiee %}<span class="visually-hidden"> (modifiée)</span>{% endif %}</a>{% endif %}</td>
+            {% endif %}
           </tr>
         {% empty %}
           <tr><td colspan="9"><div class="etat-vide"><i class="bi bi-people"></i>{% if seul %}Cet étudiant n'est pas (ou plus) inscrit dans cette matière : {% endif %}Aucun étudiant inscrit en {{ matiere.licence.nom }} · {{ matiere.filiere }} · {{ matiere.session.annee }}.</div></td></tr>

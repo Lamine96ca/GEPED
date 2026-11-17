@@ -1,0 +1,57 @@
+{% extends 'pfe/base.html' %}
+{% load humanize %}
+{% block titre %}Fichiers importés{% endblock %}
+{% block titre_page %}Fichiers importés{% endblock %}
+{% block sous_titre %}<div class="sous-titre">Chaque import de notes garde son fichier Excel et le PDF de l'enseignant, avec le service de la personne qui importe · consultation seule, jamais remplacés</div>{% endblock %}
+{% block actions %}
+  <a href="{% url 'notes_historique' %}" class="btn btn-light"><i class="bi bi-clock-history"></i> <span class="d-none d-sm-inline">Historique des notes</span></a>
+{% endblock %}
+{% block contenu %}
+<div class="card carte-gped liste">
+  <div class="card-header">
+    <form method="get" class="d-flex flex-wrap gap-2">
+      <select name="service" class="form-select form-select-sm" style="height:38px;width:auto;max-width:300px" title="Programme ou service de l'importateur" onchange="this.form.submit()">
+        <option value="">Tous les programmes et services</option>
+        {% for s in services %}<option value="{{ s.pk }}"{% if s.pk == f.service %} selected{% endif %}>{{ s.nom }}</option>{% endfor %}
+      </select>
+      <div class="champ-icone" style="min-width:240px"><i class="bi bi-search"></i>
+        <input type="search" name="q" value="{{ f.q }}" class="form-control form-control-sm" style="height:38px" placeholder="Fichier, programme, personne">
+      </div>
+    </form>
+  </div>
+  <div class="px-4 pt-3 small text-secondary"><i class="bi bi-file-earmark-arrow-up text-primary"></i> {{ page.paginator.count|intcomma }} import{{ page.paginator.count|pluralize }}</div>
+  <div class="table-responsive mt-2">
+    <table class="table table-etudiants mb-0">
+      <thead><tr><th>Date</th><th>Importé par</th><th>Programme / service</th><th>Fichier</th><th class="text-end">Créées</th><th class="text-end">Modifiées</th><th class="text-end">Fichiers</th></tr></thead>
+      <tbody>
+      {% for imp in page %}
+        <tr style="cursor:default">
+          <td class="text-nowrap">{{ imp.date|date:"d/m/Y H:i" }}</td>
+          <td>{% if imp.utilisateur %}{{ imp.utilisateur.get_full_name|default:imp.utilisateur.username }}{% else %}—{% endif %}</td>
+          <td style="white-space:normal;min-width:160px">{% for s in imp.services.all %}{{ s.nom }}{% if not forloop.last %}, {% endif %}{% empty %}<span class="text-secondary">{% if imp.utilisateur.is_superuser %}Administrateur{% else %}—{% endif %}</span>{% endfor %}</td>
+          <td style="white-space:normal;min-width:180px">{{ imp.fichier|default:"—" }}<div class="small text-secondary">Notes de : {{ imp.programmes|default:"—" }}</div></td>
+          <td class="text-end">{{ imp.creees|intcomma }}</td>
+          <td class="text-end">{{ imp.modifiees|intcomma }}</td>
+          <td class="text-end text-nowrap">
+            {% if imp.fichier_importe %}<a class="btn btn-sm btn-light" href="{% url 'notes_import_excel' imp.pk %}" title="Télécharger le fichier importé"><i class="bi bi-file-earmark-excel"></i> Excel</a>{% else %}<span class="small text-secondary me-2" title="Import antérieur à la conservation des fichiers">Excel non gardé</span>{% endif %}
+            {% if imp.pdf_enseignant %}<a class="btn btn-sm btn-light" href="{% url 'notes_import_pdf' imp.pk %}" target="_blank" rel="noopener" title="PDF de l'enseignant"><i class="bi bi-file-earmark-pdf"></i> PDF</a>{% endif %}
+          </td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="7"><div class="etat-vide"><i class="bi bi-file-earmark-arrow-up"></i>Aucun import de notes{% if f.q or f.service %} avec ces filtres{% endif %}.</div></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if page.has_other_pages %}
+    <div class="pied-tableau d-flex justify-content-between align-items-center">
+      <span class="small text-secondary">{{ page.start_index }}–{{ page.end_index }} sur {{ page.paginator.count|intcomma }}</span>
+      <ul class="pagination pagination-sm mb-0">
+        {% if page.has_previous %}<li class="page-item"><a class="page-link" href="?{{ params }}&page={{ page.previous_page_number }}"><i class="bi bi-chevron-left"></i></a></li>{% endif %}
+        <li class="page-item active"><span class="page-link">{{ page.number }} / {{ page.paginator.num_pages }}</span></li>
+        {% if page.has_next %}<li class="page-item"><a class="page-link" href="?{{ params }}&page={{ page.next_page_number }}"><i class="bi bi-chevron-right"></i></a></li>{% endif %}
+      </ul>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -42,6 +42,15 @@
       </select>
     </div>
     {% endif %}
+    {% if avec_promotion %}
+      <div class="col-6 col-md-3 col-lg-2">
+        <label class="form-label small text-secondary mb-1" for="f-promotion">Promotion</label>
+        <select id="f-promotion" name="promotion" class="form-select">
+          <option value="">Toutes</option>
+          {% for p in promotions %}<option value="{{ p.pk }}" {% if filtres.promotion == p.pk %}selected{% endif %}>{{ p.nom }}</option>{% endfor %}
+        </select>
+      </div>
+    {% endif %}
     {% if avec_statut %}
       <div class="col-6 col-md-3 col-lg-2">
         <label class="form-label small text-secondary mb-1" for="f-statut">Statut</label>

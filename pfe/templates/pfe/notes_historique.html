@@ -1,0 +1,77 @@
+{% extends 'pfe/base.html' %}
+{% load humanize %}
+{% block titre %}Historique des notes{% endblock %}
+{% block titre_page %}Historique des notes{% endblock %}
+{% block sous_titre %}<div class="sous-titre">Chaque modification d'une note déjà saisie : avant / après, auteur, motif, justificatif et import d'origine</div>{% endblock %}
+{% block actions %}
+  <a href="{% url 'notes_imports' %}" class="btn btn-light"><i class="bi bi-file-earmark-arrow-up"></i> <span class="d-none d-sm-inline">Fichiers importés</span></a>
+{% endblock %}
+{% block contenu %}
+<div class="card carte-gped liste">
+  <div class="card-header">
+    <form method="get" class="d-flex flex-wrap gap-2">
+      <select name="session" class="form-select form-select-sm" style="height:38px;width:auto" title="Session" onchange="this.form.submit()">
+        <option value="">Toutes les sessions</option>
+        {% for s in sessions %}<option value="{{ s.pk }}"{% if s.pk == f.session %} selected{% endif %}>{{ s.annee }}{% if s.en_cours %} (en cours){% endif %}</option>{% endfor %}
+      </select>
+      <select name="programme" class="form-select form-select-sm" style="height:38px;width:auto;max-width:260px" title="Programme" onchange="this.form.submit()">
+        <option value="">Tous les programmes</option>
+        {% for p in programmes %}<option value="{{ p.pk }}"{% if p.pk == f.programme %} selected{% endif %}>{{ p.nom }}</option>{% endfor %}
+      </select>
+      <select name="promotion" class="form-select form-select-sm" style="height:38px;width:auto" title="Promotion" onchange="this.form.submit()">
+        <option value="">Toutes les promotions</option>
+        {% for p in promotions %}<option value="{{ p.pk }}"{% if p.pk == f.promotion %} selected{% endif %}>{{ p.nom }}</option>{% endfor %}
+      </select>
+      <select name="auteur" class="form-select form-select-sm" style="height:38px;width:auto;max-width:220px" title="Modifiée par" onchange="this.form.submit()">
+        <option value="">Tous les auteurs</option>
+        {% for u in auteurs %}<option value="{{ u.pk }}"{% if u.pk == f.auteur %} selected{% endif %}>{{ u.get_full_name|default:u.username }}</option>{% endfor %}
+      </select>
+      <label class="form-check d-flex align-items-center gap-2 mb-0 small">
+        <input type="checkbox" class="form-check-input mt-0" name="delibere" value="1"{% if f.delibere %} checked{% endif %} onchange="this.form.submit()"> Après délibération
+      </label>
+      <div class="champ-icone" style="min-width:240px"><i class="bi bi-search"></i>
+        <input type="search" name="q" value="{{ f.q }}" class="form-control form-control-sm" style="height:38px" placeholder="Matricule, nom, matière, motif">
+      </div>
+    </form>
+  </div>
+  <div class="px-4 pt-3 small text-secondary"><i class="bi bi-clock-history text-primary"></i> {{ page.paginator.count|intcomma }} modification{{ page.paginator.count|pluralize }}</div>
+  <div class="table-responsive mt-2">
+    <table class="table table-etudiants mb-0">
+      <thead><tr><th>Date</th><th>Étudiant</th><th>Matière</th><th>Changement</th><th>Par</th><th>Motif</th><th class="text-end">Fichiers</th></tr></thead>
+      <tbody>
+      {% for h in page %}
+        {% with n=h.note m=h.note.matiere %}
+        <tr style="cursor:default">
+          <td class="text-nowrap">{{ h.date|date:"d/m/Y H:i" }}{% if h.apres_deliberation %}<div><span class="pill pill-attention">Après délibération</span></div>{% endif %}</td>
+          <td style="min-width:160px"><b style="color:var(--encre);font-weight:600">{{ n.etudiant.nom }}</b> {{ n.etudiant.prenom }}<div class="matricule text-secondary">{{ n.etudiant.matricule|default:"" }}{% if h.promotion_nom %} · {{ h.promotion_nom }}{% endif %}</div></td>
+          <td style="white-space:normal;min-width:170px">{{ m.nom }}<div class="small text-secondary">{{ m.filiere }} · {{ m.licence.nom }} · {{ m.semestre.nom }} · {{ m.session.annee }}</div></td>
+          <td class="small text-nowrap">
+            {% for lib, avant, apres in h.ecarts %}<div>{{ lib }} : <span class="text-secondary">{% if avant is None %}—{% else %}{{ avant|floatformat:"-2" }}{% endif %}</span> → <strong>{% if apres is None %}—{% else %}{{ apres|floatformat:"-2" }}{% endif %}</strong></div>{% empty %}<span class="text-secondary">—</span>{% endfor %}
+          </td>
+          <td>{% if h.utilisateur %}{{ h.utilisateur.get_full_name|default:h.utilisateur.username }}{% else %}—{% endif %}</td>
+          <td style="white-space:normal;min-width:160px;max-width:280px" class="small">{{ h.motif|default:"—"|truncatechars:140 }}</td>
+          <td class="text-end text-nowrap">
+            {% if h.justificatif %}<a class="btn btn-icone" href="{% url 'notes_historique_justificatif' h.pk %}" target="_blank" rel="noopener" title="Justificatif (PDF)"><i class="bi bi-file-earmark-pdf"></i></a>{% endif %}
+            {% if h.import_notes and h.import_notes.fichier_importe %}<a class="btn btn-icone" href="{% url 'notes_import_excel' h.import_notes_id %}" title="Fichier importé ({{ h.import_notes.fichier }})"><i class="bi bi-file-earmark-excel"></i></a>{% endif %}
+            <a class="btn btn-icone" href="{% url 'note_historique' n.pk %}" title="Historique complet de la note"><i class="bi bi-clock-history"></i></a>
+          </td>
+        </tr>
+        {% endwith %}
+      {% empty %}
+        <tr><td colspan="7"><div class="etat-vide"><i class="bi bi-clock-history"></i>Aucune modification de note{% if f.q or f.session or f.programme or f.promotion or f.auteur or f.delibere %} avec ces filtres{% endif %}.</div></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if page.has_other_pages %}
+    <div class="pied-tableau d-flex justify-content-between align-items-center">
+      <span class="small text-secondary">{{ page.start_index }}–{{ page.end_index }} sur {{ page.paginator.count|intcomma }}</span>
+      <ul class="pagination pagination-sm mb-0">
+        {% if page.has_previous %}<li class="page-item"><a class="page-link" href="?{{ params }}&page={{ page.previous_page_number }}"><i class="bi bi-chevron-left"></i></a></li>{% endif %}
+        <li class="page-item active"><span class="page-link">{{ page.number }} / {{ page.paginator.num_pages }}</span></li>
+        {% if page.has_next %}<li class="page-item"><a class="page-link" href="?{{ params }}&page={{ page.next_page_number }}"><i class="bi bi-chevron-right"></i></a></li>{% endif %}
+      </ul>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

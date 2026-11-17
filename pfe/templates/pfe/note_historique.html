@@ -1,0 +1,69 @@
+{% extends 'pfe/base.html' %}
+{% block titre %}Historique · {{ note.matiere.nom }}{% endblock %}
+{% block titre_page %}<a href="{% url 'notes_historique' %}" class="text-decoration-none text-secondary me-1" title="Historique des notes"><i class="bi bi-arrow-left"></i></a> {{ note.etudiant.prenom }} {{ note.etudiant.nom }} · {{ note.matiere.nom }}{% endblock %}
+{% block sous_titre %}<div class="sous-titre">{{ note.etudiant.matricule|default:"" }}{% if promotion %} · Promotion {{ promotion }}{% endif %} ·{{ note.matiere.filiere }} · {{ note.matiere.licence.nom }} · {{ note.matiere.semestre.nom }} · {{ note.matiere.session.annee }}</div>{% endblock %}
+{% block contenu %}
+<div class="row g-3">
+  <div class="col-xl-4">
+    <div class="card carte-gped mb-3">
+      <div class="card-body">
+        <div class="entete-carte">
+          <span class="icone-carte"><i class="bi bi-123"></i></span>
+          <div><h3>Note actuelle</h3><p>Dernière modification le {{ note.date_maj|date:"d/m/Y à H:i" }}</p></div>
+        </div>
+        <ul class="infos-compte">
+          {% for cle, lib in libelles %}
+            <li><i class="bi bi-hash"></i><div><div class="lib">{{ lib }}</div><div class="val">
+              {% if cle == 'controle' %}{{ note.controle|floatformat:"-2"|default:"—" }}{% elif cle == 'tp' %}{{ note.tp|floatformat:"-2"|default:"—" }}{% elif cle == 'examen' %}{{ note.examen|floatformat:"-2"|default:"—" }}{% elif cle == 'moyenne' %}{{ note.moyenne|floatformat:"-2"|default:"—" }}{% if note.moyenne_deposee %} (déposée){% endif %}{% elif cle == 'rattrapage' %}{{ note.rattrapage|floatformat:"-2"|default:"—" }}{% else %}<strong>{{ note.moyenne_finale|floatformat:"-2"|default:"—" }}</strong>{% if note.par_session %} <span class="pill pill-accent">Session</span>{% endif %}{% endif %}
+            </div></div></li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+    <div class="card carte-gped">
+      <div class="card-body">
+        <div class="entete-carte">
+          <span class="icone-carte"><i class="bi bi-pencil-square"></i></span>
+          <div><h3>Première saisie</h3><p>{% if note.date_saisie %}le {{ note.date_saisie|date:"d/m/Y à H:i" }}{% else %}non tracée (note saisie avant le suivi){% endif %}</p></div>
+        </div>
+        {% if note.date_saisie %}
+          <p class="mb-2">Par <strong>{% if note.saisie_par %}{{ note.saisie_par.get_full_name|default:note.saisie_par.username }}{% else %}—{% endif %}</strong>{% if note.import_saisie %}, par import du fichier « {{ note.import_saisie.fichier }} »{% else %}, en saisie directe{% endif %}.</p>
+          {% if note.import_saisie %}
+            <div class="d-flex flex-wrap gap-2">
+              {% if note.import_saisie.fichier_importe %}<a class="btn btn-sm btn-light" href="{% url 'notes_import_excel' note.import_saisie_id %}"><i class="bi bi-file-earmark-excel"></i> Fichier importé</a>{% endif %}
+              {% if note.import_saisie.pdf_enseignant %}<a class="btn btn-sm btn-light" href="{% url 'notes_import_pdf' note.import_saisie_id %}" target="_blank" rel="noopener"><i class="bi bi-file-earmark-pdf"></i> PDF de l'enseignant</a>{% endif %}
+            </div>
+          {% endif %}
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-xl-8">
+    <div class="card carte-gped liste">
+      <div class="card-header"><h3 class="titre-stat mb-0"><i class="bi bi-clock-history"></i> {{ modifications|length }} modification{{ modifications|length|pluralize }}</h3></div>
+      <div class="table-responsive">
+        <table class="table table-etudiants mb-0">
+          <thead><tr><th>Date</th><th>Changement</th><th>Par</th><th>Motif</th><th class="text-end">Fichiers</th></tr></thead>
+          <tbody>
+          {% for h in modifications %}
+            <tr style="cursor:default">
+              <td class="text-nowrap">{{ h.date|date:"d/m/Y H:i" }}{% if h.apres_deliberation %}<div><span class="pill pill-attention">Après délibération</span></div>{% endif %}</td>
+              <td class="small text-nowrap">{% for lib, avant, apres in h.ecarts %}<div>{{ lib }} : <span class="text-secondary">{% if avant is None %}—{% else %}{{ avant|floatformat:"-2" }}{% endif %}</span> → <strong>{% if apres is None %}—{% else %}{{ apres|floatformat:"-2" }}{% endif %}</strong></div>{% empty %}—{% endfor %}</td>
+              <td>{% if h.utilisateur %}{{ h.utilisateur.get_full_name|default:h.utilisateur.username }}{% else %}—{% endif %}</td>
+              <td style="white-space:normal;min-width:160px" class="small">{{ h.motif|default:"—" }}</td>
+              <td class="text-end text-nowrap">
+                {% if h.justificatif %}<a class="btn btn-icone" href="{% url 'notes_historique_justificatif' h.pk %}" target="_blank" rel="noopener" title="Justificatif (PDF)"><i class="bi bi-file-earmark-pdf"></i></a>{% endif %}
+                {% if h.import_notes and h.import_notes.fichier_importe %}<a class="btn btn-icone" href="{% url 'notes_import_excel' h.import_notes_id %}" title="Fichier importé ({{ h.import_notes.fichier }})"><i class="bi bi-file-earmark-excel"></i></a>{% endif %}
+              </td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="5"><div class="etat-vide"><i class="bi bi-check2-circle"></i>Cette note n'a jamais été modifiée.</div></td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

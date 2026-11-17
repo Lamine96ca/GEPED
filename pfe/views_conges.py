@@ -16,7 +16,7 @@ from django.views.decorators.http import require_POST
 
 from . import conges
 from .models import CongeAcademique, Session
-from .roles import conges_requis, etudiants_requise, get_profil, inscriptions_gerees
+from .roles import conges_requis, etudiants_requise, get_profil, inscriptions_gerees, lecture_conges_requise
 
 
 def _date(valeur):
@@ -28,6 +28,14 @@ def _date(valeur):
 
 def _conges_geres(request):
     return CongeAcademique.objects.filter(inscription__in=inscriptions_gerees(get_profil(request)))
+
+
+def _conges_visibles(request):
+    """Liste : ceux que l'on gère ; la Direction Générale des Études voit tous les congés (sans les modifier)."""
+    profil = get_profil(request)
+    if profil.est_dge and not profil.est_scolarite:
+        return CongeAcademique.objects.all()
+    return _conges_geres(request)
 
 
 def _retour(request, conge_ou_inscription_pk):
@@ -99,7 +107,7 @@ def conge_justificatif(request, pk):
 
 
 @login_required
-@etudiants_requise
+@lecture_conges_requise
 def conges_liste(request):
     """Congés académiques : par session et par état, avec recherche ; 25 par page."""
     g = request.GET
@@ -107,7 +115,7 @@ def conges_liste(request):
     etat = g.get('etat') if g.get('etat') in ('en_cours', 'leves') else ''
     sessions = Session.objects.order_by('-annee')
     session_id = int(g['session']) if (g.get('session') or '').isdigit() else None
-    qs = _conges_geres(request).select_related('inscription__etudiant', 'inscription__session',
+    qs = _conges_visibles(request).select_related('inscription__etudiant', 'inscription__session',
                                                'inscription__licence', 'inscription__filiere', 'accorde_par')
     if session_id:
         qs = qs.filter(inscription__session_id=session_id)
@@ -123,5 +131,5 @@ def conges_liste(request):
     page = Paginator(qs, 25).get_page(g.get('page'))
     return render(request, 'pfe/conges_liste.html', {
         'page': page, 'q': q, 'etat': etat, 'sessions': sessions, 'session_id': session_id,
-        'en_cours': _conges_geres(request).filter(levee_le__isnull=True).count(), 'actif': 'conges',
+        'en_cours': _conges_visibles(request).filter(levee_le__isnull=True).count(), 'actif': 'conges',
     })

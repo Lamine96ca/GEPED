@@ -5,16 +5,16 @@
 {% block sous_titre %}<div class="sous-titre">{{ page.paginator.count|intcomma }} note{{ page.paginator.count|pluralize }} · sur 10, validée à partir de {{ seuil }}{% if profil.role == 'programme' %} · {{ profil.structure }}{% endif %}</div>{% endblock %}
 {% block actions %}
   <a href="?{{ params }}{% if params %}&{% endif %}export=xlsx" class="btn btn-or"><i class="bi bi-file-earmark-excel"></i> <span class="d-none d-sm-inline">Exporter (Excel)</span></a>
-  <a href="{% url 'notes_matieres' %}" class="btn btn-primary"><i class="bi bi-pencil-square"></i> <span class="d-none d-sm-inline">Saisir des notes</span></a>
+  {% if profil.gere_matieres %}<a href="{% url 'notes_matieres' %}" class="btn btn-primary"><i class="bi bi-pencil-square"></i> <span class="d-none d-sm-inline">Saisir des notes</span></a>{% endif %}
 {% endblock %}
 {% block contenu %}
 <div class="card carte-gped liste">
-  {% include 'pfe/_filtres_notes.html' with avec_licence=True avec_recherche=True avec_statut=True placeholder='Matricule, nom ou matière' %}
+  {% include 'pfe/_filtres_notes.html' with avec_licence=True avec_recherche=True avec_statut=True avec_promotion=True placeholder='Matricule, nom ou matière' %}
   <div class="table-responsive">
     <table class="table table-etudiants mb-0">
       <thead><tr>
         {% for cle, c in colonnes.items %}
-          {% if cle == 'etudiant' or cle == 'matiere' or cle == 'semestre' or cle == 'programme' or cle == 'session' %}
+          {% if cle == 'etudiant' or cle == 'matiere' or cle == 'semestre' or cle == 'programme' or cle == 'session' or cle == 'promotion' %}
             <th data-tri="{{ cle }}" class="{% if c.actif %}trie{% endif %}{% if cle == 'programme' %} d-none d-xl-table-cell{% endif %}">
               <a href="?{{ c.url }}" class="lien-tri">{{ c.libelle }} <i class="bi {% if c.actif %}{% if c.ordre == 'asc' %}bi-sort-up{% else %}bi-sort-down{% endif %}{% else %}bi-arrow-down-up{% endif %}"></i></a>
             </th>
@@ -34,6 +34,7 @@
           <td>{{ n.matiere.semestre.nom }}</td>
           <td class="d-none d-xl-table-cell text-truncate" style="max-width:170px" title="{{ n.matiere.filiere }}">{{ n.matiere.filiere }}</td>
           <td>{{ n.matiere.session.annee }}</td>
+          <td class="text-nowrap">{{ n.promotion_nom|default:"—" }}</td>
           <td class="text-center">{% if n.controle is not None %}{{ n.controle|floatformat:"-2" }}{% else %}<span class="text-secondary">—</span>{% endif %}</td>
           <td class="text-center">{% if n.tp is not None %}{{ n.tp|floatformat:"-2" }}{% else %}<span class="text-secondary">—</span>{% endif %}</td>
           <td class="text-center">{% if n.examen is not None %}{{ n.examen|floatformat:"-2" }}{% else %}<span class="text-secondary">—</span>{% endif %}</td>
@@ -41,10 +42,13 @@
           <td class="text-center">{% if n.rattrapage is not None %}{{ n.rattrapage|floatformat:"-2" }}{% else %}<span class="text-secondary">—</span>{% endif %}</td>
           <td class="text-center"><span class="resultat-moy {% if n.moyenne_finale is not None %}{% if n.moyenne_finale >= seuil %}ok{% else %}ko{% endif %}{% endif %}">{% if n.moyenne_finale is not None %}{{ n.moyenne_finale|floatformat:"-2" }}{% else %}—{% endif %}</span></td>
           <td class="text-nowrap">{{ n.mention|default:"—" }}{% if n.par_session %} <span class="pill pill-accent">Session</span>{% endif %}</td>
-          <td class="text-end"><a class="btn btn-icone" href="{% url 'notes_saisie' n.matiere_id %}?etudiant={{ n.etudiant_id }}&amp;retour={{ request.get_full_path|urlencode:'' }}" title="Modifier la note de cet étudiant"><i class="bi bi-pencil"></i></a></td>
+          <td class="text-end text-nowrap">
+            {% if profil.voit_suivi_notes %}<a class="btn btn-icone" href="{% url 'note_historique' n.pk %}" title="Historique de la note (auteur, modifications, fichiers)"><i class="bi bi-clock-history"></i></a>{% endif %}
+            {% if profil.gere_matieres %}<a class="btn btn-icone" href="{% url 'notes_saisie' n.matiere_id %}?etudiant={{ n.etudiant_id }}&amp;retour={{ request.get_full_path|urlencode:'' }}" title="Modifier la note de cet étudiant"><i class="bi bi-pencil"></i></a>{% endif %}
+          </td>
         </tr>
       {% empty %}
-        <tr><td colspan="13"><div class="etat-vide"><i class="bi bi-123"></i>Aucune note avec ces filtres.</div></td></tr>
+        <tr><td colspan="14"><div class="etat-vide"><i class="bi bi-123"></i>Aucune note avec ces filtres.</div></td></tr>
       {% endfor %}
       </tbody>
     </table>

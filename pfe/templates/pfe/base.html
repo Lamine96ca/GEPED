@@ -97,7 +97,7 @@
           {% if profil.gere_etudiants %}
             <a class="nav-link {% if actif == 'demandes' %}active{% endif %}" href="{% url 'demandes_liste' %}">Demandes en ligne{% if nb_demandes and profil.est_scolarite %}<span class="compteur" title="Demandes en attente">{{ nb_demandes }}</span>{% endif %}</a>
           {% endif %}
-          {% if profil.gere_etudiants %}
+          {% if profil.voit_conges %}
             <a class="nav-link {% if actif == 'conges' %}active{% endif %}" href="{% url 'conges_liste' %}">Congés académiques</a>
           {% endif %}
           <a class="nav-link {% if actif == 'statistiques' %}active{% endif %}" href="{% url 'statistiques' %}">Statistiques</a>
@@ -114,9 +114,9 @@
       <!-- 3. Matières -->
       <a class="nav-link {% if actif == 'matieres' %}active{% endif %}" href="{% url 'matieres_liste' %}"><i class="bi bi-journal-bookmark"></i> Matières</a>
 
-      <!-- Notes : scolarité et chefs de programme -->
-      {% if profil.gere_matieres %}
-        {% if actif == 'notes_liste' or actif == 'notes_saisie' or actif == 'notes_importer' or actif == 'notes_resultats' %}
+      <!-- Notes : scolarité et chefs de programme ; Direction Générale des Études en consultation -->
+      {% if profil.lit_notes %}
+        {% if actif == 'notes_liste' or actif == 'notes_saisie' or actif == 'notes_importer' or actif == 'notes_resultats' or actif == 'notes_historique' or actif == 'notes_imports' or actif == 'notes_autorisations' %}
           {% firstof 'show' as notes_ouvert %}
         {% else %}
           {% firstof '' as notes_ouvert %}
@@ -129,11 +129,23 @@
           </button>
           <div class="collapse sous-menu {{ notes_ouvert }}" id="sous-menu-notes">
             <a class="nav-link {% if actif == 'notes_liste' %}active{% endif %}" href="{% url 'notes_liste' %}">Liste des notes</a>
-            <a class="nav-link {% if actif == 'notes_saisie' %}active{% endif %}" href="{% url 'notes_matieres' %}">Saisie des notes</a>
-            <a class="nav-link {% if actif == 'notes_importer' %}active{% endif %}" href="{% url 'notes_importer' %}">Importer des notes</a>
-            <a class="nav-link {% if actif == 'notes_resultats' %}active{% endif %}" href="{% url 'notes_resultats' %}">Résultats et délibérations</a>
+            {% if profil.gere_matieres %}
+              <a class="nav-link {% if actif == 'notes_saisie' %}active{% endif %}" href="{% url 'notes_matieres' %}">Saisie des notes</a>
+              <a class="nav-link {% if actif == 'notes_importer' %}active{% endif %}" href="{% url 'notes_importer' %}">Importer des notes</a>
+            {% endif %}
+            <a class="nav-link {% if actif == 'notes_resultats' %}active{% endif %}" href="{% url 'notes_resultats' %}">Résultats{% if profil.est_scolarite %} et délibérations{% endif %}</a>
+            {% if profil.voit_suivi_notes %}
+              <a class="nav-link {% if actif == 'notes_historique' %}active{% endif %}" href="{% url 'notes_historique' %}">Historique des notes</a>
+              <a class="nav-link {% if actif == 'notes_imports' %}active{% endif %}" href="{% url 'notes_imports' %}">Fichiers importés</a>
+            {% endif %}
+            {% if profil.est_scolarite %}
+              <a class="nav-link {% if actif == 'notes_autorisations' %}active{% endif %}" href="{% url 'notes_autorisations' %}">Autorisations</a>
+            {% endif %}
           </div>
         </div>
+      {% endif %}
+
+      {% if profil.gere_matieres %}
 
         <!-- Soutenances : scolarité et chefs de programme -->
         {% if actif == 'sout_liste' or actif == 'sout_projets' or actif == 'sout_notes' or actif == 'sout_calendrier' or actif == 'sout_importer' %}

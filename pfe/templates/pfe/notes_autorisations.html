@@ -1,0 +1,126 @@
+{% extends 'pfe/base.html' %}
+{% block titre %}Autorisations de modification{% endblock %}
+{% block titre_page %}Autorisations de modification des notes{% endblock %}
+{% block sous_titre %}<div class="sous-titre">Un semestre délibéré ou une année écoulée est fermé aux programmes ; le chef de la scolarité peut le rouvrir pour une durée limitée</div>{% endblock %}
+{% block contenu %}
+<div class="row g-3">
+  {% if profil.est_chef_scolarite %}
+  <div class="col-xl-5">
+    <div class="card carte-gped">
+      <div class="card-body">
+        <div class="entete-carte">
+          <span class="icone-carte"><i class="bi bi-unlock"></i></span>
+          <div><h3>Nouvelle autorisation</h3><p>Programmes, session, niveaux et période</p></div>
+        </div>
+        <form method="post" action="{% url 'notes_autorisation_creer' %}" class="d-grid gap-3">
+          {% csrf_token %}
+          <div>
+            <div class="d-flex align-items-center mb-1">
+              <label class="form-label small fw-semibold mb-0 me-auto">Programmes *</label>
+              <button type="button" class="btn btn-link btn-sm p-0" data-cocher="programmes">Tout cocher</button>
+            </div>
+            <div class="border rounded p-2" style="max-height:220px;overflow:auto">
+              {% for p in programmes %}
+                <label class="form-check small mb-1"><input class="form-check-input" type="checkbox" name="programmes" value="{{ p.pk }}"> {{ p.nom }}</label>
+              {% endfor %}
+            </div>
+          </div>
+          <div class="row g-2">
+            <div class="col-sm-6">
+              <label class="form-label small fw-semibold mb-1" for="session">Session *</label>
+              <select id="session" name="session" class="form-select" required>
+                {% for s in sessions %}<option value="{{ s.pk }}"{% if s.pk == session_defaut %} selected{% endif %}>{{ s.annee }}{% if s.en_cours %} (en cours){% endif %}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="col-sm-6">
+              <label class="form-label small fw-semibold mb-1">Niveaux *</label>
+              <div class="border rounded p-2">
+                {% for l in licences %}
+                  <label class="form-check small mb-1"><input class="form-check-input" type="checkbox" name="licences" value="{{ l.pk }}"> {{ l.nom }}</label>
+                {% endfor %}
+              </div>
+            </div>
+            <div class="col-sm-6">
+              <label class="form-label small fw-semibold mb-1" for="date_debut">Du *</label>
+              <input type="date" id="date_debut" name="date_debut" class="form-control" value="{{ aujourd_hui|date:'Y-m-d' }}" required>
+            </div>
+            <div class="col-sm-6">
+              <label class="form-label small fw-semibold mb-1" for="date_fin">Au (inclus) *</label>
+              <input type="date" id="date_fin" name="date_fin" class="form-control" required>
+            </div>
+          </div>
+          <div>
+            <label class="form-label small fw-semibold mb-1" for="motif">Motif</label>
+            <textarea id="motif" name="motif" rows="2" class="form-control" placeholder="Ex. : correction des notes après réclamations, PV n° …"></textarea>
+          </div>
+          <div class="small text-secondary"><i class="bi bi-info-circle"></i> Pendant la période, les programmes cochés peuvent saisir, modifier et importer les notes de ces niveaux (avec motif et PDF pour toute modification). La scolarité n'en a pas besoin.</div>
+          <button class="btn btn-primary"><i class="bi bi-check-lg"></i> Accorder l'autorisation</button>
+        </form>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="{% if profil.est_chef_scolarite %}col-xl-7{% else %}col-12{% endif %}">
+    <div class="card carte-gped liste">
+      <div class="card-header">
+        <form method="get" class="d-flex flex-wrap gap-2">
+          <select name="etat" class="form-select form-select-sm" style="height:38px;width:auto" title="État" onchange="this.form.submit()">
+            <option value="">Toutes</option>
+            <option value="en_cours"{% if etat == 'en_cours' %} selected{% endif %}>En cours</option>
+            <option value="a_venir"{% if etat == 'a_venir' %} selected{% endif %}>À venir</option>
+            <option value="terminees"{% if etat == 'terminees' %} selected{% endif %}>Terminées</option>
+          </select>
+        </form>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-etudiants mb-0">
+          <thead><tr><th>Période</th><th>Programmes</th><th>Session · niveaux</th><th>Accordée par</th><th class="text-end"></th></tr></thead>
+          <tbody>
+          {% for a in page %}
+            <tr style="cursor:default">
+              <td class="text-nowrap">{{ a.date_debut|date:"d/m/Y" }} → {{ a.date_fin|date:"d/m/Y" }}
+                <div>{% if a.etat == 'en_cours' %}<span class="pill pill-succes">En cours</span>{% elif a.etat == 'a_venir' %}<span class="pill pill-accent">À venir</span>{% else %}<span class="pill">Terminée</span>{% endif %}</div></td>
+              <td style="white-space:normal;min-width:180px" class="small">{% for p in a.programmes.all %}{{ p.nom }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
+              <td style="white-space:normal" class="small">{{ a.session }}<div class="text-secondary">{% for l in a.licences.all %}{{ l.nom }}{% if not forloop.last %}, {% endif %}{% endfor %}</div></td>
+              <td class="small">{% if a.accordee_par %}{{ a.accordee_par.get_full_name|default:a.accordee_par.username }}{% else %}—{% endif %}<div class="text-secondary">{{ a.date_creation|date:"d/m/Y" }}</div>{% if a.motif %}<div class="text-secondary" title="{{ a.motif }}">{{ a.motif|truncatechars:60 }}</div>{% endif %}</td>
+              <td class="text-end text-nowrap">
+                {% if profil.est_chef_scolarite and a.etat != 'terminee' %}
+                  <form method="post" action="{% url 'notes_autorisation_clore' a.pk %}" class="d-inline" onsubmit="return confirm('{% if a.etat == 'a_venir' %}Supprimer cette autorisation ?{% else %}Clore cette autorisation maintenant ? Les programmes ne pourront plus modifier ces notes.{% endif %}');">
+                    {% csrf_token %}
+                    <button class="btn btn-sm btn-light"><i class="bi bi-lock"></i> {% if a.etat == 'a_venir' %}Supprimer{% else %}Clore{% endif %}</button>
+                  </form>
+                {% endif %}
+              </td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="5"><div class="etat-vide"><i class="bi bi-unlock"></i>Aucune autorisation{% if etat %} dans cet état{% endif %}.</div></td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if page.has_other_pages %}
+        <div class="pied-tableau d-flex justify-content-end">
+          <ul class="pagination pagination-sm mb-0">
+            {% if page.has_previous %}<li class="page-item"><a class="page-link" href="?etat={{ etat }}&page={{ page.previous_page_number }}"><i class="bi bi-chevron-left"></i></a></li>{% endif %}
+            <li class="page-item active"><span class="page-link">{{ page.number }} / {{ page.paginator.num_pages }}</span></li>
+            {% if page.has_next %}<li class="page-item"><a class="page-link" href="?etat={{ etat }}&page={{ page.next_page_number }}"><i class="bi bi-chevron-right"></i></a></li>{% endif %}
+          </ul>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  document.querySelectorAll('[data-cocher]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var cases = document.querySelectorAll('input[name="' + b.dataset.cocher + '"]');
+      var toutes = Array.prototype.every.call(cases, function (c) { return c.checked; });
+      cases.forEach(function (c) { c.checked = !toutes; });
+      b.textContent = toutes ? 'Tout cocher' : 'Tout décocher';
+    });
+  });
+</script>
+{% endblock %}

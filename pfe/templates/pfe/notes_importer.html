@@ -127,26 +127,32 @@
           <li><code>rattrapage</code> : on garde la meilleure des deux notes, avec la mention « Session ».</li>
           <li>La matière est cherchée dans le programme et la licence de l'inscription de l'étudiant pour la session. Une note déjà enregistrée est <strong>mise à jour</strong> (modification tracée) ; une ligne répétée est ignorée.</li>
           {% if not mes_programmes %}<li><strong>Étudiant non inscrit dans la session :</strong> il y est <strong>inscrit automatiquement</strong> si la matière est unique dans la session (sinon ajoutez la colonne <code>programme</code>) et si toutes ses notes de la session sont du même programme et de la même licence. Jamais pour un préinscrit ni pour un étudiant déjà inscrit dans la session. La simulation liste ces inscriptions avant l'import.</li>{% endif %}
-          <li><strong>Année en cours</strong> (délibérée ou non) : les notes sont créées ou mises à jour. <strong>Année écoulée</strong> : les notes manquantes sont créées ; une note déjà enregistrée n'est modifiée que par un <strong>chef</strong> (scolarité ou département).</li>
-          <li class="pb-0">Le <strong>PDF de l'enseignant</strong> est gardé avec l'import et sert de justificatif à chaque note modifiée.{% if mes_programmes %} <strong>Votre périmètre :</strong> si une ligne concerne un autre programme, tout l'import est refusé.{% endif %}</li>
+          {% if profil.est_scolarite %}
+            <li><strong>Année en cours</strong> (délibérée ou non) : les notes sont créées ou mises à jour. <strong>Année écoulée</strong> : les notes manquantes sont créées ; une note déjà enregistrée n'est modifiée que par le <strong>chef de la scolarité</strong>.</li>
+          {% else %}
+            <li><strong>Semestre non délibéré</strong> de l'année en cours : les notes sont créées ou mises à jour. <strong>Semestre délibéré ou année écoulée</strong> : lignes refusées, sauf pendant une <strong>autorisation du chef de la scolarité</strong>.</li>
+          {% endif %}
+          <li class="pb-0">Le <strong>fichier importé</strong> et le <strong>PDF de l'enseignant</strong> sont gardés avec l'import (jamais remplacés) ; le PDF sert de justificatif à chaque note modifiée.{% if mes_programmes %} <strong>Votre périmètre :</strong> si une ligne concerne un autre programme, tout l'import est refusé.{% endif %}</li>
         </ol>
       </div>
     </div>
 
     {% if journal %}
     <div class="card carte-gped liste">
-      <div class="card-header"><h3 class="titre-stat mb-0"><i class="bi bi-clock-history"></i> Derniers imports</h3></div>
+      <div class="card-header d-flex align-items-center"><h3 class="titre-stat mb-0 me-auto"><i class="bi bi-clock-history"></i> Derniers imports</h3>{% if profil.voit_suivi_notes %}<a href="{% url 'notes_imports' %}" class="btn btn-sm btn-light">Tous les imports</a>{% endif %}</div>
       <div class="table-responsive">
         <table class="table table-etudiants mb-0">
-          <thead><tr><th>Date</th><th>Par</th><th>Fichier</th><th class="text-end">Créées</th><th class="text-end">Modifiées</th><th>PDF</th></tr></thead>
+          <thead><tr><th>Date</th><th>Par</th><th>Fichier</th><th class="text-end">Créées</th><th class="text-end">Modifiées</th><th>Fichiers</th></tr></thead>
           <tbody>
           {% for imp in journal %}
             <tr style="cursor:default">
               <td class="text-nowrap">{{ imp.date|date:"d/m/Y H:i" }}</td>
-              <td>{{ imp.utilisateur.get_full_name|default:imp.utilisateur.username|default:"—" }}</td>
+              <td>{% if imp.utilisateur %}{{ imp.utilisateur.get_full_name|default:imp.utilisateur.username }}{% else %}—{% endif %}</td>
               <td style="white-space:normal">{{ imp.fichier }}<div class="small text-secondary">{{ imp.programmes }}</div></td>
               <td class="text-end">{{ imp.creees }}</td><td class="text-end">{{ imp.modifiees }}</td>
-              <td>{% if imp.pdf_enseignant %}<a href="{% url 'notes_import_pdf' imp.pk %}" class="btn btn-sm btn-light" target="_blank" rel="noopener"><i class="bi bi-file-earmark-pdf"></i> Voir</a>{% else %}<span class="text-secondary">—</span>{% endif %}</td>
+              <td class="text-nowrap">{% if imp.fichier_importe %}<a href="{% url 'notes_import_excel' imp.pk %}" class="btn btn-sm btn-light" title="Fichier importé"><i class="bi bi-file-earmark-excel"></i></a>{% endif %}
+                {% if imp.pdf_enseignant %}<a href="{% url 'notes_import_pdf' imp.pk %}" class="btn btn-sm btn-light" target="_blank" rel="noopener" title="PDF de l'enseignant"><i class="bi bi-file-earmark-pdf"></i></a>{% endif %}
+                {% if not imp.fichier_importe and not imp.pdf_enseignant %}<span class="text-secondary">—</span>{% endif %}</td>
             </tr>
           {% endfor %}
           </tbody>

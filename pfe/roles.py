@@ -104,6 +104,26 @@ class Profil:
         return self.role in (SCOLARITE, PROGRAMME)
 
     @property
+    def est_dge(self):
+        """Direction Générale des Études : consulte tout (étudiants, notes, statistiques, congés), ne modifie rien."""
+        return any(est_service_dge(s) for s in self.tous_services)
+
+    @property
+    def lit_notes(self):
+        """Liste des notes et résultats : scolarité, chefs de programme, Direction Générale des Études (lecture)."""
+        return self.gere_matieres or self.est_dge
+
+    @property
+    def voit_suivi_notes(self):
+        """Historique des notes et fichiers importés : scolarité, admin et Direction Générale des Études."""
+        return self.est_scolarite or self.est_dge
+
+    @property
+    def voit_conges(self):
+        """Liste des congés académiques : ceux qui gèrent les étudiants, et la Direction Générale des Études."""
+        return self.gere_etudiants or self.est_dge
+
+    @property
     def structure(self):
         """Nom des services affichés à côté du rôle."""
         return ', '.join(s.nom for s in self.services)
@@ -121,6 +141,20 @@ def est_service_scolarite(service):
         return True
     noms = {n.strip().lower() for n in getattr(settings, 'GPED_SCOLARITE_NOMS', [])}
     return service.nom.strip().lower() in noms
+
+
+def _sans_accents(texte):
+    import unicodedata
+    return ''.join(c for c in unicodedata.normalize('NFD', ' '.join(str(texte or '').split()).lower())
+                   if unicodedata.category(c) != 'Mn')
+
+
+def est_service_dge(service):
+    """Direction Générale des Études : reconnue par son nom (GPED_DGE_NOMS), sans casse ni accents."""
+    if service.programme:
+        return False
+    noms = {_sans_accents(n) for n in getattr(settings, 'GPED_DGE_NOMS', ['Direction Générale des Études'])}
+    return _sans_accents(service.nom) in noms
 
 
 def _calculer_profil(user):
@@ -183,6 +217,26 @@ def gestion_matieres_requise(vue):
             raise PermissionDenied("Action réservée à la scolarité et aux chefs de programme.")
         return vue(request, *args, **kwargs)
     return wrapper
+
+
+def _exige(propriete, message):
+    def decorateur(vue):
+        @wraps(vue)
+        def wrapper(request, *args, **kwargs):
+            if not getattr(get_profil(request), propriete):
+                raise PermissionDenied(message)
+            return vue(request, *args, **kwargs)
+        return wrapper
+    return decorateur
+
+
+lecture_notes_requise = _exige('lit_notes', "Notes : réservé à la scolarité, aux chefs de programme et à la "
+                                            "Direction Générale des Études.")
+suivi_notes_requis = _exige('voit_suivi_notes', "Réservé à la scolarité, à l'administrateur et à la Direction "
+                                                "Générale des Études.")
+lecture_conges_requise = _exige('voit_conges', "Congés académiques : réservé à la scolarité et à la Direction "
+                                               "Générale des Études.")
+chef_scolarite_requis = _exige('est_chef_scolarite', "Réservé au chef de la scolarité et à l'administrateur.")
 
 
 def acces_requis(vue):

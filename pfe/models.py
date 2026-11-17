@@ -357,6 +357,12 @@ class Note(models.Model):
     moyenne_finale = models.FloatField('Moyenne finale', null=True, blank=True, editable=False)
     par_session = models.BooleanField('Validée en session', default=False, editable=False)
     date_maj = models.DateTimeField('Dernière modification', auto_now=True)
+    # Première saisie : qui, quand, et l'import d'où elle vient (fichier Excel et PDF de l'enseignant)
+    saisie_par = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+                                   verbose_name='Saisie par')
+    date_saisie = models.DateTimeField('Saisie le', null=True, blank=True)
+    import_saisie = models.ForeignKey('ImportNotes', on_delete=models.SET_NULL, null=True, blank=True,
+                                      related_name='notes_creees', verbose_name='Import de la saisie')
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=['etudiant', 'matiere'], name='note_unique_par_matiere')]
@@ -421,10 +427,44 @@ class NoteHistorique(models.Model):
     apres_deliberation = models.BooleanField('Après délibération', default=False)
     motif = models.TextField('Motif', blank=True)
     justificatif = models.FileField('Justificatif', upload_to='justificatifs/notes/%Y', storage=stockage_prive,
-                                    blank=True)
+                                    blank=True, max_length=255)
+    import_notes =models.ForeignKey('ImportNotes', on_delete=models.SET_NULL, null=True, blank=True,
+                                     related_name='modifications', verbose_name='Import')
 
     class Meta:
         ordering = ['-date']
+
+
+class AutorisationNotes(models.Model):
+    """
+    Période accordée par le chef de la scolarité pendant laquelle des programmes peuvent saisir,
+    modifier ou importer les notes d'un niveau déjà délibéré (ou d'une année écoulée).
+    """
+    programmes = models.ManyToManyField(Service, related_name='autorisations_notes', verbose_name='Programmes',
+                                        limit_choices_to={'programme': True})
+    session = models.ForeignKey(Session, on_delete=models.CASCADE, related_name='autorisations_notes',
+                                verbose_name='Session')
+    licences = models.ManyToManyField(Licence, related_name='autorisations_notes', verbose_name='Niveaux')
+    date_debut = models.DateField('Du')
+    date_fin = models.DateField('Au')
+    motif = models.TextField('Motif', blank=True)
+    accordee_par = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+                                     verbose_name='Accordée par')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-date_debut', '-id']
+
+    def __str__(self):
+        return f"Autorisation {self.session} du {self.date_debut:%d/%m/%Y} au {self.date_fin:%d/%m/%Y}"
+
+    @property
+    def etat(self):
+        from django.utils import timezone
+        aujourd_hui = timezone.localdate()
+        if aujourd_hui < self.date_debut:
+            return 'a_venir'
+        return 'en_cours' if aujourd_hui <= self.date_fin else 'terminee'
 
 
 class PieceDossier(models.Model):
@@ -574,11 +614,17 @@ class ImportNotes(models.Model):
     date = models.DateTimeField(auto_now_add=True)
     utilisateur = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, verbose_name='Importé par')
     fichier = models.CharField('Fichier importé', max_length=255, blank=True)
+    # Le fichier importé lui-même (Excel ou CSV), gardé tel quel : téléchargeable, jamais remplacé
+    fichier_importe = models.FileField('Fichier Excel importé', upload_to='imports_notes/%Y', storage=stockage_prive,
+                                       blank=True, max_length=255)
     pdf_enseignant = models.FileField("PDF de l'enseignant", upload_to='justificatifs/imports_notes/%Y',
-                                      storage=stockage_prive, blank=True)
+                                      storage=stockage_prive, blank=True, max_length=255)
     creees = models.PositiveIntegerField('Notes créées', default=0)
     modifiees = models.PositiveIntegerField('Notes modifiées', default=0)
     programmes = models.CharField('Programmes', max_length=255, blank=True)
+    # Service(s) de la personne qui importe (son programme, ou le Service Scolarité)
+    services = models.ManyToManyField(Service, blank=True, related_name='imports_notes',
+                                      verbose_name="Service de l'importateur")
 
     class Meta:
         ordering = ['-date']

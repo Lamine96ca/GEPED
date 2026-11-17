@@ -1,6 +1,7 @@
 from django.urls import path
 
-from . import views, views_conges, views_demandes, views_notes, views_personnel, views_releves, views_soutenances
+from . import (views, views_conges, views_demandes, views_notes, views_personnel, views_releves, views_soutenances,
+               views_suivi_notes)
 
 urlpatterns = [
     path('', views.tableau_de_bord, name='tableau_de_bord'),
@@ -44,6 +45,17 @@ urlpatterns = [
     path('notes/importer/', views_notes.notes_importer, name='notes_importer'),
     path('notes/importer/modele/', views_notes.notes_modele, name='notes_modele'),
     path('notes/importer/<int:pk>/pdf/', views_notes.notes_import_pdf, name='notes_import_pdf'),
+    path('notes/importer/<int:pk>/fichier/', views_notes.notes_import_excel, name='notes_import_excel'),
+    path('notes/imports/', views_suivi_notes.notes_imports, name='notes_imports'),
+    path('notes/historique/', views_suivi_notes.notes_historique, name='notes_historique'),
+    path('notes/historique/<int:pk>/justificatif/', views_suivi_notes.notes_historique_justificatif,
+         name='notes_historique_justificatif'),
+    path('notes/<int:pk>/historique/', views_suivi_notes.note_historique, name='note_historique'),     # pk = note
+    path('scolarite/notes/autorisations/', views_suivi_notes.notes_autorisations, name='notes_autorisations'),
+    path('scolarite/notes/autorisations/ajouter/', views_suivi_notes.notes_autorisation_creer,
+         name='notes_autorisation_creer'),
+    path('scolarite/notes/autorisations/<int:pk>/clore/', views_suivi_notes.notes_autorisation_clore,
+         name='notes_autorisation_clore'),
     path('notes/resultats/', views_notes.notes_resultats, name='notes_resultats'),
     path('notes/deliberer/', views_notes.notes_deliberer, name='notes_deliberer'),
     path('soutenances/', views_soutenances.soutenances_liste, name='soutenances'),
