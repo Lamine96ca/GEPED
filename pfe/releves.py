@@ -221,16 +221,24 @@ def releve_existant(type_, etudiant, filiere, session=None, licence=None, semest
 def infos_publiques_releve(releve):
     """Page publique (QR) : titre et informations IMPRIMÉES sur le relevé, pour comparaison."""
     from .attestations import _nom_departement
-    c = contenu(releve)
+    try:
+        c = contenu(releve)
+    except ValueError:                     # inscription supprimée depuis la délivrance : plus de notes à montrer
+        c = None
     e = releve.etudiant
     if releve.type == ReleveNote.SEMESTRE:
         titre = f"Relevé de notes · {releve.semestre.nom}"
     elif releve.type == ReleveNote.ANNUEL:
-        titre = f"Relevé de notes · {c['niveau']}"
+        titre = f"Relevé de notes · {c['niveau'] if c else releve.licence.nom}"
     else:
         titre = "Extrait du livret universitaire"
     infos = [('Étudiant(e)', f"{e.prenom.upper()} {e.nom.upper()}"), ('Matricule', e.matricule or '—'),
              ('Département', _nom_departement(releve.filiere)), ('Programme', releve.filiere.nom)]
+    if c is None:
+        if releve.session:
+            infos.append(('Année universitaire', releve.session.annee))
+        infos.append(('Statut', "Relevé délivré, mais l'inscription a été supprimée depuis : notes non disponibles"))
+        return titre, infos
     if c.get('session'):
         infos.append(('Année universitaire', c['session']))
     if releve.type == ReleveNote.EXTRAIT:

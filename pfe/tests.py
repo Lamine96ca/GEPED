@@ -3402,6 +3402,13 @@ class GpedTests(TestCase):
         c8 = contenu(ReleveNote.objects.get(type='A', etudiant=e8))
         self.assertEqual((c8['blocs'][0]['detaille'], c8['moyenne']), (False, 2.28))  # 6,1 × 6 / 16
         self.assertEqual(c8['blocs'][0]['lignes'][0]['lettre'], 'C')
+        # Inscription supprimée après la délivrance : la page publique (QR) le dit, sans erreur 500
+        rel8 = ReleveNote.objects.get(type='A', etudiant=e8)
+        Inscription.objects.filter(etudiant=e8).delete()
+        r = self.client.get(reverse('verifier_document', args=[rel8.code_verification]))
+        self.assertContains(r, 'notes non disponibles')
+        self.assertEqual(self.client.get(reverse('releve_pdf', args=[rel8.pk])).status_code, 404)
+        Inscription.objects.create(etudiant=e8, session=self.session, licence=self.licence, filiere=tc, cycle='Licence')
 
         # Inscription corrigée (cycle) : les notes changent de règlement et sont recalculées
         Inscription.objects.filter(etudiant=e8).update(cycle='Tronc commun')
