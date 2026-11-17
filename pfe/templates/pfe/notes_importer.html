@@ -4,6 +4,7 @@
 {% block titre_page %}Importer des notes{% endblock %}
 {% block sous_titre %}<div class="sous-titre">Fichier Excel (.xlsx) ou CSV · notes sur 10{% if mes_programmes %} · uniquement {% for p in mes_programmes %}{{ p.nom }}{% if not forloop.last %}, {% endif %}{% endfor %}{% endif %}</div>{% endblock %}
 {% block actions %}
+  <a href="{% url 'notes_modele' %}?reglement=877" class="btn btn-light" title="Colonnes cc et ct : Tronc commun et cycle Ingénieur depuis 2025-2026"><i class="bi bi-file-earmark-excel"></i> <span class="d-none d-sm-inline">Modèle CC / CT (arrêté 877)</span></a>
   <a href="{% url 'notes_modele' %}" class="btn btn-or"><i class="bi bi-file-earmark-excel"></i> <span class="d-none d-sm-inline">Télécharger le modèle</span></a>
 {% endblock %}
 {% block contenu %}
@@ -81,6 +82,7 @@
             </details>
           {% endif %}
           {% include 'pfe/_reparation_fichier.html' %}
+          {% if rapport.reglements %}<p class="small text-secondary"><i class="bi bi-journal-check"></i> Règlement appliqué : {% for nom, n in rapport.reglements %}{{ nom }} ({{ n|intcomma }} ligne{{ n|pluralize }}){% if not forloop.last %} · {% endif %}{% endfor %}</p>{% endif %}
           {% if rapport.colonnes_ignorees %}<p class="small text-secondary"><i class="bi bi-dash-circle"></i> Colonnes ignorées : {{ rapport.colonnes_ignorees|join:", " }}</p>{% endif %}
           {% if rapport.simulation and rapport.lignes %}
             <div class="alert alert-info small py-2"><i class="bi bi-lightbulb"></i> Si le résultat vous convient, décochez « Mode simulation » et relancez l'import avec le même fichier.</div>
@@ -125,6 +127,7 @@
           <li>Obligatoires : {% for c in obligatoires %}<code>{{ c }}</code>{% if not forloop.last %}, {% endif %}{% endfor %} (<code>matiere</code> = nom ou code). Notes : <code>controle</code>, <code>tp</code>, <code>examen</code>, <code>moyenne</code>, <code>rattrapage</code> (au moins une). <code>programme</code> si besoin de préciser.</li>
           <li><strong>Sur 10.</strong> <code>ABS</code> = 0. La colonne <code>moyenne</code> (déposée par le programme) est prise telle quelle ; sinon elle est calculée : contrôle 25 % + TP 35 % + examen 40 % (sans TP : 40 % + 60 %). Si la moyenne est remplie et que contrôle, TP et examen valent <strong>tous 0</strong>, ces 0 sont <strong>considérés comme vides</strong>.</li>
           <li><code>rattrapage</code> : on garde la meilleure des deux notes, avec la mention « Session ».</li>
+          <li><strong>Arrêté 877</strong> (Tronc commun et cycle Ingénieur, depuis 2025-2026) : <code>cc</code> (ou <code>controle</code>) = contrôle continu, <code>ct</code> (ou <code>examen</code>) = contrôle terminal ; moyenne = <strong>CC 40 % + CT 60 %</strong> (un TP donné entre dans le CC) ; le rattrapage retenu est <strong>plafonné à 5</strong>. Le règlement est trouvé d'après l'inscription de chaque étudiant : le même fichier sert pour tous les cycles.</li>
           <li>La matière est cherchée dans le programme et la licence de l'inscription de l'étudiant pour la session. Une note déjà enregistrée est <strong>mise à jour</strong> (modification tracée) ; une ligne répétée est ignorée.</li>
           {% if not mes_programmes %}<li><strong>Étudiant non inscrit dans la session :</strong> il y est <strong>inscrit automatiquement</strong> si la matière est unique dans la session (sinon ajoutez la colonne <code>programme</code>) et si toutes ses notes de la session sont du même programme et de la même licence. Jamais pour un préinscrit ni pour un étudiant déjà inscrit dans la session. La simulation liste ces inscriptions avant l'import.</li>{% endif %}
           {% if profil.est_scolarite %}

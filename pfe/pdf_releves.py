@@ -168,15 +168,20 @@ def _pied(c, releve, cachet_signature, y_mention, signataire, extrait=False):
 
 # ---------------------------------------------------------------- relevé semestriel / annuel
 
-def _tableau_releve(c, b, y, annuel):
+def _tableau_releve(c, b, y, annuel, reserve=205):
+    detaille = b.get('detaille')                           # arrêté 877 : session normale, rattrapage, note retenue
     colonnes = [('N°', 22, 'c'), ('Matières', None, 'g')]
     if annuel:
         colonnes.append(('Sem.', 32, 'c'))
-    colonnes += [('Crédits', 40, 'c'), ('Note /10', 46, 'c'), ('Notation', 46, 'c'), ('Observation', 92, 'c')]
+    if detaille:
+        colonnes += [('Crédits', 38, 'c'), ('Normale', 42, 'c'), ('Rattr.', 38, 'c'), ('Retenue', 44, 'c'),
+                     ('Notation', 44, 'c'), ('Observation', 100, 'c')]
+    else:
+        colonnes += [('Crédits', 40, 'c'), ('Note /10', 46, 'c'), ('Notation', 46, 'c'), ('Observation', 92, 'c')]
     fixe = sum(w for _, w, _ in colonnes if w)
     colonnes = [(t, w or (D - G - fixe), a) for t, w, a in colonnes]
     lignes = b['lignes']
-    disponible = y - 205                                   # place pour moyennes + signature (côte à côte)
+    disponible = y - reserve                               # place pour moyennes + signature (côte à côte)
     hauteur = max(11, min(16, (disponible - 22) / max(1, len(lignes) + 1)))
     taille = min(9.5, hauteur * 0.62)
     # En-tête
@@ -192,11 +197,13 @@ def _tableau_releve(c, b, y, annuel):
     haut_tableau = y
     y -= 20
     for i, l in enumerate(lignes, start=1):
+        notes = ([fmt(l['normale']), fmt(l['rattrapage']) if l['rattrapage'] is not None else '—', fmt(l['note'])]
+                 if detaille else [fmt(l['note'])])
         valeurs = [str(i), l['matiere']] + ([l['semestre']] if annuel else []) + [
-            str(l['credit']), fmt(l['note']), l['lettre'] or '—', l['observation']]
+            str(l['credit'])] + notes + [l['lettre'] or '—', l['observation']]
         x = G
         for (titre, w, align), v in zip(colonnes, valeurs):
-            police = 'Times-Bold' if titre in ('Matières', 'Note /10') else 'Times-Roman'
+            police = 'Times-Bold' if titre in ('Matières', 'Note /10', 'Retenue') else 'Times-Roman'
             if titre == 'Observation':
                 c.setFillColorRGB(*((0.75, 0.1, 0.1) if not l['validee'] else (0.1, 0.45, 0.2)))
                 police = 'Helvetica'
@@ -241,11 +248,15 @@ def _pdf_releve(c, releve, contenu, url, cachet_signature):
     from .models import ReleveNote
     y = _entete(c, releve, contenu, url)
     b = contenu['blocs'][0]
-    y = _tableau_releve(c, b, y - 8, annuel=releve.type == ReleveNote.ANNUEL)
-    y_mention = _resume(c, y, ([('Notes manquantes', str(b['notes_manquantes']))] if b['notes_manquantes'] else [])
-                        + [(contenu['libelle_moyenne'], f"{fmt(contenu['moyenne'])}/10"),
-                           ('Crédits validés', f"{b['credits_valides']} / {b['credits_total']}"),
-                           ('Mention', contenu['mention'] or '—')])
+    cumul = contenu.get('cumul')                           # arrêté 877 : moyenne générale cumulative
+    y = _tableau_releve(c, b, y - 8, annuel=releve.type == ReleveNote.ANNUEL, reserve=237 if cumul else 205)
+    lignes = (([('Notes manquantes', str(b['notes_manquantes']))] if b['notes_manquantes'] else [])
+              + [(contenu['libelle_moyenne'], f"{fmt(contenu['moyenne'])}/10"),
+                 ('Crédits validés', f"{b['credits_valides']} / {b['credits_total']}")])
+    if cumul:
+        lignes += [(cumul['libelle'], f"{fmt(cumul['moyenne'])}/10"),
+                   ('Crédits cumulés', f"{cumul['credits_valides']} / {cumul['credits_total']}")]
+    y_mention = _resume(c, y, lignes + [('Mention', contenu['mention'] or '—')])
     _pied(c, releve, cachet_signature, y_mention, contenu['signataire'])
 
 
@@ -316,12 +327,13 @@ def _pdf_extrait(c, releve, contenu, url, cachet_signature):
             c.line(x0 + colonnes[0][1], bas_bloc, x0 + colonnes[0][1], bas_bloc + pied)
             c.rect(x0, bas_bloc, largeur_col, y - bas_bloc, stroke=1, fill=0)
         y = bas_bloc
-    lignes = [('Moyenne du cycle', f"{fmt(contenu['moyenne_cycle'])}/10")]
+    lignes = [(contenu.get('libelle_cycle', 'Moyenne du cycle'), f"{fmt(contenu['moyenne_cycle'])}/10")]
     if contenu['soutenance'] is not None:
         lignes.append(('Moyenne de soutenance', f"{fmt(contenu['soutenance'])}/10"
                        + (' (Session)' if contenu['soutenance_session'] else '')))
-    lignes += [('Moyenne générale', f"{fmt(contenu['moyenne'])}/10"),
-               ('Crédits validés', f"{contenu['credits_valides']} / {contenu['credits_total']}"),
+    if contenu.get('libelle_cycle', 'Moyenne du cycle') == 'Moyenne du cycle':      # arrêté 877 : déjà la générale
+        lignes.append(('Moyenne générale', f"{fmt(contenu['moyenne'])}/10"))
+    lignes += [('Crédits validés', f"{contenu['credits_valides']} / {contenu['credits_total']}"),
                ('Mention', contenu['mention'] or '—')]
     y_mention = _resume(c, y + 4, lignes, pas=14.5, police=('Times-Roman', 'Times-Bold'), couleur=(0, 0, 0))
     if not blocs:

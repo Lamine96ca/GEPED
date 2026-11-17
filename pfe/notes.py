@@ -18,6 +18,14 @@ Cycle    : PAR PROGRAMME (un ingénieur a un résultat pour le Tronc commun et u
 Moyennes : tronquées à 2 décimales (jamais arrondies au-dessus).
 Mentions : 5 Passable, 6 Assez bien, 7 Bien, 8 et plus Très bien.
 
+Règlements particuliers (settings.GPED_NOTES['reglements']) : une note suit le règlement de l'inscription
+de l'étudiant (cycle, session) ; il est gardé dans Note.reglement. Arrêté 877 (Tronc commun et cycle
+Ingénieur depuis 2025-2026) : matière = CC 40 % + CT 60 % (CC = contrôle, TP compris ; CT = examen) ;
+rattrapage retenu plafonné à 5 ; lettres A+ … E ; mentions Excellent, Remarquable, Satisfaisant,
+Acceptable ; cycle = moyenne générale CUMULATIVE pondérée par les crédits, par programme (CPC pour le
+Tronc commun, cycle ingénieur pour le programme d'orientation), sans soutenance ajoutée à part ;
+note < 5 d'un semestre délibéré = dette.
+
 Les résultats sont enregistrés dans Resultat par recalculer(), à appeler après une saisie,
 un import ou une soutenance (pour les seuls étudiants concernés).
 """
@@ -31,8 +39,50 @@ from django.db import transaction
 CHAMPS_SAISIE = ('controle', 'tp', 'examen', 'moyenne', 'rattrapage')
 
 
-def regles():
-    return settings.GPED_NOTES
+def regles(code=''):
+    """
+    Règles de calcul : celles de settings.GPED_NOTES, remplacées par celles du règlement `code`
+    (ex. « 877 ») quand il y en a un. `code` : '' = règles générales.
+    """
+    base = settings.GPED_NOTES
+    r = {k: v for k, v in base.items() if k != 'reglements'}
+    if code:
+        r.update(base.get('reglements', {}).get(code, {}))
+    r['code'] = code
+    return r
+
+
+def code_reglement(cycle, annee):
+    """Règlement d'une inscription : son cycle et l'année de sa session (« 2025 - 2026 »). '' sinon."""
+    for code, r in settings.GPED_NOTES.get('reglements', {}).items():
+        if cycle in r.get('cycles', ()) and _debut(annee) >= r.get('premiere_session', 0):
+            return code
+    return ''
+
+
+def code_inscription(inscription):
+    return code_reglement(inscription.cycle, inscription.session.annee)
+
+
+def codes_reglement(paires):
+    """[(etudiant_id, matière)] → {(etudiant_id, matiere_id): code} d'après l'inscription de l'étudiant
+    dans la session, le programme et le niveau de la matière ('' sans inscription)."""
+    from .models import Inscription
+    paires = list(paires)
+    if not paires or not settings.GPED_NOTES.get('reglements'):
+        return {}
+    matieres = [m for _, m in paires]
+    par_cle = {}
+    for etu, ses, fil, lic, cycle, annee in Inscription.objects.filter(
+            etudiant_id__in={e for e, _ in paires}, session_id__in={m.session_id for m in matieres},
+            filiere_id__in={m.filiere_id for m in matieres}, licence_id__in={m.licence_id for m in matieres}
+    ).values_list('etudiant_id', 'session_id', 'filiere_id', 'licence_id', 'cycle', 'session__annee'):
+        par_cle[(etu, ses, fil, lic)] = par_cle.get((etu, ses, fil, lic)) or code_reglement(cycle, annee)
+    return {(e, m.pk): par_cle.get((e, m.session_id, m.filiere_id, m.licence_id), '') for e, m in paires}
+
+
+def reglement_de_note(note):
+    return codes_reglement([(note.etudiant_id, note.matiere)]).get((note.etudiant_id, note.matiere_id), '')
 
 
 def en_note(valeur):
@@ -217,17 +267,20 @@ def enregistrer_notes(changements, utilisateur, apres_deliberation=False, motif=
             justificatif, max_length=200)
     auteur = utilisateur if getattr(utilisateur, 'pk', None) else None
     maintenant = timezone.now()
+    codes = codes_reglement((etudiant_id, matiere) for _, etudiant_id, matiere, _ in changements)
     creees, modifiees, historiques = [], [], []
     for note, etudiant_id, matiere, valeurs in changements:
+        code = codes.get((etudiant_id, matiere.pk), '')
         if note is None:
             note = Note(etudiant_id=etudiant_id, matiere=matiere, saisie_par=auteur, date_saisie=maintenant,
-                        import_saisie=import_notes)
+                        import_saisie=import_notes, reglement=code)
             appliquer_saisie(note, valeurs)
             creees.append(note)
             continue
         if saisie_de(note) == {c: valeurs.get(c) for c in CHAMPS_SAISIE}:
             continue                                         # rien n'a changé
         avant = _etat(note)
+        note.reglement = code
         appliquer_saisie(note, valeurs)
         note.date_maj = maintenant                           # bulk_update ne remplit pas auto_now
         modifiees.append(note)
@@ -239,7 +292,7 @@ def enregistrer_notes(changements, utilisateur, apres_deliberation=False, motif=
     Note.objects.bulk_create(creees, batch_size=500)
     if modifiees:
         Note.objects.bulk_update(modifiees, ['controle', 'tp', 'examen', 'moyenne', 'moyenne_deposee', 'rattrapage',
-                                             'moyenne_finale', 'par_session', 'date_maj'], batch_size=500)
+                                             'moyenne_finale', 'par_session', 'date_maj', 'reglement'], batch_size=500)
         NoteHistorique.objects.bulk_create(historiques, batch_size=500)
     return len(creees), len(modifiees)
 
@@ -252,40 +305,82 @@ def arrondi(valeur):
     return None if valeur is None else math.floor(valeur * 100 + 1e-6) / 100
 
 
-def lettre(note):
-    """Note littérale des relevés : A (≥ 8), B, C, D (≥ 5), E (en dessous)."""
+def lettre(note, code=''):
+    """Note littérale des relevés : A (≥ 8), B, C, D (≥ 5), E ; arrêté 877 : A+ … D-, E."""
     if note is None:
         return ''
-    for seuil, l in regles()['lettres']:
+    lettres = regles(code)['lettres']
+    for seuil, l in lettres:
         if note >= seuil:
             return l
-    return regles()['lettres'][-1][1]
+    return lettres[-1][1]
 
 
-def moyenne_des_notes(controle, tp, examen):
-    """Moyenne d'une matière à partir des notes données (None si aucune)."""
-    r = regles()
-    donnees = {k: v for k, v in (('controle', controle), ('tp', tp), ('examen', examen)) if v is not None}
+def moyenne_des_notes(controle, tp, examen, code=''):
+    """
+    Moyenne d'une matière à partir des notes données (None si aucune).
+    Règles générales : contrôle 25 % + TP 35 % + examen 40 % (sans TP : 40 % + 60 %).
+    Arrêté 877 : CC 40 % + CT 60 %, avec CC = contrôle (moyenne du contrôle et du TP si les deux
+    sont donnés) et CT = examen. Notes incomplètes : mêmes poids, ramenés aux seules notes données.
+    """
+    r = regles(code)
+    if r.get('calcul') == 'cc_ct':
+        cc = [v for v in (controle, tp) if v is not None]
+        donnees = {k: v for k, v in (('cc', sum(cc) / len(cc) if cc else None), ('ct', examen)) if v is not None}
+        poids = r['poids_cc_ct']
+    else:
+        donnees = {k: v for k, v in (('controle', controle), ('tp', tp), ('examen', examen)) if v is not None}
+        poids = r['poids_sans_tp'] if set(donnees) == {'controle', 'examen'} else r['poids']
     if not donnees:
         return None
-    poids = r['poids_sans_tp'] if set(donnees) == {'controle', 'examen'} else {k: r['poids'][k] for k in donnees}
-    return arrondi(sum(donnees[k] * poids[k] for k in donnees) / sum(poids.values()))
+    return arrondi(sum(donnees[k] * poids[k] for k in donnees) / sum(poids[k] for k in donnees))
+
+
+def note_retenue(moyenne, rattrapage, code=''):
+    """
+    (note finale, retenue au rattrapage ?) : le rattrapage remplace la moyenne s'il est meilleur ;
+    arrêté 877 : le rattrapage retenu est plafonné à 5/10 (art. 49).
+    """
+    plafond = regles(code).get('plafond_rattrapage')
+    rattrapage_retenu = rattrapage if rattrapage is None or plafond is None else min(rattrapage, plafond)
+    par_session = rattrapage_retenu is not None and (moyenne is None or rattrapage_retenu > moyenne)
+    return arrondi(rattrapage_retenu if par_session else moyenne), par_session
 
 
 def est_validee(moyenne):
     return moyenne is not None and moyenne >= regles()['seuil_validation']
 
 
-def mention(moyenne):
+def mention(moyenne, code=''):
     if moyenne is None:
         return ''
-    for seuil, libelle in regles()['mentions']:
+    for seuil, libelle in regles(code)['mentions']:
         if moyenne >= seuil:
             return libelle
     return ''
 
 
-def _agreger(matieres, notes, etudiant_id):
+def observation(note, definitif=False):
+    """
+    État d'une note sur les relevés. Règles générales : Validée, Validée en session, Non validée,
+    Note manquante. Arrêté 877 : Validée, Validée au rattrapage, À rattraper (semestre non délibéré,
+    pas de rattrapage), Non validée (rattrapage passé, pas encore délibéré), Dette (délibéré, art. 71).
+    """
+    if note is None:
+        return 'Note manquante'
+    r = regles(note.reglement)
+    if est_validee(note.moyenne_finale):
+        return r['libelle_session'] if note.par_session else 'Validée'
+    if not r.get('dettes'):
+        return 'Non validée'
+    if note.moyenne_finale is None:
+        return 'Note manquante'
+    if definitif:
+        return 'Dette'
+    return 'Non validée' if note.rattrapage is not None else 'À rattraper'
+
+
+def _agreger(matieres, notes, etudiant_id, code=''):
     """Moyenne pondérée par les crédits, crédits validés et notes manquantes d'un ensemble de matières."""
     total = points = valides = manquantes = 0
     for m in matieres:
@@ -299,7 +394,7 @@ def _agreger(matieres, notes, etudiant_id):
             valides += m.credit
     moyenne = arrondi(points / total) if total and manquantes < len(matieres) else None
     return {'moyenne': moyenne, 'credits_valides': valides, 'credits_total': total,
-            'notes_manquantes': manquantes, 'mention': mention(moyenne)}
+            'notes_manquantes': manquantes, 'mention': mention(moyenne, code)}
 
 
 def _rangs(resultats):
@@ -337,6 +432,30 @@ def moyenne_generale(moyenne_cycle, note_soutenance):
     return arrondi(moyenne_cycle * r['poids_cycle'] + note_soutenance * r['poids_soutenance'])
 
 
+def actualiser_reglements(etudiant_ids):
+    """
+    Remet chaque note des étudiants donnés sous le règlement de son inscription (cycle ou session
+    corrigés, inscription créée après la note…) et refait alors sa moyenne et sa note finale.
+    Renvoie le nombre de notes changées.
+    """
+    from .models import Matiere, Note
+    ids = list({i for i in etudiant_ids if i})
+    if not ids or not settings.GPED_NOTES.get('reglements'):
+        return 0
+    lignes = list(Note.objects.filter(etudiant_id__in=ids).values_list('pk', 'etudiant_id', 'matiere_id', 'reglement'))
+    matieres = Matiere.objects.only('session_id', 'filiere_id', 'licence_id').in_bulk({l[2] for l in lignes})
+    codes = codes_reglement((etu, matieres[mat]) for _, etu, mat, _ in lignes)
+    a_changer = {pk: codes.get((etu, mat), '') for pk, etu, mat, code in lignes if codes.get((etu, mat), '') != code}
+    if not a_changer:
+        return 0
+    notes = list(Note.objects.filter(pk__in=a_changer))
+    for n in notes:
+        n.reglement = a_changer[n.pk]
+        n.calculer()
+    Note.objects.bulk_update(notes, ['reglement', 'moyenne', 'moyenne_finale', 'par_session'], batch_size=500)
+    return len(notes)
+
+
 def recalculer(etudiant_ids):
     """
     Recalcule les résultats (semestres, années, cycles) des étudiants donnés, puis les rangs de
@@ -357,6 +476,7 @@ def recalculer(etudiant_ids):
                                         licence_id__in={t[2] for t in triplets}):
             if (m.filiere_id, m.session_id, m.licence_id) in triplets:
                 matieres_par_triplet[(m.filiere_id, m.session_id, m.licence_id)].append(m)
+    actualiser_reglements(ids)
     notes = {(etu, mat): moy for etu, mat, moy in
              Note.objects.filter(etudiant_id__in=ids).values_list('etudiant_id', 'matiere_id', 'moyenne_finale')}
 
@@ -365,6 +485,7 @@ def recalculer(etudiant_ids):
         matieres = matieres_par_triplet.get((insc.filiere_id, insc.session_id, insc.licence_id))
         if not matieres:
             continue
+        code = code_inscription(insc)
         commun = {'etudiant_id': insc.etudiant_id, 'filiere_id': insc.filiere_id, 'session_id': insc.session_id,
                   'licence_id': insc.licence_id, 'cycle': insc.cycle}
         par_semestre = defaultdict(list)
@@ -372,8 +493,8 @@ def recalculer(etudiant_ids):
             par_semestre[m.semestre_id].append(m)
         for semestre_id, ms in par_semestre.items():
             nouveaux.append(Resultat(niveau=Resultat.SEMESTRE, semestre_id=semestre_id, **commun,
-                                     **_agreger(ms, notes, insc.etudiant_id)))
-        annee = _agreger(matieres, notes, insc.etudiant_id)
+                                     **_agreger(ms, notes, insc.etudiant_id, code)))
+        annee = _agreger(matieres, notes, insc.etudiant_id, code)
         nouveaux.append(Resultat(niveau=Resultat.ANNEE, **commun, **annee))
         annees_par_programme[(insc.etudiant_id, insc.filiere_id)].append((insc.session.annee, insc, annee))
 
@@ -382,15 +503,22 @@ def recalculer(etudiant_ids):
                    .values_list('etudiant_id', 'filiere_id', 'note_finale')}
     for (etudiant_id, filiere_id), annees in annees_par_programme.items():
         retenues = list(annees_retenues(annees).values())
-        moyennes = [a['moyenne'] for _, a in retenues if a['moyenne'] is not None]
-        moyenne_cycle = arrondi(sum(moyennes) / len(moyennes)) if moyennes else None
-        note_soutenance = soutenances.get((etudiant_id, filiere_id))
-        generale = moyenne_generale(moyenne_cycle, note_soutenance)
         derniere_insc = max((i for i, _ in retenues), key=lambda i: i.session.annee)
+        code = code_inscription(derniere_insc)
+        note_soutenance = soutenances.get((etudiant_id, filiere_id))
+        if regles(code)['moyenne_cycle'] == 'cumulative':
+            # Arrêté 877 : moyenne générale cumulative de toutes les matières du programme, pondérée par les
+            # crédits (le PFE y entrera comme une matière de S10 ; la soutenance n'est pas ajoutée à part)
+            ms = [m for i, _ in retenues for m in matieres_par_triplet[(i.filiere_id, i.session_id, i.licence_id)]]
+            moyenne_cycle = generale = _agreger(ms, notes, etudiant_id, code)['moyenne']
+        else:
+            moyennes = [a['moyenne'] for _, a in retenues if a['moyenne'] is not None]
+            moyenne_cycle = arrondi(sum(moyennes) / len(moyennes)) if moyennes else None
+            generale = moyenne_generale(moyenne_cycle, note_soutenance)
         nouveaux.append(Resultat(
             niveau=Resultat.CYCLE, etudiant_id=etudiant_id, cycle=derniere_insc.cycle, filiere_id=filiere_id,
             session_id=derniere_insc.session_id, moyenne=moyenne_cycle, soutenance=note_soutenance,
-            moyenne_generale=generale, mention=mention(generale),
+            moyenne_generale=generale, mention=mention(generale, code),
             credits_valides=sum(a['credits_valides'] for _, a in retenues),
             credits_total=sum(a['credits_total'] for _, a in retenues),
             notes_manquantes=sum(a['notes_manquantes'] for _, a in retenues)))

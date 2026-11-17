@@ -4,6 +4,7 @@ Notes : saisie par matière, import, résultats et délibérations (soutenances 
 Droits : scolarité (tout) et chefs de programme (leurs programmes). Une fois un semestre
 délibéré, seule la scolarité peut modifier ses notes, avec un motif (et un justificatif).
 """
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
@@ -20,7 +21,8 @@ from .forms import ImportNotesForm
 from .import_notes import OBLIGATOIRES as OBLIGATOIRES_NOTES, importer_notes, modele_notes_xlsx
 from .models import (Deliberation, Etudiant, ImportNotes, Inscription, Licence, Matiere, Note, Resultat, Semestre,
                      Session)
-from .notes import (CHAMPS_SAISIE, MOTIF_SUPER_UTILISATEUR, avec_promotion, en_note, enregistrer_notes, est_delibere,
+from .notes import (CHAMPS_SAISIE, MOTIF_SUPER_UTILISATEUR, avec_promotion, code_reglement, en_note,
+                    enregistrer_notes, est_delibere,
                     filtrer_promotion, peut_modifier, recalculer, regles, saisie_de, semestres_delibres,
                     session_ecoulee, verifier_pdf)
 from .roles import (gestion_matieres_requise, get_profil, lecture_notes_requise, matieres_visibles,
@@ -233,13 +235,17 @@ def notes_saisie(request, pk):
                 messages.info(request, "Aucune modification.")
             return redirect(retour or request.get_full_path())
 
+    # Règlement de chaque étudiant (arrêté 877 : CC / CT, rattrapage plafonné) ; en-têtes : celui de tous
+    codes = {insc.etudiant_id: code_reglement(insc.cycle, matiere.session.annee) for insc in inscrits}
+    regle = regles(next(iter(set(codes.values())))) if len(set(codes.values())) == 1 else regles()
+    libelles = {c: regle['libelles'].get(c, LIBELLES[c]) for c in CHAMPS_SAISIE}
     lignes = []
     for insc in inscrits:
         etu, note = insc.etudiant, notes.get(insc.etudiant_id)
         saisie = saisie_de(note)
         lignes.append({
-            'etudiant': etu, 'note': note, 'promotion': insc.promotion,
-            'champs': [{'nom': c, 'libelle': LIBELLES[c],
+            'etudiant': etu, 'note': note, 'promotion': insc.promotion, 'reglement': codes[insc.etudiant_id],
+            'champs': [{'nom': c, 'libelle': libelles[c],
                         'valeur': valeurs_postees.get((etu.pk, c), '' if saisie[c] is None else _fmt(saisie[c])),
                         'erreur': erreurs.get((etu.pk, c)),
                         'calculee': _fmt(note.moyenne) if c == 'moyenne' and note and not note.moyenne_deposee
@@ -266,7 +272,9 @@ def notes_saisie(request, pk):
         'deliberation': Deliberation.objects.filter(filiere_id=matiere.filiere_id, session_id=matiere.session_id,
                                                     semestre_id=matiere.semestre_id).select_related('par').first(),
         'erreurs': bool(erreurs), 'erreur_motif': erreur_motif, 'motif': request.POST.get('motif', ''),
-        'nb_notes': nb_notes, 'regles': regles(), 'actif': 'notes_saisie',
+        'nb_notes': nb_notes, 'regle': regle, 'libelles': libelles, 'actif': 'notes_saisie',
+        'reglements': {code: regles(code) for code in set(codes.values()) | {''}},
+        'reglements_melanges': len(set(codes.values())) > 1,
         'seul': seul, 'seul_etudiant': Etudiant.objects.filter(pk=seul).first() if seul else None, 'retour': retour,
         **_cascade(profil, {'session': matiere.session_id, 'programme': matiere.filiere_id,
                             'licence': matiere.licence_id, 'semestre': matiere.semestre_id, 'matiere': matiere.pk}),
@@ -462,9 +470,13 @@ def notes_import_excel(request, pk):
 @login_required
 @gestion_matieres_requise
 def notes_modele(request):
-    reponse = HttpResponse(modele_notes_xlsx(),
+    """Modèle d'import ; ?reglement=877 : colonnes CC / CT de l'arrêté 877."""
+    code = request.GET.get('reglement', '')
+    code = code if code in settings.GPED_NOTES.get('reglements', {}) else ''
+    reponse = HttpResponse(modele_notes_xlsx(code),
                            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-    reponse['Content-Disposition'] = 'attachment; filename="modele_import_notes.xlsx"'
+    nom = f"modele_import_notes_{code}.xlsx" if code else "modele_import_notes.xlsx"
+    reponse['Content-Disposition'] = f'attachment; filename="{nom}"'
     return reponse
 
 

@@ -56,18 +56,25 @@
         </div>
       {% endif %}
       <div class="small text-secondary" style="max-width:520px">
-        <i class="bi bi-calculator"></i> Moyenne = contrôle 25 % + TP 35 % + examen 40 % (sans TP : 40 % + 60 %).
-        Si vous remplissez <strong>Moyenne</strong>, elle est prise telle quelle. Le <strong>rattrapage</strong> remplace la moyenne s'il est meilleur (« Session »).
+        {% if regle.calcul == 'cc_ct' %}
+          <i class="bi bi-journal-check"></i> <strong>{{ regle.nom }}</strong> : moyenne = <strong>CC 40 % + CT 60 %</strong>
+          (CC = contrôle continu, TP compris ; CT = examen).
+          Si vous remplissez <strong>Moyenne</strong>, elle est prise telle quelle. Le <strong>rattrapage</strong> remplace la moyenne s'il est meilleur, <strong>plafonné à {{ regle.plafond_rattrapage }}</strong>.
+        {% else %}
+          <i class="bi bi-calculator"></i> Moyenne = contrôle 25 % + TP 35 % + examen 40 % (sans TP : 40 % + 60 %).
+          Si vous remplissez <strong>Moyenne</strong>, elle est prise telle quelle. Le <strong>rattrapage</strong> remplace la moyenne s'il est meilleur (« Session »).
+          {% if reglements_melanges %}<br><i class="bi bi-exclamation-triangle"></i> Des étudiants de cette matière suivent l'arrêté 877 : leur ligne est calculée selon ce règlement.{% endif %}
+        {% endif %}
       </div>
     </div>
     <div class="table-responsive" style="max-height: calc(100vh - 330px);">
       <table class="table table-etudiants mb-0 grille-notes">
         <thead><tr><th style="width:3rem">#</th><th>Étudiant</th>
-          <th class="text-center">Contrôle</th><th class="text-center">TP</th><th class="text-center">Examen</th>
+          <th class="text-center"{% if regle.calcul == 'cc_ct' %} title="Contrôle continu"{% endif %}>{{ libelles.controle }}</th><th class="text-center">{{ libelles.tp }}</th><th class="text-center"{% if regle.calcul == 'cc_ct' %} title="Contrôle terminal (examen)"{% endif %}>{{ libelles.examen }}</th>
           <th class="text-center">Moyenne</th><th class="text-center">Rattrapage</th><th class="text-center">Finale</th><th>Mention</th>{% if profil.voit_suivi_notes %}<th class="text-end" title="Historique">Hist.</th>{% endif %}</tr></thead>
         <tbody>
         {% for l in lignes %}
-          <tr style="cursor:default" data-ligne>
+          <tr style="cursor:default" data-ligne data-reglement="{{ l.reglement }}">
             <td class="text-secondary">{{ forloop.counter }}</td>
             <td style="min-width:200px"><b style="color:var(--encre);font-weight:600">{{ l.etudiant.nom }}</b> {{ l.etudiant.prenom }}<div class="matricule text-secondary">{{ l.etudiant.matricule|default:"" }}{% if l.promotion %} · {{ l.promotion.nom }}{% endif %}</div></td>
             {% for c in l.champs %}
@@ -122,11 +129,12 @@
 </form>
 {% endblock %}
 {% block scripts %}
-{{ regles|json_script:"regles-notes" }}
+{{ reglements|json_script:"regles-notes" }}
 <script>
-  // Aperçu immédiat de la moyenne finale (le serveur refait le calcul à l'enregistrement)
+  // Aperçu immédiat de la moyenne finale (le serveur refait le calcul à l'enregistrement), selon le
+  // règlement de chaque étudiant (règles générales, ou arrêté 877 : CC 40 % + CT 60 %, rattrapage plafonné)
   (function () {
-    var r = JSON.parse(document.getElementById('regles-notes').textContent);
+    var R = JSON.parse(document.getElementById('regles-notes').textContent), r = R[''];
     function lire(input) {
       var s = (input.value || '').trim().replace(',', '.').toUpperCase();
       if (s === '') return null;
@@ -134,14 +142,23 @@
       var v = Number(s);
       return isNaN(v) || v < 0 || v > r.note_max ? NaN : v;
     }
-    function moyenne(c, tp, e) {
-      var d = {controle: c, tp: tp, examen: e}, cles = Object.keys(d).filter(function (k) { return d[k] !== null; });
+    function ponderer(d, poids) {
+      var cles = Object.keys(d).filter(function (k) { return d[k] !== null; }), total = 0, somme = 0;
       if (!cles.length) return null;
-      var poids = (cles.length === 2 && cles.indexOf('tp') < 0) ? r.poids_sans_tp : r.poids, total = 0, somme = 0;
       cles.forEach(function (k) { somme += d[k] * poids[k]; total += poids[k]; });
       return somme / total;
     }
-    function mention(m) {
+    function moyenne(r, c, tp, e) {
+      if (r.calcul === 'cc_ct') {
+        var cc = [c, tp].filter(function (v) { return v !== null; });
+        return ponderer({cc: cc.length ? cc.reduce(function (a, b) { return a + b; }) / cc.length : null, ct: e},
+                        r.poids_cc_ct);
+      }
+      var d = {controle: c, tp: tp, examen: e};
+      var sansTp = d.tp === null && d.controle !== null && d.examen !== null;
+      return ponderer(d, sansTp ? r.poids_sans_tp : r.poids);
+    }
+    function mention(r, m) {
       if (m === null) return '';
       for (var i = 0; i < r.mentions.length; i++) { if (m >= r.mentions[i][0]) return r.mentions[i][1]; }
       return '';
@@ -155,13 +172,17 @@
         i.classList.toggle('is-invalid', Number.isNaN(v[i.dataset.champ]));
       });
       if (Object.values(v).some(Number.isNaN)) return;
-      var moy = v.moyenne !== null ? v.moyenne : moyenne(v.controle, v.tp, v.examen);
-      var session = v.rattrapage !== null && (moy === null || v.rattrapage > moy);
-      var finale = session ? v.rattrapage : moy;
+      var rl = R[tr.dataset.reglement || ''] || r;
+      var moy = v.moyenne !== null ? v.moyenne : moyenne(rl, v.controle, v.tp, v.examen);
+      var ratt = v.rattrapage;
+      if (ratt !== null && rl.plafond_rattrapage !== null) ratt = Math.min(ratt, rl.plafond_rattrapage);
+      var session = ratt !== null && (moy === null || ratt > moy);
+      var finale = session ? ratt : moy;
+      if (finale !== null) finale = Math.floor(finale * 100 + 1e-6) / 100;           // tronquée, comme le serveur
       var span = tr.querySelector('[data-finale]');
-      span.textContent = finale === null ? '—' : (Math.round(finale * 100) / 100).toString().replace('.', ',');
-      span.className = 'finale ' + (finale === null ? '' : (finale >= r.seuil_validation ? 'ok' : 'ko'));
-      tr.querySelector('[data-mention]').innerHTML = mention(finale) + (session ? ' <span class="pill pill-accent">Session</span>' : '');
+      span.textContent = finale === null ? '—' : finale.toString().replace('.', ',');
+      span.className = 'finale ' + (finale === null ? '' : (finale >= rl.seuil_validation ? 'ok' : 'ko'));
+      tr.querySelector('[data-mention]').innerHTML = mention(rl, finale) + (session ? ' <span class="pill pill-accent">Session</span>' : '');
     }
     document.querySelectorAll('[data-ligne]').forEach(function (tr) {
       tr.addEventListener('input', function () { maj(tr); compter(); });

@@ -12,15 +12,35 @@ Contenu des relevés de notes (calculé à chaque impression, d'après les notes
 Moyennes pondérées par les crédits (6 par défaut), tronquées à 2 décimales ; une matière sans
 note compte 0 et est signalée. « PROVISOIRE » tant qu'un semestre n'est pas délibéré : une session
 antérieure à la session en cours est considérée comme délibérée (notes importées des anciennes années).
+
+Arrêté 877 (Tronc commun et cycle Ingénieur, voir settings.GPED_NOTES) : chaque matière montre la note de
+session normale, le rattrapage et la note retenue (rattrapage plafonné à 5), la notation A+ … E et l'état
+(Validée, Validée au rattrapage, À rattraper, Non validée, Dette) ; le relevé semestriel ou annuel
+ajoute la moyenne générale cumulative du programme (CPC pour le Tronc commun, cycle ingénieur sinon) et
+les crédits cumulés ; l'extrait du livret donne cette moyenne cumulative, sans soutenance ajoutée à part.
 """
+import re
+
 from django.db.models import Q
 
 from .models import Deliberation, Inscription, Matiere, Note, ReleveNote, Session, Soutenance
-from .notes import _agreger, annees_retenues, arrondi, est_validee, lettre, mention, moyenne_generale
+from .notes import (_agreger, annees_retenues, arrondi, code_inscription, est_validee, lettre, mention,
+                    moyenne_generale, observation, regles)
 
 
 def session_courante():
     return Session.objects.filter(en_cours=True).first() or Session.objects.order_by('-annee').first()
+
+
+def _semestres_definitifs(filiere_id, session, semestre_ids):
+    """Semestres définitifs : tous si la session est antérieure à la session en cours, sinon les délibérés."""
+    courante = session_courante()
+    if courante and session.annee < courante.annee:
+        return set(semestre_ids)
+    if not semestre_ids:
+        return set()
+    return set(Deliberation.objects.filter(filiere_id=filiere_id, session=session, semestre_id__in=semestre_ids)
+               .values_list('semestre_id', flat=True))
 
 
 def _definitif(filiere_id, session, semestre_ids):
@@ -30,21 +50,18 @@ def _definitif(filiere_id, session, semestre_ids):
         return True
     if not semestre_ids:
         return False
-    delibres = set(Deliberation.objects.filter(filiere_id=filiere_id, session=session, semestre_id__in=semestre_ids)
-                   .values_list('semestre_id', flat=True))
-    return set(semestre_ids) <= delibres
+    return set(semestre_ids) <= _semestres_definitifs(filiere_id, session, semestre_ids)
 
 
-def _observation(note):
-    if note is None:
-        return 'Note manquante'
-    if not est_validee(note.moyenne_finale):
-        return 'Non validée'
-    return 'Validée en session' if note.par_session else 'Validée'
+def _numero(semestre):
+    """« SEMESTRE 3 » → 3 (ordre des semestres) ; sinon son identifiant."""
+    m = re.search(r'(\d+)', semestre.nom or '')
+    return int(m.group(1)) if m else semestre.pk
 
 
 def bloc(inscription, semestre=None):
     """Matières, notes et moyenne d'une inscription (un semestre, ou toute l'année)."""
+    code = code_inscription(inscription)
     matieres = Matiere.objects.filter(filiere_id=inscription.filiere_id, session_id=inscription.session_id,
                                       licence_id=inscription.licence_id).select_related('semestre')
     if semestre is not None:
@@ -52,19 +69,59 @@ def bloc(inscription, semestre=None):
     matieres = sorted(matieres, key=lambda m: (m.semestre_id, m.nom.lower()))
     notes = {n.matiere_id: n for n in Note.objects.filter(etudiant_id=inscription.etudiant_id,
                                                            matiere__in=[m.pk for m in matieres])}
+    semestres = sorted({m.semestre_id for m in matieres})
+    definitifs = _semestres_definitifs(inscription.filiere_id, inscription.session, semestres)
     lignes = []
     for m in matieres:
         n = notes.get(m.pk)
         valeur = n.moyenne_finale if n else None
         lignes.append({'matiere': m.nom, 'credit': m.credit, 'semestre': m.semestre.abrege or m.semestre.nom,
-                       'note': valeur, 'lettre': lettre(valeur), 'observation': _observation(n),
+                       'note': valeur, 'lettre': lettre(valeur, code),
+                       'normale': n.moyenne if n else None, 'rattrapage': n.rattrapage if n else None,
+                       'observation': observation(n, m.semestre_id in definitifs),
                        'validee': est_validee(valeur)})
     resultat = _agreger(matieres, {(inscription.etudiant_id, k): v.moyenne_finale for k, v in notes.items()
-                                   if v.moyenne_finale is not None}, inscription.etudiant_id)
-    semestres = sorted({m.semestre_id for m in matieres})
-    return {'inscription': inscription, 'lignes': lignes, **resultat,
+                                   if v.moyenne_finale is not None}, inscription.etudiant_id, code)
+    return {'inscription': inscription, 'lignes': lignes, **resultat, 'reglement': code,
+            'detaille': bool(regles(code).get('dettes')),
             'semestres': [m.semestre for m in {m.semestre_id: m for m in matieres}.values()],
             'definitif': _definitif(inscription.filiere_id, inscription.session, semestres)}
+
+
+def libelle_cumul(inscription):
+    """Arrêté 877 : la moyenne cumulative du Tronc commun est celle du CPC, sinon celle du cycle ingénieur."""
+    if inscription.cycle == 'Tronc commun':
+        return 'Moyenne générale du CPC'
+    return 'Moyenne générale du cycle'
+
+
+def cumul(inscription, semestre=None):
+    """
+    Arrêté 877 : moyenne générale cumulative (pondérée par les crédits) et crédits cumulés de l'étudiant
+    dans le programme de l'inscription, jusqu'à cette inscription (et ce semestre) compris ; une année
+    par niveau (redoublement : la dernière, jusqu'à cette session).
+    """
+    code = code_inscription(inscription)
+    inscriptions = list(Inscription.objects.filter(etudiant_id=inscription.etudiant_id,
+                                                   filiere_id=inscription.filiere_id, conge__isnull=True,
+                                                   session__annee__lte=inscription.session.annee)
+                        .select_related('session'))
+    if inscription.pk not in {i.pk for i in inscriptions}:
+        inscriptions.append(inscription)
+    retenues = [i for i, _ in annees_retenues([(i.session.annee, i, None) for i in inscriptions]).values()]
+    matieres = []
+    for i in retenues:
+        ms = list(Matiere.objects.filter(filiere_id=i.filiere_id, session_id=i.session_id,
+                                         licence_id=i.licence_id).select_related('semestre'))
+        if i.pk == inscription.pk and semestre is not None:
+            ms = [m for m in ms if _numero(m.semestre) <= _numero(semestre)]
+        matieres.extend(ms)
+    notes = {(inscription.etudiant_id, mat): v for mat, v in Note.objects.filter(
+        etudiant_id=inscription.etudiant_id, matiere__in=[m.pk for m in matieres],
+        moyenne_finale__isnull=False).values_list('matiere_id', 'moyenne_finale')}
+    r = _agreger(matieres, notes, inscription.etudiant_id, code)
+    return {'libelle': libelle_cumul(inscription), 'moyenne': r['moyenne'], 'mention': r['mention'],
+            'credits_valides': r['credits_valides'], 'credits_total': r['credits_total']}
 
 
 def inscription_du_releve(releve):
@@ -84,12 +141,14 @@ def contenu(releve):
         b = bloc(insc, releve.semestre)
         return {'titre': 'RELEVÉ DE NOTES', 'niveau': releve.semestre.nom, 'libelle_moyenne': 'Moyenne semestrielle',
                 'session': insc.session.annee, 'blocs': [b], 'definitif': b['definitif'], 'promotion': insc.promotion,
-                'moyenne': b['moyenne'], 'mention': b['mention']}
+                'moyenne': b['moyenne'], 'mention': b['mention'],
+                'cumul': cumul(insc, releve.semestre) if b['detaille'] else None}
     b = bloc(insc)
     abreges = ' et '.join(s.abrege or s.nom for s in sorted(b['semestres'], key=lambda s: s.pk))
     return {'titre': 'RELEVÉ DE NOTES', 'niveau': f"{insc.licence.nom}" + (f" ({abreges})" if abreges else ''),
             'libelle_moyenne': 'Moyenne annuelle', 'session': insc.session.annee, 'blocs': [b],
-            'definitif': b['definitif'], 'promotion': insc.promotion, 'moyenne': b['moyenne'], 'mention': b['mention']}
+            'definitif': b['definitif'], 'promotion': insc.promotion, 'moyenne': b['moyenne'], 'mention': b['mention'],
+            'cumul': cumul(insc) if b['detaille'] else None}
 
 
 def contenu_extrait(releve):
@@ -99,18 +158,27 @@ def contenu_extrait(releve):
     retenues = annees_retenues(blocs_tous)                        # une année par licence : la dernière
     blocs = sorted((b for _, b in retenues.values()), key=lambda b: b['inscription'].session.annee)
     blocs = [b for b in blocs if b['lignes']]
-    moyennes = [b['moyenne'] for b in blocs if b['moyenne'] is not None]
-    moyenne_cycle = arrondi(sum(moyennes) / len(moyennes)) if moyennes else None
+    derniere = blocs[-1]['inscription'] if blocs else None
     s = (Soutenance.objects.filter(etudiant_id=releve.etudiant_id, filiere_id=releve.filiere_id)
          .order_by('-session__annee').first())
     note_soutenance = s.note_finale if s else None
-    generale = moyenne_generale(moyenne_cycle, note_soutenance)
-    derniere = blocs[-1]['inscription'] if blocs else None
+    code = code_inscription(derniere) if derniere else ''
+    libelle_cycle = 'Moyenne du cycle'
+    if regles(code)['moyenne_cycle'] == 'cumulative':
+        # Arrêté 877 : moyenne cumulative pondérée par les crédits ; le PFE comptera comme une matière de S10
+        c = cumul(derniere)
+        moyenne_cycle = generale = c['moyenne']
+        libelle_cycle, note_soutenance = c['libelle'], None
+    else:
+        moyennes = [b['moyenne'] for b in blocs if b['moyenne'] is not None]
+        moyenne_cycle = arrondi(sum(moyennes) / len(moyennes)) if moyennes else None
+        generale = moyenne_generale(moyenne_cycle, note_soutenance)
     return {'titre': 'EXTRAIT DU LIVRET UNIVERSITAIRE', 'niveau': '', 'blocs': blocs,
             'definitif': all(b['definitif'] for b in blocs) if blocs else False,
             'promotion': derniere.promotion if derniere else None, 'session': '',
-            'moyenne_cycle': moyenne_cycle, 'soutenance': note_soutenance, 'soutenance_session': s.par_session if s else False,
-            'moyenne': generale, 'mention': mention(generale), 'libelle_moyenne': 'Moyenne générale',
+            'moyenne_cycle': moyenne_cycle, 'libelle_cycle': libelle_cycle, 'reglement': code,
+            'soutenance': note_soutenance, 'soutenance_session': s.par_session if s else False,
+            'moyenne': generale, 'mention': mention(generale, code), 'libelle_moyenne': 'Moyenne générale',
             'credits_valides': sum(b['credits_valides'] for b in blocs),
             'credits_total': sum(b['credits_total'] for b in blocs)}
 

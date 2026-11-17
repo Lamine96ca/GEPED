@@ -3288,6 +3288,139 @@ class GpedTests(TestCase):
         self.assertRedirects(r, f"{page}?etudiant={insc_m1.etudiant_id}", fetch_redirect_response=False)
         self.assertEqual(ReleveNote.objects.count(), 3)
 
+    def test_reglement_877_tronc_commun_et_ingenieur(self):
+        """Arrêté 877 : Tronc commun et cycle Ingénieur depuis 2025-2026 ; les autres cycles ne changent pas."""
+        from .import_notes import importer_notes
+        from .models import Deliberation, Note, ReleveNote, Resultat, Semestre, Soutenance
+        from .notes import (code_reglement, lettre, mention, moyenne_des_notes, note_retenue, observation,
+                            recalculer)
+        from .releves import contenu
+        from .roles import get_profil
+        # Règlement d'une inscription : cycle et session
+        self.assertEqual([code_reglement(c, a) for c, a in [('Tronc commun', '2025-2026'), ('Ingénieur', '2026 - 2027'),
+                                                             ('Tronc commun', '2024-2025'), ('Licence', '2025-2026'),
+                                                             (None, '2026-2027')]],
+                         ['877', '877', '', '', ''])
+        # Matière : CC 40 % + CT 60 % (le TP entre dans le CC) ; règles générales : 25 / 35 / 40
+        self.assertEqual(moyenne_des_notes(6, None, 4.5, '877'), 5.1)
+        self.assertEqual(moyenne_des_notes(6, 8, 4.5, '877'), 5.5)           # CC = (6 + 8) / 2 = 7
+        self.assertEqual(moyenne_des_notes(6, 8, 4.5), 6.1)
+        self.assertEqual(moyenne_des_notes(None, None, 4.5, '877'), 4.5)
+        # Rattrapage retenu s'il est meilleur, plafonné à 5 (règles générales : sans plafond)
+        self.assertEqual(note_retenue(3.8, 7, '877'), (5, True))
+        self.assertEqual(note_retenue(3.8, 7), (7, True))
+        self.assertEqual(note_retenue(4, 3.5, '877'), (4, False))
+        self.assertEqual(note_retenue(6, 7, '877'), (6, False))
+        # Barème (art. 51) et mentions (art. 75)
+        self.assertEqual([lettre(v, '877') for v in (9, 8.5, 8.49, 7.67, 7.34, 7, 6.67, 6.34, 6, 5.67, 5.34, 5, 4.99)],
+                         ['A+', 'A', 'A-', 'B+', 'B', 'B-', 'C+', 'C', 'C-', 'D+', 'D', 'D-', 'E'])
+        self.assertEqual([mention(v, '877') for v in (8, 7.5, 6, 5, 4.9)],
+                         ['Excellent', 'Remarquable', 'Satisfaisant', 'Acceptable', ''])
+
+        # Tronc commun 2025-2026 : M9 suit l'arrêté ; M8 (cycle Licence) garde les règles générales
+        tc = Service.objects.create(nom='TRONC COMMUN', code='TC', programme=True, cycle='Ingénieur')
+        s1 = Semestre.objects.create(nom='SEMESTRE 1', abrege='S1', licence=self.licence)
+        s2 = Semestre.objects.create(nom='SEMESTRE 2', abrege='S2', licence=self.licence)
+        e9 = Etudiant.objects.create(matricule='M9', prenom='Awa', nom='N9', email='e9@t.local')
+        insc = Inscription.objects.create(etudiant=e9, session=self.session, licence=self.licence, filiere=tc,
+                                          cycle='Tronc commun', promotion=self.p20)
+        analyse = self._matiere('Analyse', tc, s1, credit=6, code='MAT101')
+        physique = self._matiere('Physique', tc, s1, credit=4)
+        chimie = self._matiere('Chimie', tc, s1, credit=4)
+        anglais = self._matiere('Anglais', tc, s2, credit=2)
+        self.connecter('scol')
+        url = reverse('notes_saisie', args=[analyse.pk])
+        r = self.client.get(url)
+        self.assertContains(r, 'CC 40 % + CT 60 %')
+        self.assertContains(r, '>CC</th>', html=False)
+        e8 = Etudiant.objects.create(matricule='M8', prenom='Ali', nom='N8', email='e8@t.local')
+        Inscription.objects.create(etudiant=e8, session=self.session, licence=self.licence, filiere=tc, cycle='Licence')
+        self.assertContains(self.client.get(url), "suivent l'arrêté 877")          # matière partagée
+        vide = {f'{c}_{e}': '' for c in ('controle', 'tp', 'examen', 'moyenne', 'rattrapage') for e in (e8.pk, e9.pk)}
+        self.client.post(url, {**vide, f'controle_{e9.pk}': '6', f'tp_{e9.pk}': '8', f'examen_{e9.pk}': '4,5',
+                               f'controle_{e8.pk}': '6', f'tp_{e8.pk}': '8', f'examen_{e8.pk}': '4,5'})
+        n9, n8 = Note.objects.get(etudiant=e9, matiere=analyse), Note.objects.get(etudiant=e8, matiere=analyse)
+        self.assertEqual((n9.reglement, n9.moyenne_finale, n9.lettre, n9.mention), ('877', 5.5, 'D', 'Acceptable'))
+        self.assertEqual((n8.reglement, n8.moyenne_finale, n8.lettre, n8.mention), ('', 6.1, 'C', 'Assez bien'))
+
+        # Moyennes déposées (une seule note, comme les notes déjà enregistrées) et rattrapages
+        Note.objects.create(etudiant=e9, matiere=physique, moyenne=3.8, moyenne_deposee=True, rattrapage=7)
+        chimie_n = Note.objects.create(etudiant=e9, matiere=chimie, moyenne=3.2, moyenne_deposee=True)
+        Note.objects.create(etudiant=e9, matiere=anglais, moyenne=8.6, moyenne_deposee=True)
+        physique_n = Note.objects.get(etudiant=e9, matiere=physique)
+        self.assertEqual((physique_n.reglement, physique_n.moyenne_finale, physique_n.par_session), ('877', 5, True))
+        self.assertEqual(observation(physique_n), 'Validée au rattrapage')
+        self.assertEqual(observation(chimie_n), 'À rattraper')                     # pas de rattrapage, pas délibéré
+        chimie_n.rattrapage = 4.1
+        chimie_n.save()
+        self.assertEqual((chimie_n.moyenne_finale, observation(chimie_n)), (4.1, 'Non validée'))
+        self.assertEqual(observation(chimie_n, definitif=True), 'Dette')
+        self.assertEqual(observation(n8, definitif=True), 'Validée')
+
+        # Moyenne générale cumulative du programme (CPC) pondérée par les crédits, sans soutenance ajoutée :
+        # (5,5 × 6 + 5 × 4 + 4,1 × 4 + 8,6 × 2) / 16 = 5,4125 → 5,41
+        Soutenance.objects.create(etudiant=e9, cycle='Ingénieur', filiere=tc, session=self.session,
+                                  promotion=self.p20, note=9)
+        recalculer([e9.pk])
+        cycle = Resultat.objects.get(etudiant=e9, niveau=Resultat.CYCLE)
+        self.assertEqual((cycle.moyenne, cycle.moyenne_generale, cycle.mention, cycle.credits_valides,
+                          cycle.credits_total), (5.41, 5.41, 'Acceptable', 12, 16))
+        sem2 = Resultat.objects.get(etudiant=e9, niveau=Resultat.SEMESTRE, semestre=s2)
+        self.assertEqual((sem2.moyenne, sem2.mention), (8.6, 'Excellent'))
+
+        # Relevé annuel : normale, rattrapage, note retenue, notation, état ; Dette une fois S1 délibéré
+        Deliberation.objects.create(filiere=tc, session=self.session, semestre=s1)
+        self.client.post(reverse('releve_creer'), {'type': 'A', 'inscription': insc.pk})
+        rel = ReleveNote.objects.get(type='A', etudiant=e9)
+        c = contenu(rel)
+        self.assertTrue(c['blocs'][0]['detaille'])
+        self.assertEqual([(l['matiere'], l['normale'], l['rattrapage'], l['note'], l['lettre'], l['observation'])
+                          for l in c['blocs'][0]['lignes']],
+                         [('Analyse', 5.5, None, 5.5, 'D', 'Validée'), ('Chimie', 3.2, 4.1, 4.1, 'E', 'Dette'),
+                          ('Physique', 3.8, 7, 5, 'D-', 'Validée au rattrapage'),
+                          ('Anglais', 8.6, None, 8.6, 'A', 'Validée')])
+        self.assertEqual(c['cumul'], {'libelle': 'Moyenne générale du CPC', 'moyenne': 5.41, 'mention': 'Acceptable',
+                                      'credits_valides': 12, 'credits_total': 16})
+        r = self.client.get(reverse('releve_pdf', args=[rel.pk]))
+        self.assertEqual((r.status_code, r.content[:4]), (200, b'%PDF'))
+        # Relevé du S1 : cumul jusqu'au S1 seulement, (33 + 20 + 16,4) / 14 = 4,957 → 4,95
+        self.client.post(reverse('releve_creer'), {'type': 'S', 'inscription': insc.pk, 'semestre': s1.pk})
+        rel_s1 = ReleveNote.objects.get(type='S', etudiant=e9)
+        self.assertEqual(contenu(rel_s1)['cumul']['moyenne'], 4.95)
+        self.assertEqual(self.client.get(reverse('releve_pdf', args=[rel_s1.pk])).status_code, 200)
+        # Extrait du livret : moyenne générale du CPC, soutenance non ajoutée
+        self.client.post(reverse('releve_creer'), {'type': 'E', 'etudiant': e9.pk, 'programme': tc.pk})
+        extrait = ReleveNote.objects.get(type='E', etudiant=e9)
+        c = contenu(extrait)
+        self.assertEqual((c['libelle_cycle'], c['moyenne'], c['soutenance'], c['mention']),
+                         ('Moyenne générale du CPC', 5.41, None, 'Acceptable'))
+        self.assertEqual(self.client.get(reverse('releve_pdf', args=[extrait.pk])).status_code, 200)
+        # Relevé de M8 (règles générales) : présentation inchangée
+        insc8 = Inscription.objects.get(etudiant=e8)
+        self.client.post(reverse('releve_creer'), {'type': 'A', 'inscription': insc8.pk})
+        c8 = contenu(ReleveNote.objects.get(type='A', etudiant=e8))
+        self.assertEqual((c8['blocs'][0]['detaille'], c8['cumul'], c8['moyenne']), (False, None, 2.28))  # 6,1 × 6 / 16
+        self.assertEqual(c8['blocs'][0]['lignes'][0]['lettre'], 'C')
+
+        # Inscription corrigée (cycle) : les notes changent de règlement et sont recalculées
+        Inscription.objects.filter(etudiant=e8).update(cycle='Tronc commun')
+        recalculer([e8.pk])
+        n8.refresh_from_db()
+        self.assertEqual((n8.reglement, n8.moyenne_finale), ('877', 5.5))
+
+        # Import : colonnes cc / ct ; le compte rendu indique le règlement appliqué ; modèle CC / CT
+        self._prive()
+        info_s2 = self._matiere('Informatique', tc, s2, credit=2)
+        fichier = fichier_xlsx([['matricule', 'matiere', 'session', 'cc', 'ct'], ['M9', 'Informatique', '2025-2026', 6, 4.5]])
+        scol = get_profil(self.client.get(reverse('notes_importer')).wsgi_request)
+        r = importer_notes(fichier, scol, User.objects.get(username='scol'))
+        self.assertEqual((r.creees, r.erreurs, r.reglements),
+                         (1, [], [("Arrêté 877 (règlement des études d'ingénierie)", 1)]))
+        n = Note.objects.get(etudiant=e9, matiere=info_s2)
+        self.assertEqual((n.controle, n.examen, n.moyenne_finale, n.reglement), (6, 4.5, 5.1, '877'))
+        modele = openpyxl.load_workbook(io.BytesIO(self.client.get(reverse('notes_modele'), {'reglement': '877'}).content))
+        self.assertEqual([c.value for c in modele.active[1]][4:7], ['cc', 'tp', 'ct'])
+
     # ---------------------------------------------------------------- statistiques
 
     def test_statistiques_des_inscriptions(self):

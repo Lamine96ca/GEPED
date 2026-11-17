@@ -363,6 +363,9 @@ class Note(models.Model):
     date_saisie = models.DateTimeField('Saisie le', null=True, blank=True)
     import_saisie = models.ForeignKey('ImportNotes', on_delete=models.SET_NULL, null=True, blank=True,
                                       related_name='notes_creees', verbose_name='Import de la saisie')
+    # Règlement suivi (settings.GPED_NOTES['reglements'], ex. « 877 ») : celui de l'inscription de
+    # l'étudiant dans la session, le programme et le niveau de la matière ; '' = règles générales
+    reglement = models.CharField('Règlement', max_length=10, blank=True, default='', editable=False)
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=['etudiant', 'matiere'], name='note_unique_par_matiere')]
@@ -372,15 +375,16 @@ class Note(models.Model):
         return f"{self.etudiant} · {self.matiere} : {self.moyenne_finale if self.moyenne_finale is not None else '—'}"
 
     def calculer(self):
-        """Moyenne (si elle n'est pas déposée) puis moyenne finale = meilleure de la moyenne et du rattrapage."""
-        from .notes import arrondi, moyenne_des_notes
+        """Moyenne (si elle n'est pas déposée) puis note finale = meilleure de la moyenne et du rattrapage
+        (arrêté 877 : rattrapage plafonné à 5), selon le règlement de la note."""
+        from .notes import moyenne_des_notes, note_retenue
         if not self.moyenne_deposee:
-            self.moyenne = moyenne_des_notes(self.controle, self.tp, self.examen)
-        self.par_session = self.rattrapage is not None and (self.moyenne is None or self.rattrapage > self.moyenne)
-        meilleure = self.rattrapage if self.par_session else self.moyenne
-        self.moyenne_finale = arrondi(meilleure)
+            self.moyenne = moyenne_des_notes(self.controle, self.tp, self.examen, self.reglement)
+        self.moyenne_finale, self.par_session = note_retenue(self.moyenne, self.rattrapage, self.reglement)
 
     def save(self, *args, **kwargs):
+        from .notes import reglement_de_note
+        self.reglement = reglement_de_note(self)
         self.calculer()
         super().save(*args, **kwargs)
 
@@ -392,7 +396,12 @@ class Note(models.Model):
     @property
     def mention(self):
         from .notes import mention
-        return mention(self.moyenne_finale)
+        return mention(self.moyenne_finale, self.reglement)
+
+    @property
+    def lettre(self):
+        from .notes import lettre
+        return lettre(self.moyenne_finale, self.reglement)
 
     @property
     def verrouillee(self):

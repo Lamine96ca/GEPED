@@ -353,6 +353,39 @@ GPED_NOTES = {
     # Notes littérales des relevés (en dessous de 5 : E)
     'lettres': [(8, 'A'), (7, 'B'), (6, 'C'), (5, 'D'), (0, 'E')],
     # Les moyennes sont TRONQUÉES à 2 décimales (6,525 → 6,52), jamais arrondies : pas de revendication
+    'calcul': 'controle_tp_examen',              # moyenne d'une matière : voir pfe/notes.py
+    'plafond_rattrapage': None,                  # le rattrapage retenu n'est pas plafonné
+    'moyenne_cycle': 'annees',                   # cycle : moyenne des années (+ soutenance, poids ci-dessus)
+    'dettes': False,                             # pas d'état « Dette » sur les relevés
+    'libelle_session': 'Validée en session',
+    'libelles': {'controle': 'Contrôle', 'tp': 'TP', 'examen': 'Examen'},
+    # Règlements particuliers : ils REMPLACENT les règles ci-dessus pour les inscriptions de leurs cycles,
+    # à partir de leur première session (année de début : 2025 pour « 2025 - 2026 »). Une note suit le
+    # règlement de l'inscription de l'étudiant (session, programme et niveau de la matière). Les autres
+    # cycles (Licence, DUT, Master…) gardent les règles ci-dessus ; leur règlement s'ajoutera ici.
+    'reglements': {
+        '877': {
+            'nom': "Arrêté 877 (règlement des études d'ingénierie)",
+            'cycles': ['Tronc commun', 'Ingénieur'],
+            'premiere_session': 2025,
+            # Note de l'ECUE (art. 48) : CC 40 % + CT 60 % ; CC = contrôle (et TP s'il est donné, art. 47),
+            # CT = examen. Une moyenne déposée par le programme est prise telle quelle.
+            'calcul': 'cc_ct',
+            'poids_cc_ct': {'cc': 0.40, 'ct': 0.60},
+            # Rattrapage (art. 49) : retenu s'il est meilleur, plafonné à 5/10
+            'plafond_rattrapage': 5,
+            # Moyenne générale cumulative pondérée par les crédits (art. 75), par programme : le Tronc
+            # commun (CPC, S1-S4) et le programme d'ingénieur (S5-S10) ont chacun la leur
+            'moyenne_cycle': 'cumulative',
+            'dettes': True,                      # ECUE < 5 après délibération : dette (art. 71)
+            'libelle_session': 'Validée au rattrapage',
+            'libelles': {'controle': 'CC', 'tp': 'TP', 'examen': 'CT'},
+            # Barème (art. 51 et 75)
+            'mentions': [(8, 'Excellent'), (7, 'Remarquable'), (6, 'Satisfaisant'), (5, 'Acceptable')],
+            'lettres': [(9, 'A+'), (8.5, 'A'), (8, 'A-'), (7.67, 'B+'), (7.34, 'B'), (7, 'B-'), (6.67, 'C+'),
+                        (6.34, 'C'), (6, 'C-'), (5.67, 'D+'), (5.34, 'D'), (5, 'D-'), (0, 'E')],
+        },
+    },
 }
 
 # Taille maximale d'un fichier d'import (octets)

@@ -37,8 +37,8 @@ from django.db import transaction
 from .import_matieres import ImportRefuse
 from .importer import _index_programmes, cle, cle_session, lire_lignes, texte
 from .models import Etudiant, Inscription, Matiere, Note, Session
-from .notes import (CHAMPS_SAISIE, autorisations_actives, en_note, enregistrer_notes, peut_modifier, recalculer,
-                    saisie_de, semestres_delibres, session_ecoulee, verifier_pdf)
+from .notes import (CHAMPS_SAISIE, autorisations_actives, codes_reglement, en_note, enregistrer_notes,
+                    peut_modifier, recalculer, regles, saisie_de, semestres_delibres, session_ecoulee, verifier_pdf)
 
 OBLIGATOIRES = ['matricule', 'matiere', 'session']
 COLONNES = OBLIGATOIRES + ['programme'] + list(CHAMPS_SAISIE)
@@ -46,6 +46,7 @@ ALIAS = {
     'matieres': 'matiere', 'nom_matiere': 'matiere', 'code_matiere': 'matiere', 'intitule': 'matiere',
     'cc': 'controle', 'controle_continu': 'controle', 'devoir': 'controle',
     'travaux_pratiques': 'tp', 'exam': 'examen', 'examen_final': 'examen',
+    'ct': 'examen', 'controle_terminal': 'examen',            # arrêté 877 : CC = controle, CT = examen
     'moy': 'moyenne', 'moyenne_matiere': 'moyenne', 'rattrapages': 'rattrapage', 'note_rattrapage': 'rattrapage',
 }
 
@@ -68,6 +69,7 @@ class RapportNotes:
         self.reparations = 0
         self.journal = None         # ImportNotes enregistré (import réel)
         self.inscriptions_creees = []  # [(1re ligne, matricule, étudiant, session, licence, programme, promotion)]
+        self.reglements = []           # [(nom du règlement appliqué, nombre de lignes)]
 
     @property
     def nb_erreurs(self):
@@ -376,6 +378,12 @@ def importer_notes(fichier, profil, utilisateur=None, simulation=False, pdf_ense
                 apres_deliberation={m.pk: (m.filiere_id, m.session_id, m.semestre_id) in delibres
                                     for _, _, m, _ in changements})
             recalculer({etu.pk for _, etu, _, _ in retenues})
+            # Règlement appliqué à chaque ligne (celui de l'inscription de l'étudiant)
+            from collections import Counter
+            codes = codes_reglement((etu.pk, m) for _, etu, m, _ in retenues)
+            compte = Counter(codes.get((etu.pk, m.pk), '') for _, etu, m, _ in retenues)
+            rapport.reglements = [(regles(code).get('nom') or 'Règles générales', n)
+                                  for code, n in sorted(compte.items())]
             if journal is not None:
                 journal.creees, journal.modifiees = rapport.creees, rapport.mises_a_jour
                 journal.save(update_fields=['creees', 'modifiees'])
@@ -387,16 +395,23 @@ def importer_notes(fichier, profil, utilisateur=None, simulation=False, pdf_ense
     return rapport
 
 
-def modele_notes_xlsx():
+def modele_notes_xlsx(code=''):
+    """Modèle d'import ; `code` d'un règlement CC / CT (arrêté 877) : colonnes « cc » et « ct »."""
     import openpyxl
     from openpyxl.styles import Font, PatternFill
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = 'Notes'
-    ws.append(COLONNES)
-    ws.append(['2304000123', 'Algorithmique et programmation', '2025 - 2026', '', 6, 7.5, 6.5, '', ''])
-    ws.append(['2304000217', 'Algorithmique et programmation', '2025 - 2026', '', '', '', '', 6.75, ''])
-    ws.append(['2304000328', 'INF101', '2025 - 2026', '', 3, '', 'ABS', '', 6])
+    if code and regles(code).get('calcul') == 'cc_ct':
+        ws.append(OBLIGATOIRES + ['programme', 'cc', 'tp', 'ct', 'moyenne', 'rattrapage'])
+        ws.append(['2504000123', 'Analyse 1', '2026 - 2027', '', 6, '', 4.5, '', ''])
+        ws.append(['2504000217', 'Analyse 1', '2026 - 2027', '', '', '', '', 6.75, ''])
+        ws.append(['2504000328', 'MAT101', '2026 - 2027', '', 3, 5, 'ABS', '', 7])
+    else:
+        ws.append(COLONNES)
+        ws.append(['2304000123', 'Algorithmique et programmation', '2025 - 2026', '', 6, 7.5, 6.5, '', ''])
+        ws.append(['2304000217', 'Algorithmique et programmation', '2025 - 2026', '', '', '', '', 6.75, ''])
+        ws.append(['2304000328', 'INF101', '2025 - 2026', '', 3, '', 'ABS', '', 6])
     for cell in ws[1]:
         obligatoire = cell.value in OBLIGATOIRES
         cell.font = Font(bold=True, color='1F2937' if obligatoire else 'FFFFFF')
