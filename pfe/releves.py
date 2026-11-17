@@ -15,9 +15,10 @@ antérieure à la session en cours est considérée comme délibérée (notes im
 
 Arrêté 877 (Tronc commun et cycle Ingénieur, voir settings.GPED_NOTES) : chaque matière montre la note de
 session normale, le rattrapage et la note retenue (rattrapage plafonné à 5), la notation A+ … E et l'état
-(Validée, Validée au rattrapage, À rattraper, Non validée, Dette) ; le relevé semestriel ou annuel
-ajoute la moyenne générale cumulative du programme (CPC pour le Tronc commun, cycle ingénieur sinon) et
-les crédits cumulés ; l'extrait du livret donne cette moyenne cumulative, sans soutenance ajoutée à part.
+(Validée, Validée au rattrapage, À rattraper, Non validée, Dette) ; le relevé semestriel ajoute la
+moyenne générale cumulative du programme (CPC pour le Tronc commun, cycle ingénieur sinon) et les
+crédits cumulés, le relevé annuel n'a que la moyenne et les crédits de l'année ; l'extrait du livret
+donne la moyenne cumulative, sans soutenance ajoutée à part.
 """
 import re
 
@@ -148,7 +149,7 @@ def contenu(releve):
     return {'titre': 'RELEVÉ DE NOTES', 'niveau': f"{insc.licence.nom}" + (f" ({abreges})" if abreges else ''),
             'libelle_moyenne': 'Moyenne annuelle', 'session': insc.session.annee, 'blocs': [b],
             'definitif': b['definitif'], 'promotion': insc.promotion, 'moyenne': b['moyenne'], 'mention': b['mention'],
-            'cumul': cumul(insc) if b['detaille'] else None}
+            'cumul': None}                         # relevé annuel : moyenne et crédits de l'année seulement
 
 
 def contenu_extrait(releve):

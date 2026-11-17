@@ -3379,8 +3379,7 @@ class GpedTests(TestCase):
                          [('Analyse', 5.5, None, 5.5, 'D', 'Validée'), ('Chimie', 3.2, 4.1, 4.1, 'E', 'Dette'),
                           ('Physique', 3.8, 7, 5, 'D-', 'Validée au rattrapage'),
                           ('Anglais', 8.6, None, 8.6, 'A', 'Validée')])
-        self.assertEqual(c['cumul'], {'libelle': 'Moyenne générale du CPC', 'moyenne': 5.41, 'mention': 'Acceptable',
-                                      'credits_valides': 12, 'credits_total': 16})
+        self.assertEqual((c['moyenne'], c['cumul']), (5.41, None))               # annuel : l'année seulement
         r = self.client.get(reverse('releve_pdf', args=[rel.pk]))
         self.assertEqual((r.status_code, r.content[:4]), (200, b'%PDF'))
         # Relevé du S1 : cumul jusqu'au S1 seulement, (33 + 20 + 16,4) / 14 = 4,957 → 4,95
