@@ -3379,13 +3379,15 @@ class GpedTests(TestCase):
                          [('Analyse', 5.5, None, 5.5, 'D', 'Validée'), ('Chimie', 3.2, 4.1, 4.1, 'E', 'Dette'),
                           ('Physique', 3.8, 7, 5, 'D-', 'Validée au rattrapage'),
                           ('Anglais', 8.6, None, 8.6, 'A', 'Validée')])
-        self.assertEqual((c['moyenne'], c['cumul']), (5.41, None))               # annuel : l'année seulement
+        self.assertEqual((c['moyenne'], c['mention']), (5.41, 'Acceptable'))     # l'année seulement, sans cumul
+        self.assertNotIn('cumul', c)
         r = self.client.get(reverse('releve_pdf', args=[rel.pk]))
         self.assertEqual((r.status_code, r.content[:4]), (200, b'%PDF'))
-        # Relevé du S1 : cumul jusqu'au S1 seulement, (33 + 20 + 16,4) / 14 = 4,957 → 4,95
+        # Relevé du S1 : moyenne du semestre seulement, (33 + 20 + 16,4) / 14 = 4,957 → 4,95 ; pas de cumul
         self.client.post(reverse('releve_creer'), {'type': 'S', 'inscription': insc.pk, 'semestre': s1.pk})
         rel_s1 = ReleveNote.objects.get(type='S', etudiant=e9)
-        self.assertEqual(contenu(rel_s1)['cumul']['moyenne'], 4.95)
+        c_s1 = contenu(rel_s1)
+        self.assertEqual((c_s1['moyenne'], c_s1['blocs'][0]['credits_valides'], 'cumul' in c_s1), (4.95, 10, False))
         self.assertEqual(self.client.get(reverse('releve_pdf', args=[rel_s1.pk])).status_code, 200)
         # Extrait du livret : moyenne générale du CPC, soutenance non ajoutée
         self.client.post(reverse('releve_creer'), {'type': 'E', 'etudiant': e9.pk, 'programme': tc.pk})
@@ -3398,7 +3400,7 @@ class GpedTests(TestCase):
         insc8 = Inscription.objects.get(etudiant=e8)
         self.client.post(reverse('releve_creer'), {'type': 'A', 'inscription': insc8.pk})
         c8 = contenu(ReleveNote.objects.get(type='A', etudiant=e8))
-        self.assertEqual((c8['blocs'][0]['detaille'], c8['cumul'], c8['moyenne']), (False, None, 2.28))  # 6,1 × 6 / 16
+        self.assertEqual((c8['blocs'][0]['detaille'], c8['moyenne']), (False, 2.28))  # 6,1 × 6 / 16
         self.assertEqual(c8['blocs'][0]['lignes'][0]['lettre'], 'C')
 
         # Inscription corrigée (cycle) : les notes changent de règlement et sont recalculées

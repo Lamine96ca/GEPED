@@ -15,13 +15,10 @@ antérieure à la session en cours est considérée comme délibérée (notes im
 
 Arrêté 877 (Tronc commun et cycle Ingénieur, voir settings.GPED_NOTES) : chaque matière montre la note de
 session normale, le rattrapage et la note retenue (rattrapage plafonné à 5), la notation A+ … E et l'état
-(Validée, Validée au rattrapage, À rattraper, Non validée, Dette) ; le relevé semestriel ajoute la
-moyenne générale cumulative du programme (CPC pour le Tronc commun, cycle ingénieur sinon) et les
-crédits cumulés, le relevé annuel n'a que la moyenne et les crédits de l'année ; l'extrait du livret
-donne la moyenne cumulative, sans soutenance ajoutée à part.
+(Validée, Validée au rattrapage, À rattraper, Non validée, Dette). Les relevés semestriel et annuel
+n'ont que la moyenne et les crédits de leur période ; l'extrait du livret donne la moyenne générale
+cumulative du programme (CPC pour le Tronc commun, cycle ingénieur sinon), sans soutenance à part.
 """
-import re
-
 from django.db.models import Q
 
 from .models import Deliberation, Inscription, Matiere, Note, ReleveNote, Session, Soutenance
@@ -52,12 +49,6 @@ def _definitif(filiere_id, session, semestre_ids):
     if not semestre_ids:
         return False
     return set(semestre_ids) <= _semestres_definitifs(filiere_id, session, semestre_ids)
-
-
-def _numero(semestre):
-    """« SEMESTRE 3 » → 3 (ordre des semestres) ; sinon son identifiant."""
-    m = re.search(r'(\d+)', semestre.nom or '')
-    return int(m.group(1)) if m else semestre.pk
 
 
 def bloc(inscription, semestre=None):
@@ -96,11 +87,11 @@ def libelle_cumul(inscription):
     return 'Moyenne générale du cycle'
 
 
-def cumul(inscription, semestre=None):
+def cumul(inscription):
     """
-    Arrêté 877 : moyenne générale cumulative (pondérée par les crédits) et crédits cumulés de l'étudiant
-    dans le programme de l'inscription, jusqu'à cette inscription (et ce semestre) compris ; une année
-    par niveau (redoublement : la dernière, jusqu'à cette session).
+    Arrêté 877 (extrait du livret) : moyenne générale cumulative (pondérée par les crédits) et crédits
+    cumulés de l'étudiant dans le programme de l'inscription, jusqu'à cette inscription comprise ; une
+    année par niveau (redoublement : la dernière, jusqu'à cette session).
     """
     code = code_inscription(inscription)
     inscriptions = list(Inscription.objects.filter(etudiant_id=inscription.etudiant_id,
@@ -112,11 +103,8 @@ def cumul(inscription, semestre=None):
     retenues = [i for i, _ in annees_retenues([(i.session.annee, i, None) for i in inscriptions]).values()]
     matieres = []
     for i in retenues:
-        ms = list(Matiere.objects.filter(filiere_id=i.filiere_id, session_id=i.session_id,
-                                         licence_id=i.licence_id).select_related('semestre'))
-        if i.pk == inscription.pk and semestre is not None:
-            ms = [m for m in ms if _numero(m.semestre) <= _numero(semestre)]
-        matieres.extend(ms)
+        matieres.extend(Matiere.objects.filter(filiere_id=i.filiere_id, session_id=i.session_id,
+                                               licence_id=i.licence_id))
     notes = {(inscription.etudiant_id, mat): v for mat, v in Note.objects.filter(
         etudiant_id=inscription.etudiant_id, matiere__in=[m.pk for m in matieres],
         moyenne_finale__isnull=False).values_list('matiere_id', 'moyenne_finale')}
@@ -142,14 +130,12 @@ def contenu(releve):
         b = bloc(insc, releve.semestre)
         return {'titre': 'RELEVÉ DE NOTES', 'niveau': releve.semestre.nom, 'libelle_moyenne': 'Moyenne semestrielle',
                 'session': insc.session.annee, 'blocs': [b], 'definitif': b['definitif'], 'promotion': insc.promotion,
-                'moyenne': b['moyenne'], 'mention': b['mention'],
-                'cumul': cumul(insc, releve.semestre) if b['detaille'] else None}
+                'moyenne': b['moyenne'], 'mention': b['mention']}
     b = bloc(insc)
     abreges = ' et '.join(s.abrege or s.nom for s in sorted(b['semestres'], key=lambda s: s.pk))
     return {'titre': 'RELEVÉ DE NOTES', 'niveau': f"{insc.licence.nom}" + (f" ({abreges})" if abreges else ''),
             'libelle_moyenne': 'Moyenne annuelle', 'session': insc.session.annee, 'blocs': [b],
-            'definitif': b['definitif'], 'promotion': insc.promotion, 'moyenne': b['moyenne'], 'mention': b['mention'],
-            'cumul': None}                         # relevé annuel : moyenne et crédits de l'année seulement
+            'definitif': b['definitif'], 'promotion': insc.promotion, 'moyenne': b['moyenne'], 'mention': b['mention']}
 
 
 def contenu_extrait(releve):

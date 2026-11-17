@@ -168,7 +168,7 @@ def _pied(c, releve, cachet_signature, y_mention, signataire, extrait=False):
 
 # ---------------------------------------------------------------- relevé semestriel / annuel
 
-def _tableau_releve(c, b, y, annuel, reserve=205):
+def _tableau_releve(c, b, y, annuel):
     detaille = b.get('detaille')                           # arrêté 877 : session normale, rattrapage, note retenue
     colonnes = [('N°', 22, 'c'), ('Matières', None, 'g')]
     if annuel:
@@ -181,7 +181,7 @@ def _tableau_releve(c, b, y, annuel, reserve=205):
     fixe = sum(w for _, w, _ in colonnes if w)
     colonnes = [(t, w or (D - G - fixe), a) for t, w, a in colonnes]
     lignes = b['lignes']
-    disponible = y - reserve                               # place pour moyennes + signature (côte à côte)
+    disponible = y - 205                                   # place pour moyennes + signature (côte à côte)
     hauteur = max(11, min(16, (disponible - 22) / max(1, len(lignes) + 1)))
     taille = min(9.5, hauteur * 0.62)
     # En-tête
@@ -248,15 +248,11 @@ def _pdf_releve(c, releve, contenu, url, cachet_signature):
     from .models import ReleveNote
     y = _entete(c, releve, contenu, url)
     b = contenu['blocs'][0]
-    cumul = contenu.get('cumul')                           # arrêté 877 : moyenne générale cumulative
-    y = _tableau_releve(c, b, y - 8, annuel=releve.type == ReleveNote.ANNUEL, reserve=237 if cumul else 205)
-    lignes = (([('Notes manquantes', str(b['notes_manquantes']))] if b['notes_manquantes'] else [])
-              + [(contenu['libelle_moyenne'], f"{fmt(contenu['moyenne'])}/10"),
-                 ('Crédits validés', f"{b['credits_valides']} / {b['credits_total']}")])
-    if cumul:
-        lignes += [(cumul['libelle'], f"{fmt(cumul['moyenne'])}/10"),
-                   ('Crédits cumulés', f"{cumul['credits_valides']} / {cumul['credits_total']}")]
-    y_mention = _resume(c, y, lignes + [('Mention', contenu['mention'] or '—')])
+    y = _tableau_releve(c, b, y - 8, annuel=releve.type == ReleveNote.ANNUEL)
+    y_mention = _resume(c, y, ([('Notes manquantes', str(b['notes_manquantes']))] if b['notes_manquantes'] else [])
+                        + [(contenu['libelle_moyenne'], f"{fmt(contenu['moyenne'])}/10"),
+                           ('Crédits validés', f"{b['credits_valides']} / {b['credits_total']}"),
+                           ('Mention', contenu['mention'] or '—')])
     _pied(c, releve, cachet_signature, y_mention, contenu['signataire'])
 
 
