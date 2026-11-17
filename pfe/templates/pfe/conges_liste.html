@@ -35,7 +35,7 @@
           <td style="white-space:normal;min-width:180px;max-width:320px">{{ c.motif|truncatechars:120 }}</td>
           <td>{% if c.en_cours %}<span class="pill pill-attention">En cours</span>{% else %}<span class="pill pill-succes">Levé le {{ c.levee_le|date:"d/m/Y" }}</span>{% endif %}</td>
           <td class="text-end text-nowrap">
-            {% if c.justificatif and profil.gere_etudiants %}<a class="btn btn-icone" href="{% url 'conge_justificatif' c.pk %}" target="_blank" rel="noopener" title="Justificatif (PDF)"><i class="bi bi-file-earmark-pdf"></i></a>{% endif %}
+            {% if c.justificatif %}<a class="btn btn-icone" href="{% url 'conge_justificatif' c.pk %}" target="_blank" rel="noopener" title="Justificatif (PDF)"><i class="bi bi-file-earmark-pdf"></i></a>{% endif %}
             <a class="btn btn-icone" href="{% url 'etudiant_fiche' c.inscription_id %}#conge" title="Fiche de l'étudiant"><i class="bi bi-person-lines-fill"></i></a>
             {% if profil.est_chef_scolarite and c.en_cours %}
               <form method="post" action="{% url 'conge_lever' c.pk %}" class="d-inline" onsubmit="return confirm('Lever le congé de {{ c.inscription.etudiant.prenom|escapejs }} {{ c.inscription.etudiant.nom|escapejs }} ? Il pourra de nouveau s’inscrire, au même niveau.');">

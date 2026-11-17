@@ -2974,8 +2974,10 @@ class GpedTests(TestCase):
         h = NoteHistorique.objects.create(note=note, utilisateur=User.objects.get(username='info'),
                                           avant={'moyenne': 7}, apres={'moyenne': 8}, motif='Erreur de report',
                                           import_notes=imp, justificatif=imp.pdf_enseignant.name)
-        conge = CongeAcademique.objects.create(inscription=Inscription.objects.get(etudiant__matricule='M2'),
-                                               motif='Santé', date_debut=timezone.localdate())
+        conge = CongeAcademique.objects.create(
+            inscription=Inscription.objects.get(etudiant__matricule='M2'), motif='Santé',
+            date_debut=timezone.localdate(),
+            justificatif=stockage_prive().save('conges/2026/M2_conge.pdf', ContentFile(b'%PDF-1.4 conge')))
 
         # Direction Générale des Études : consulte tout, ne modifie rien
         self.connecter('dge')
@@ -3007,9 +3009,13 @@ class GpedTests(TestCase):
         self.assertIn('attachment', r['Content-Disposition'])
         r = self.client.get(reverse('conges_liste'))
         self.assertContains(r, '>N2</a>')
-        self.assertNotContains(r, reverse('conge_justificatif', args=[conge.pk]))
+        self.assertContains(r, reverse('conge_justificatif', args=[conge.pk]))       # justificatif : consultable
         self.assertNotContains(r, reverse('conge_lever', args=[conge.pk]))
-        self.assertEqual(self.client.get(reverse('conge_justificatif', args=[conge.pk])).status_code, 403)
+        r = self.client.get(reverse('conge_justificatif', args=[conge.pk]))
+        self.assertEqual((r.status_code, r['Content-Type']), (200, 'application/pdf'))
+        r = self.client.get(reverse('etudiant_fiche', args=[conge.inscription_id]))
+        self.assertContains(r, reverse('conge_justificatif', args=[conge.pk]))
+        self.assertNotContains(r, reverse('conge_lever', args=[conge.pk]))
         self.assertEqual(self.client.post(reverse('conge_lever', args=[conge.pk])).status_code, 403)
         # Autre direction (même rôle « département ») : ni notes, ni historique, ni congés
         self.connecter('dep')

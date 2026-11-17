@@ -92,9 +92,10 @@ def conge_annuler(request, pk):
 
 
 @login_required
-@etudiants_requise
+@lecture_conges_requise
 def conge_justificatif(request, pk):
-    conge = get_object_or_404(_conges_geres(request).select_related('inscription__etudiant'), pk=pk)
+    """Justificatif d'un congé : ceux qui le gèrent, et la Direction Générale des Études (consultation)."""
+    conge = get_object_or_404(_conges_visibles(request).select_related('inscription__etudiant'), pk=pk)
     if not conge.justificatif:
         raise Http404
     e = conge.inscription.etudiant
