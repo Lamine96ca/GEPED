@@ -171,6 +171,10 @@ def notes_saisie(request, pk):
     promotion = _entier(request.GET.get('promotion'))
     if promotion:
         inscrits = inscrits.filter(promotion_id=promotion)
+    # Filtre par matricule (saisir un seul étudiant) : seuls les étudiants trouvés sont affichés et enregistrés
+    matricule = (request.GET.get('matricule') or '').strip()[:25]
+    if matricule:
+        inscrits = inscrits.filter(etudiant__matricule__icontains=matricule)
     # Depuis la liste des notes (crayon) : seulement cet étudiant, puis retour à la liste après l'enregistrement
     seul = _entier(request.GET.get('etudiant'))
     if seul:
@@ -268,7 +272,7 @@ def notes_saisie(request, pk):
     return render(request, 'pfe/notes_saisie.html', {
         'matiere': matiere, 'lignes': lignes, 'delibere': delibere, 'modifiable': modifiable,
         'ecoulee': session_ecoulee(matiere.session), 'autorisation': autorisation,
-        'promotions_matiere': promotions_matiere, 'promotion_choisie': promotion,
+        'promotions_matiere': promotions_matiere, 'promotion_choisie': promotion, 'matricule': matricule,
         'deliberation': Deliberation.objects.filter(filiere_id=matiere.filiere_id, session_id=matiere.session_id,
                                                     semestre_id=matiere.semestre_id).select_related('par').first(),
         'erreurs': bool(erreurs), 'erreur_motif': erreur_motif, 'motif': request.POST.get('motif', ''),

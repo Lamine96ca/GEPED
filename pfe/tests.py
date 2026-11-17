@@ -3336,6 +3336,11 @@ class GpedTests(TestCase):
         e8 = Etudiant.objects.create(matricule='M8', prenom='Ali', nom='N8', email='e8@t.local')
         Inscription.objects.create(etudiant=e8, session=self.session, licence=self.licence, filiere=tc, cycle='Licence')
         self.assertContains(self.client.get(url), "suivent l'arrêté 877")          # matière partagée
+        # Filtre matricule : un seul étudiant affiché (et enregistré)
+        r = self.client.get(url, {'matricule': 'm9'})
+        self.assertContains(r, f'name="controle_{e9.pk}"')
+        self.assertNotContains(r, f'name="controle_{e8.pk}"')
+        self.assertContains(self.client.get(url, {'matricule': 'X404'}), 'avec le matricule « X404 »')
         vide = {f'{c}_{e}': '' for c in ('controle', 'tp', 'examen', 'moyenne', 'rattrapage') for e in (e8.pk, e9.pk)}
         self.client.post(url, {**vide, f'controle_{e9.pk}': '6', f'tp_{e9.pk}': '8', f'examen_{e9.pk}': '4,5',
                                f'controle_{e8.pk}': '6', f'tp_{e8.pk}': '8', f'examen_{e8.pk}': '4,5'})

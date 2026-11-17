@@ -45,6 +45,17 @@
         <span class="icone-carte"><i class="bi bi-table"></i></span>
         <div><h3>{{ lignes|length }} étudiant{{ lignes|length|pluralize }} inscrit{{ lignes|length|pluralize }}</h3><p>{{ nb_notes }} note{{ nb_notes|pluralize }} saisie{{ nb_notes|pluralize }} · ABS = 0</p></div>
       </div>
+      {% if not seul %}
+        <div>
+          <label class="form-label small text-secondary mb-1" for="f-matricule-saisie">Matricule</label>
+          <div class="input-group input-group-sm" style="width:210px">
+            <input type="search" id="f-matricule-saisie" class="form-control" value="{{ matricule }}" maxlength="25"
+                   placeholder="Un seul étudiant" autocomplete="off" data-filtre-matricule>
+            <button type="button" class="btn btn-light" title="Afficher cet étudiant" data-filtre-matricule-ok><i class="bi bi-search"></i></button>
+            {% if matricule %}<button type="button" class="btn btn-light" title="Afficher tous les étudiants" data-filtre-matricule-effacer><i class="bi bi-x-lg"></i></button>{% endif %}
+          </div>
+        </div>
+      {% endif %}
       {% if promotions_matiere|length > 1 or promotion_choisie %}
         <div>
           <label class="form-label small text-secondary mb-1" for="f-promotion-saisie">Promotion</label>
@@ -93,7 +104,7 @@
             {% endif %}
           </tr>
         {% empty %}
-          <tr><td colspan="9"><div class="etat-vide"><i class="bi bi-people"></i>{% if seul %}Cet étudiant n'est pas (ou plus) inscrit dans cette matière : {% endif %}Aucun étudiant inscrit en {{ matiere.licence.nom }} · {{ matiere.filiere }} · {{ matiere.session.annee }}.</div></td></tr>
+          <tr><td colspan="10"><div class="etat-vide"><i class="bi bi-people"></i>{% if matricule %}Aucun étudiant inscrit dans cette matière avec le matricule « {{ matricule }} »{% if promotion_choisie %} dans cette promotion{% endif %}.{% else %}{% if seul %}Cet étudiant n'est pas (ou plus) inscrit dans cette matière : {% endif %}Aucun étudiant inscrit en {{ matiere.licence.nom }} · {{ matiere.filiere }} · {{ matiere.session.annee }}.{% endif %}</div></td></tr>
         {% endfor %}
         </tbody>
       </table>
@@ -162,6 +173,23 @@
       if (m === null) return '';
       for (var i = 0; i < r.mentions.length; i++) { if (m >= r.mentions[i][0]) return r.mentions[i][1]; }
       return '';
+    }
+    // Filtre matricule : recharge la grille avec les seuls étudiants trouvés (Entrée ou loupe)
+    var champMatricule = document.querySelector('[data-filtre-matricule]');
+    function filtrerMatricule(valeur) {
+      var u = new URL(location.href);
+      if (valeur) { u.searchParams.set('matricule', valeur); } else { u.searchParams.delete('matricule'); }
+      location.href = u.toString();
+    }
+    if (champMatricule) {
+      champMatricule.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); filtrerMatricule(champMatricule.value.trim()); }
+      });
+      document.querySelector('[data-filtre-matricule-ok]').addEventListener('click', function () {
+        filtrerMatricule(champMatricule.value.trim());
+      });
+      var effacer = document.querySelector('[data-filtre-matricule-effacer]');
+      if (effacer) effacer.addEventListener('click', function () { filtrerMatricule(''); });
     }
     var modifs = 0, initial = new Map();
     document.querySelectorAll('.note-champ').forEach(function (i) { initial.set(i, i.value); });
