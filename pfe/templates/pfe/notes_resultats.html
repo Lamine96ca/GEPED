@@ -16,6 +16,37 @@
 {% else %}
 <div class="row g-3">
   <div class="col-xl-4 d-flex flex-column gap-3">
+    <a class="btn btn-outline-primary" href="{% url 'notes_deliberation' %}?session={{ filtres.session }}&amp;programme={{ filtres.programme }}&amp;licence={{ semestre.licence_id }}&amp;semestre={{ filtres.semestre }}"><i class="bi bi-easel"></i> Présenter au jury (espace de délibération)</a>
+
+    <!-- Validation du chef de département -->
+    <div class="card carte-gped">
+      <div class="card-body">
+        <div class="entete-carte">
+          <span class="icone-carte"><i class="bi {% if validation %}bi-patch-check-fill{% else %}bi-patch-check{% endif %}"></i></span>
+          <div><h3>Validation du chef de département</h3><p>{% if validation %}Validé le {{ validation.date|date:"d/m/Y à H:i" }}{% if validation.par %} par {{ validation.par.get_full_name|default:validation.par.username }}{% endif %}{% elif deliberation %}Délibéré sans validation{% else %}Pas encore validé{% endif %}</p></div>
+        </div>
+        {% if annee_ecoulee and not validation %}
+          <div class="note-verrou mt-0 mb-0"><i class="bi bi-info-circle"></i><span><strong>Année écoulée</strong> : ses notes sont considérées comme délibérées, il n'y a plus rien à valider. La validation se fait sur les semestres de la <strong>session en cours</strong>.</span></div>
+        {% elif not deliberation %}
+          <div class="note-verrou mt-0 mb-3"><i class="bi bi-info-circle"></i><span>{% if validation %}Le directeur de programme ne peut plus modifier ces notes ; le chef de département peut encore les corriger, ou annuler sa validation.{% else %}Le directeur de programme saisit les notes ; le chef de département les <strong>valide</strong>, puis la scolarité délibère.{% endif %}</span></div>
+          {% if peut_valider %}
+            <form method="post" action="{% url 'notes_valider' %}" class="d-grid gap-2"
+                  onsubmit="return confirm('{% if validation %}Annuler la validation ? Le directeur de programme pourra de nouveau modifier les notes.{% else %}Valider les notes de ce semestre ? Le directeur de programme ne pourra plus les modifier.{% endif %}');">
+              {% csrf_token %}
+              <input type="hidden" name="programme" value="{{ filtres.programme }}">
+              <input type="hidden" name="session" value="{{ filtres.session }}">
+              <input type="hidden" name="semestre" value="{{ filtres.semestre }}">
+              {% if validation %}
+                <button class="btn btn-outline-danger" name="action" value="annuler"><i class="bi bi-x-circle"></i> Annuler la validation</button>
+              {% else %}
+                <button class="btn btn-or-plein" {% if not resultats %}disabled{% endif %}><i class="bi bi-patch-check"></i> Valider le semestre</button>
+              {% endif %}
+            </form>
+          {% endif %}
+        {% endif %}
+      </div>
+    </div>
+
     <!-- Délibération -->
     <div class="card carte-gped">
       <div class="card-body">
@@ -26,12 +57,16 @@
         {% if deliberation %}
           <div class="note-verrou mt-0 mb-3"><i class="bi bi-lock-fill"></i><span>Les notes du semestre sont <strong>verrouillées</strong> : seule la scolarité peut les modifier, avec un motif et un justificatif ; un programme seulement pendant une autorisation du chef de la scolarité.</span></div>
         {% else %}
-          <div class="note-verrou mt-0 mb-3"><i class="bi bi-info-circle"></i><span>Délibérer <strong>verrouille</strong> les notes du semestre. Les chefs de programme ne pourront plus les modifier.</span></div>
+          <div class="note-verrou mt-0 mb-3"><i class="bi bi-info-circle"></i><span>La délibération, faite par le <strong>chef de la scolarité</strong>, <strong>verrouille</strong> les notes du semestre. Le chef de département et les directeurs de programme ne pourront plus les modifier.</span></div>
+          {% if not validation and not annee_ecoulee %}<div class="alert alert-warning small py-2"><i class="bi bi-exclamation-triangle"></i> Le chef de département n'a pas encore validé ce semestre.</div>{% endif %}
         {% endif %}
         {% if notes_manquantes and not deliberation %}<div class="alert alert-warning small py-2"><i class="bi bi-exclamation-triangle"></i> {{ notes_manquantes }} note{{ notes_manquantes|pluralize }} manquante{{ notes_manquantes|pluralize }} (compte{{ notes_manquantes|pluralize:"nt" }} 0).</div>{% endif %}
-        {% if profil.est_scolarite %}
+        {% if profil.est_scolarite and not profil.est_chef_scolarite and not deliberation %}
+          <div class="small text-secondary"><i class="bi bi-person-lock"></i> La délibération est faite par le <strong>chef de la scolarité</strong>.</div>
+        {% endif %}
+        {% if profil.est_chef_scolarite %}
           <form method="post" action="{% url 'notes_deliberer' %}" class="d-grid gap-2"
-                onsubmit="return confirm('{% if deliberation %}Annuler la délibération ? Les notes redeviendront modifiables.{% else %}Délibérer ce semestre ? Ses notes seront verrouillées.{% endif %}');">
+                onsubmit="return confirm('{% if deliberation %}Annuler la délibération ? Les notes redeviendront modifiables.{% else %}{% if not validation %}Le chef de département n’a pas validé ce semestre. {% endif %}Délibérer ce semestre ? Ses notes seront verrouillées.{% endif %}');">
             {% csrf_token %}
             <input type="hidden" name="programme" value="{{ filtres.programme }}">
             <input type="hidden" name="session" value="{{ filtres.session }}">

@@ -116,7 +116,7 @@
 
       <!-- Notes : scolarité et chefs de programme ; Direction Générale des Études en consultation -->
       {% if profil.lit_notes %}
-        {% if actif == 'notes_liste' or actif == 'notes_saisie' or actif == 'notes_importer' or actif == 'notes_resultats' or actif == 'notes_historique' or actif == 'notes_imports' or actif == 'notes_autorisations' %}
+        {% if actif == 'notes_liste' or actif == 'notes_saisie' or actif == 'notes_importer' or actif == 'notes_resultats' or actif == 'notes_deliberation' or actif == 'notes_validations' or actif == 'notes_historique' or actif == 'notes_imports' or actif == 'notes_autorisations' %}
           {% firstof 'show' as notes_ouvert %}
         {% else %}
           {% firstof '' as notes_ouvert %}
@@ -134,6 +134,10 @@
               <a class="nav-link {% if actif == 'notes_importer' %}active{% endif %}" href="{% url 'notes_importer' %}">Importer des notes</a>
             {% endif %}
             <a class="nav-link {% if actif == 'notes_resultats' %}active{% endif %}" href="{% url 'notes_resultats' %}">Résultats{% if profil.est_scolarite %} et délibérations{% endif %}</a>
+            {% if profil.voit_validations %}
+              <a class="nav-link {% if actif == 'notes_validations' %}active{% endif %}" href="{% url 'notes_validations' %}">Validation des semestres</a>
+            {% endif %}
+            <a class="nav-link {% if actif == 'notes_deliberation' %}active{% endif %}" href="{% url 'notes_deliberation' %}">Espace de délibération</a>
             {% if profil.voit_suivi_notes %}
               <a class="nav-link {% if actif == 'notes_historique' %}active{% endif %}" href="{% url 'notes_historique' %}">Historique des notes</a>
               <a class="nav-link {% if actif == 'notes_imports' %}active{% endif %}" href="{% url 'notes_imports' %}">Fichiers importés</a>

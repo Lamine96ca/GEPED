@@ -39,6 +39,10 @@ def _lit_notes(profil, user):        # @lecture_notes_requise : + Direction Gén
     return profil.lit_notes
 
 
+def _validations(profil, user):      # @validations_requises : chef de département, scolarité
+    return profil.voit_validations
+
+
 def _suivi_notes(profil, user):      # @suivi_notes_requis : scolarité, admin, Direction Générale des Études
     return profil.voit_suivi_notes
 
@@ -135,6 +139,14 @@ CATALOGUE = [
      "Moyennes, crédits, rangs et mentions par semestre, année et cycle ; procès-verbal de délibération.",
      'résultats délibération délibérations PV procès-verbal moyenne rang classement mention admis ajourné crédits',
      'notes_resultats', (), 'bi-clipboard-data', _lit_notes),
+    ('Notes', 'Validation des semestres',
+     "Chef de département : valider les notes de chaque semestre avant la délibération ; suivi de la saisie.",
+     NOTES + ' validation valider semestre chef de département avancement saisie délibération',
+     'notes_validations', (), 'bi-patch-check', _validations),
+    ('Notes', 'Espace de délibération',
+     "Grille étudiants × matières à présenter au jury : qui a tout validé, pas tout, N matières ; répartition.",
+     NOTES + ' délibération jury PV grille validé validées tout validé non validé statistiques répartition projeter',
+     'notes_deliberation', (), 'bi-easel', _lit_notes),
     ('Notes', 'Historique des notes',
      "Qui a modifié quelle note, quand, avant / après, motif, justificatif et fichier importé d'origine.",
      NOTES + ' historique modification modifié trace traçabilité auteur qui justificatif audit',

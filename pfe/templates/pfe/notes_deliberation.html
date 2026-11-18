@@ -1,0 +1,220 @@
+{% extends 'pfe/base.html' %}
+{% load humanize %}
+{% block titre %}Espace de délibération{% endblock %}
+{% block titre_page %}Espace de délibération{% endblock %}
+{% block sous_titre %}<div class="sous-titre">{% if titre_grille %}{{ titre_grille }} · {% endif %}notes sur 10, matière validée à partir de {{ seuil|default:5 }} · à présenter devant le jury</div>{% endblock %}
+{% block actions %}
+  {% if lignes is not None and matieres %}
+    <a href="?{{ request.GET.urlencode }}&amp;export=xlsx" class="btn btn-or"><i class="bi bi-file-earmark-excel"></i> <span class="d-none d-sm-inline">Exporter (Excel)</span></a>
+    <button type="button" class="btn btn-outline-secondary" onclick="window.print()"><i class="bi bi-printer"></i> <span class="d-none d-sm-inline">Imprimer</span></button>
+    <button type="button" class="btn btn-primary" id="jury-plein-ecran"><i class="bi bi-arrows-fullscreen"></i> <span class="d-none d-sm-inline">Plein écran</span></button>
+  {% endif %}
+{% endblock %}
+{% block contenu %}
+<style>
+  .jury-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: .75rem; }
+  .jury-stat { display: block; text-decoration: none; color: inherit; border: 1px solid var(--bordure, #e5e7eb); border-radius: .75rem; padding: .75rem 1rem; background: #fff; }
+  .jury-stat.actif { outline: 2px solid var(--or, #f5b700); }
+  .jury-stat .valeur { font-size: 1.6rem; font-weight: 700; color: var(--encre, #1f2d3d); line-height: 1.1; }
+  .jury-stat .lib { font-size: .8rem; color: #6b7280; }
+  .jury-repartition a { text-decoration: none; color: inherit; display: grid; grid-template-columns: 190px 1fr 70px 60px; gap: .75rem; align-items: center; padding: .35rem .5rem; border-radius: .5rem; }
+  .jury-repartition a:hover, .jury-repartition a.actif { background: #fff7db; }
+  .jury-barre { height: 10px; background: #eef1f5; border-radius: 6px; overflow: hidden; }
+  .jury-barre span { display: block; height: 100%; background: #41627c; }
+  .jury-barre span.tout { background: #16a34a; }
+  .jury-barre span.aucune { background: #dc2626; }
+  .table-jury { font-size: .86rem; }
+  .table-jury th, .table-jury td { white-space: nowrap; vertical-align: middle; }
+  .table-jury thead th { position: sticky; top: 0; z-index: 2; }
+  .table-jury th.mat { max-width: 110px; white-space: normal; font-size: .75rem; line-height: 1.15; text-align: center; }
+  .table-jury td.note { text-align: center; font-weight: 600; }
+  .table-jury td.ok { background: #dcfce7; color: #166534; }
+  .table-jury td.ko { background: #fee2e2; color: #991b1b; }
+  .table-jury td.vide { background: #f3f4f6; color: #9ca3af; }
+  .table-jury .colle { position: sticky; left: 0; background: #fff; z-index: 1; }
+  .grille-jury { max-height: 70vh; overflow: auto; }
+  #carte-grille:fullscreen { background: #fff; padding: 1rem; overflow: auto; }
+  #carte-grille:fullscreen .grille-jury { max-height: calc(100vh - 6rem); }
+  #carte-grille:fullscreen .table-jury { font-size: 1rem; }
+  @media print {
+    .barre-filtres, .jury-repartition-carte, .sidebar, nav, header, .btn { display: none !important; }
+    .grille-jury { max-height: none; overflow: visible; }
+    .table-jury { font-size: 9pt; }
+  }
+</style>
+
+<div class="card carte-gped liste mb-3">
+  <form method="get" class="barre-filtres" id="filtres-jury">
+    <div class="row g-2 align-items-end">
+      <div class="col-6 col-md-4 col-lg-2">
+        <label class="form-label small text-secondary mb-1" for="j-session">Session</label>
+        <select id="j-session" name="session" class="form-select" data-niveau="1">
+          {% for s in c_sessions %}<option value="{{ s.pk }}" {% if cascade.session == s.pk %}selected{% endif %}>{{ s.annee }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-md-4 col-lg-3">
+        <label class="form-label small text-secondary mb-1" for="j-programme">Programme</label>
+        <select id="j-programme" name="programme" class="form-select" data-niveau="2">
+          {% if c_programmes|length != 1 %}<option value="">Choisir…</option>{% endif %}
+          {% for p in c_programmes %}<option value="{{ p.pk }}" {% if cascade.programme == p.pk %}selected{% endif %}>{{ p.nom }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-md-4 col-lg-2">
+        <label class="form-label small text-secondary mb-1" for="j-licence">Licence</label>
+        <select id="j-licence" name="licence" class="form-select" data-niveau="3" {% if not c_licences %}disabled{% endif %}>
+          <option value="">{% if c_licences %}Choisir…{% else %}Choisir le programme{% endif %}</option>
+          {% for l in c_licences %}<option value="{{ l.pk }}" {% if cascade.licence == l.pk %}selected{% endif %}>{{ l.nom }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-md-4 col-lg-2">
+        <label class="form-label small text-secondary mb-1" for="j-semestre">Semestre</label>
+        <select id="j-semestre" name="semestre" class="form-select" data-niveau="4" {% if not c_semestres %}disabled{% endif %}>
+          <option value="">{% if c_semestres %}Toute l'année{% else %}Choisir la licence{% endif %}</option>
+          {% for s in c_semestres %}<option value="{{ s.pk }}" {% if cascade.semestre == s.pk %}selected{% endif %}>{{ s.nom }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-12 col-md-8 col-lg-3">
+        <label class="form-label small text-secondary mb-1" for="j-matiere">Matière</label>
+        <select id="j-matiere" name="matiere" class="form-select" data-niveau="5" {% if not c_matieres %}disabled{% endif %}>
+          <option value="">{% if c_matieres %}Toutes les matières{% else %}Choisir le semestre{% endif %}</option>
+          {% for m in c_matieres %}<option value="{{ m.pk }}" {% if cascade.matiere == m.pk %}selected{% endif %}>{{ m.nom }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-md-4 col-lg-2">
+        <label class="form-label small text-secondary mb-1" for="j-promotion">Promotion</label>
+        <select id="j-promotion" name="promotion" class="form-select" {% if not promotions %}disabled{% endif %}>
+          <option value="">Toutes</option>
+          {% for p in promotions %}<option value="{{ p.pk }}" {% if filtres.promotion == p.pk %}selected{% endif %}>{{ p.nom }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-md-4 col-lg-3">
+        <label class="form-label small text-secondary mb-1" for="j-q">Matricule, INE ou nom</label>
+        <input id="j-q" type="search" name="q" value="{{ filtres.q }}" class="form-control" placeholder="Ex. 2406093423" maxlength="60">
+      </div>
+      <div class="col-6 col-md-4 col-lg-3">
+        <label class="form-label small text-secondary mb-1" for="j-statut">Étudiants</label>
+        <select id="j-statut" name="statut" class="form-select">
+          {% for valeur, libelle in statuts %}<option value="{{ valeur }}" {% if statut == valeur %}selected{% endif %}>{{ libelle }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-3 col-md-2 col-lg-1">
+        <label class="form-label small text-secondary mb-1" for="j-n">N matières</label>
+        <input id="j-n" type="number" name="n" min="0" max="{{ nb_matieres|default:60 }}" value="{% if n_choisi is not None %}{{ n_choisi }}{% endif %}" class="form-control">
+      </div>
+      <div class="col-5 col-md-3 col-lg-2">
+        <label class="form-label small text-secondary mb-1" for="j-tri">Trier par</label>
+        <select id="j-tri" name="tri" class="form-select">
+          <option value="nom" {% if tri == 'nom' %}selected{% endif %}>Nom</option>
+          <option value="moyenne" {% if tri == 'moyenne' %}selected{% endif %}>Moyenne</option>
+          <option value="validees" {% if tri == 'validees' %}selected{% endif %}>Matières validées</option>
+        </select>
+      </div>
+      <div class="col-4 col-md-3 col-lg-1 d-grid">
+        <button class="btn btn-primary"><i class="bi bi-funnel"></i> Filtrer</button>
+      </div>
+    </div>
+  </form>
+</div>
+
+{% if lignes is None %}
+  <div class="card carte-gped"><div class="card-body">
+    <div class="etat-vide"><i class="bi bi-funnel"></i>Choisissez la <strong>session</strong>, le <strong>programme</strong> et la <strong>licence</strong> (puis, si besoin, le semestre ou la matière) pour afficher les notes du jury.</div>
+  </div></div>
+{% else %}
+  <!-- Statistiques -->
+  <div class="jury-stats mb-3">
+    <a class="jury-stat {% if not statut %}actif{% endif %}" href="?{{ params_base }}">
+      <div class="lib">Étudiants</div><div class="valeur">{{ nb_etudiants }}</div>
+      <div class="lib">{{ nb_matieres }} matière{{ nb_matieres|pluralize }} · {{ credits_total }} crédits · {{ portee }}</div>
+    </a>
+    <a class="jury-stat {% if statut == 'tout' %}actif{% endif %}" href="?{{ params_base }}&amp;statut=tout">
+      <div class="lib">Ont tout validé</div><div class="valeur" style="color:#16a34a">{{ nb_tout }}</div>
+      <div class="lib">{% widthratio nb_tout nb_etudiants|default:1 100 %} % des étudiants</div>
+    </a>
+    <a class="jury-stat {% if statut == 'pas_tout' %}actif{% endif %}" href="?{{ params_base }}&amp;statut=pas_tout">
+      <div class="lib">N'ont pas tout validé</div><div class="valeur" style="color:#dc2626">{{ nb_pas_tout }}</div>
+      <div class="lib">{% widthratio nb_pas_tout nb_etudiants|default:1 100 %} % des étudiants</div>
+    </a>
+  </div>
+
+  <div class="card carte-gped mb-3 jury-repartition-carte">
+    <div class="card-body">
+      <div class="entete-carte">
+        <span class="icone-carte"><i class="bi bi-bar-chart-steps"></i></span>
+        <div><h3>Répartition par nombre de matières validées</h3><p>Cliquez sur une ligne pour n'afficher que ces étudiants</p></div>
+      </div>
+      <div class="jury-repartition">
+        {% for r in repartition %}
+          <a href="?{{ params_base }}&amp;statut=n&amp;n={{ r.n }}" class="{% if statut == 'n' and n_choisi == r.n %}actif{% endif %}">
+            <span>{% if r.n == nb_matieres %}<strong>Toutes validées</strong> ({{ r.n }}/{{ nb_matieres }}){% elif r.n == 0 %}<strong>Aucune validée</strong>{% else %}<strong>{{ r.n }}</strong> matière{{ r.n|pluralize }} validée{{ r.n|pluralize }} sur {{ nb_matieres }}{% endif %}</span>
+            <span class="jury-barre"><span class="{% if r.n == nb_matieres %}tout{% elif r.n == 0 %}aucune{% endif %}" style="width:{{ r.pourcent|stringformat:'s' }}%"></span></span>
+            <span class="text-end fw-semibold">{{ r.effectif }}</span>
+            <span class="text-end small text-secondary">{{ r.pourcent }} %</span>
+          </a>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Grille du jury -->
+  <div class="card carte-gped liste" id="carte-grille">
+    <div class="card-header d-flex flex-wrap align-items-center gap-2">
+      <div class="entete-carte mb-0 me-auto">
+        <span class="icone-carte"><i class="bi bi-table"></i></span>
+        <div><h3>{{ lignes|length }} étudiant{{ lignes|length|pluralize }}{% if statut %} · {% for v, lib in statuts %}{% if v == statut %}{{ lib|lower }}{% endif %}{% endfor %}{% if statut == 'n' %} {{ n_choisi }} matière{{ n_choisi|pluralize }}{% endif %}{% endif %}</h3>
+          <p>{{ titre_grille }} · <span style="color:#166534">vert : validée</span> · <span style="color:#991b1b">rouge : non validée</span> · S : validée en session (rattrapage)</p></div>
+      </div>
+    </div>
+    <div class="grille-jury">
+      <table class="table table-jury mb-0">
+        <thead><tr>
+          <th>#</th><th class="colle">Étudiant</th><th>Promo</th>
+          {% for m in matieres %}<th class="mat" title="{{ m.nom }} · {{ m.semestre.nom }} · {{ m.credit }} crédits">{{ m.nom|truncatechars:28 }}<br><span class="fw-normal">{% if not filtres.semestre %}S{{ m.semestre.nom|cut:'SEMESTRE ' }} · {% endif %}{{ m.credit }} cr.</span></th>{% endfor %}
+          <th class="text-center">Validées</th><th class="text-center">Crédits</th><th class="text-center">Moyenne</th><th>Mention</th>
+        </tr></thead>
+        <tbody>
+        {% for l in lignes %}
+          <tr>
+            <td class="text-secondary">{{ forloop.counter }}</td>
+            <td class="colle"><b>{{ l.etudiant.nom }}</b> {{ l.etudiant.prenom }}<br><span class="matricule text-secondary">{{ l.etudiant.matricule }}{% if l.etudiant.ine %} · INE {{ l.etudiant.ine }}{% endif %}</span></td>
+            <td>{{ l.inscription.promotion.nom|default:'—' }}</td>
+            {% for c in l.cases %}
+              <td class="note {% if c.note is None %}vide{% elif c.ok %}ok{% else %}ko{% endif %}">{% if c.note is None %}—{% else %}{{ c.note|floatformat:2 }}{% if c.session %}<sup>S</sup>{% endif %}{% endif %}</td>
+            {% endfor %}
+            <td class="text-center fw-bold {% if l.nb_validees == nb_matieres %}text-success{% else %}text-danger{% endif %}">{{ l.nb_validees }} / {{ nb_matieres }}</td>
+            <td class="text-center">{{ l.credits_valides }} / {{ credits_total }}</td>
+            <td class="text-center fw-semibold">{{ l.moyenne|floatformat:2|default:'—' }}</td>
+            <td>{{ l.mention|default:'—' }}</td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="{{ nb_matieres|add:7 }}"><div class="etat-vide"><i class="bi bi-people"></i>Aucun étudiant avec ces filtres.</div></td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% endif %}
+
+<script>
+  (function () {
+    // Cascade : changer un choix vide ceux du dessous puis recharge la page
+    var form = document.getElementById('filtres-jury');
+    var listes = Array.prototype.slice.call(form.querySelectorAll('select[data-niveau]'));
+    listes.forEach(function (s, i) {
+      s.addEventListener('change', function () {
+        listes.slice(i + 1).forEach(function (b) { b.removeAttribute('name'); });
+        if (i < 3) { var p = document.getElementById('j-promotion'); if (p) p.removeAttribute('name'); }
+        form.submit();
+      });
+    });
+    // « N matières » rempli : choisit « Ont validé exactement… »
+    var n = document.getElementById('j-n'), statut = document.getElementById('j-statut');
+    n.addEventListener('input', function () { if (n.value !== '') statut.value = 'n'; });
+    var bouton = document.getElementById('jury-plein-ecran');
+    if (bouton) bouton.addEventListener('click', function () {
+      var carte = document.getElementById('carte-grille');
+      if (carte && carte.requestFullscreen) carte.requestFullscreen();
+    });
+  })();
+</script>
+{% endblock %}

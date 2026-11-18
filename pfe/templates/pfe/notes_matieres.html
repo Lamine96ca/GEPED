@@ -11,7 +11,7 @@
   {% include 'pfe/_cascade_matiere.html' %}
   <div class="table-responsive">
     <table class="table table-etudiants mb-0">
-      <thead><tr><th>Matière</th><th>Programme</th><th>Licence</th><th>Semestre</th><th>Session</th><th class="text-end">Crédits</th><th>Avancement</th><th class="text-end"></th></tr></thead>
+      <thead><tr><th>Matière</th><th>Programme</th><th>Licence</th><th>Semestre</th><th>Session</th><th class="text-end">Crédits</th><th>Avancement</th><th class="text-end">Fiche · saisie</th></tr></thead>
       <tbody>
       {% for m in matieres %}
         <tr style="cursor:default">
@@ -21,15 +21,17 @@
           <td>{{ m.semestre.nom }}</td>
           <td>{{ m.session.annee }}</td>
           <td class="text-end">{{ m.credit }}</td>
-          <td style="min-width:170px">
+          <td style="min-width:130px">
             <div class="d-flex align-items-center gap-2">
               <div class="progress flex-grow-1" style="height:6px"><div class="progress-bar {% if m.inscrits and m.nb_notes >= m.inscrits %}bg-success{% endif %}" style="width:{% widthratio m.nb_notes m.inscrits|default:1 100 %}%"></div></div>
               <span class="small text-secondary text-nowrap">{{ m.nb_notes }} / {{ m.inscrits }}</span>
             </div>
           </td>
           <td class="text-end text-nowrap">
-            {% if m.delibere %}<span class="pill pill-attention me-1" title="Semestre délibéré : notes verrouillées"><i class="bi bi-lock-fill"></i> Délibéré</span>{% endif %}
-            <a class="btn btn-sm btn-primary" href="{% url 'notes_saisie' m.pk %}"><i class="bi bi-pencil-square"></i> {% if m.delibere and not profil.est_scolarite %}Voir{% else %}Saisir{% endif %}</a>
+            {% if m.delibere %}<span class="pill pill-attention me-1" title="Semestre délibéré : notes verrouillées"><i class="bi bi-lock-fill"></i> Délibéré</span>
+            {% elif m.valide %}<span class="pill pill-accent me-1" title="Semestre validé par le chef de département"><i class="bi bi-patch-check"></i> Validé</span>{% endif %}
+            <a class="btn btn-sm btn-or" href="{% url 'notes_fiche_enseignant' m.pk %}" title="Fiche enseignant (Excel) : à remplir, imprimer, signer puis importer" aria-label="Fiche enseignant (Excel)"><i class="bi bi-file-earmark-excel"></i></a>
+            <a class="btn btn-sm btn-primary" href="{% url 'notes_saisie' m.pk %}"><i class="bi bi-pencil-square"></i> {% if m.delibere and not profil.est_scolarite or m.valide and profil.role == 'programme' %}Voir{% else %}Saisir{% endif %}</a>
           </td>
         </tr>
       {% empty %}

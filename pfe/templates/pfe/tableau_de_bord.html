@@ -10,7 +10,7 @@
 <!-- Bandeau d'accueil -->
 <div class="bandeau-accueil">
   <div class="me-auto" style="min-width:0">
-    <div class="surtitre">{{ profil.libelle }}{% if profil.role == 'programme' %} · {{ profil.structure }}{% endif %}</div>
+    <div class="surtitre">{{ profil.libelle }}{% if profil.a_perimetre %} · {{ profil.structure }}{% endif %}</div>
     <h2>Bonjour {% if profil.personnel %}{{ profil.personnel.prenom }}{% else %}{{ user.first_name|default:user.username }}{% endif %}</h2>
     <p>Bienvenue sur la plateforme de gestion pédagogique gePed.</p>
     {% if session %}<span class="puce"><i class="bi bi-calendar3"></i> Session {{ session }}</span>{% endif %}

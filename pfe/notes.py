@@ -169,6 +169,21 @@ def est_delibere(matiere):
     return (matiere.filiere_id, matiere.session_id, matiere.semestre_id) in semestres_delibres([matiere])
 
 
+def semestres_valides(matieres):
+    """{(programme, session, semestre)} validés par le chef de département parmi ceux des matières données."""
+    from .models import ValidationSemestre
+    cles = {(m.filiere_id, m.session_id, m.semestre_id) for m in matieres}
+    if not cles:
+        return set()
+    return {cle for cle in ValidationSemestre.objects.filter(
+        filiere_id__in={c[0] for c in cles}, session_id__in={c[1] for c in cles},
+        semestre_id__in={c[2] for c in cles}).values_list('filiere_id', 'session_id', 'semestre_id') if cle in cles}
+
+
+def est_valide(matiere):
+    return (matiere.filiere_id, matiere.session_id, matiere.semestre_id) in semestres_valides([matiere])
+
+
 TAILLE_MAX_PDF = 10 * 1024 * 1024
 
 
@@ -223,15 +238,17 @@ def autorisations_actives(matieres):
     return ouvertes
 
 
-def peut_modifier(profil, matiere, delibere=None, ouvertes=None, ecoulee=None):
+def peut_modifier(profil, matiere, delibere=None, ouvertes=None, ecoulee=None, valide=None):
     """
     Scolarité : année en cours (délibérée ou non), avec motif et PDF pour toute modification ;
     année écoulée : seulement le chef de la scolarité ou un super utilisateur.
-    Programme : ses notes tant que le semestre n'est pas délibéré (année en cours) ; un semestre
-    délibéré ou une année écoulée ne s'ouvre que pendant une autorisation du chef de la scolarité
-    (programme, session, niveau, du … au …). `delibere`, `ouvertes`, `ecoulee` : déjà calculés.
+    Chef de département et directeur de programme : les notes de leurs programmes tant que le semestre
+    n'est pas délibéré (année en cours) ; un semestre délibéré ou une année écoulée ne s'ouvre que pendant
+    une autorisation du chef de la scolarité (programme, session, niveau, du … au …).
+    Directeur de programme : plus rien une fois le semestre VALIDÉ par le chef de département (qui peut encore
+    corriger, ou annuler sa validation). `delibere`, `ouvertes`, `ecoulee`, `valide` : déjà calculés.
     """
-    dans_perimetre = profil.est_scolarite or (profil.role == 'programme' and matiere.filiere_id in profil.programme_ids)
+    dans_perimetre = profil.est_scolarite or (profil.gere_matieres and matiere.filiere_id in profil.programme_ids)
     if not dans_perimetre:
         return False
     if ecoulee is None:
@@ -244,6 +261,8 @@ def peut_modifier(profil, matiere, delibere=None, ouvertes=None, ecoulee=None):
         if ouvertes is None:
             ouvertes = autorisations_actives([matiere])
         return (matiere.filiere_id, matiere.session_id, matiere.licence_id) in ouvertes
+    if profil.role == 'programme':                    # directeur : fermé après la validation du chef de département
+        return not (est_valide(matiere) if valide is None else valide)
     return True
 
 

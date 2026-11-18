@@ -38,7 +38,8 @@ from .import_matieres import ImportRefuse
 from .importer import _index_programmes, cle, cle_session, lire_lignes, texte
 from .models import Etudiant, Inscription, Matiere, Note, Session
 from .notes import (CHAMPS_SAISIE, autorisations_actives, codes_reglement, en_note, enregistrer_notes,
-                    peut_modifier, recalculer, regles, saisie_de, semestres_delibres, session_ecoulee, verifier_pdf)
+                    peut_modifier, recalculer, regles, saisie_de, semestres_delibres, semestres_valides, session_ecoulee,
+                    verifier_pdf)
 
 OBLIGATOIRES = ['matricule', 'matiere', 'session']
 COLONNES = OBLIGATOIRES + ['programme'] + list(CHAMPS_SAISIE)
@@ -48,7 +49,33 @@ ALIAS = {
     'travaux_pratiques': 'tp', 'exam': 'examen', 'examen_final': 'examen',
     'ct': 'examen', 'controle_terminal': 'examen',            # arrêté 877 : CC = controle, CT = examen
     'moy': 'moyenne', 'moyenne_matiere': 'moyenne', 'rattrapages': 'rattrapage', 'note_rattrapage': 'rattrapage',
+    'matricule_etudiant': 'matricule', 'numero_matricule': 'matricule', 'session_academique': 'session',
+    'annee_academique': 'session', 'controle_final': 'examen', 'examen_terminal': 'examen',
 }
+# Colonnes d'information (fiche de notes de l'enseignant) : acceptées sans être signalées comme ignorées
+COLONNES_INFO = {'n', 'no', 'numero', 'prenom', 'prenoms', 'nom', 'nom_prenom', 'nom_et_prenom', 'nom_prenoms',
+                 'telephone', 'tel', 'ine', 'sexe', 'promotion', 'licence', 'niveau', 'semestre', 'credit', 'credits',
+                 'note_finale', 'moyenne_finale', 'mention', 'observation', 'observations', 'signature', 'emargement',
+                 'cle_geped'}
+_MOTS_VIDES = {'note', 'notes', 'de', 'du', 'des', 'la', 'le', 'l', 'sur', 'pct', 'pourcent', 'pourcentage'}
+
+
+def colonne_import(entete):
+    """
+    En-tête déjà normalisé (minuscules, sans accents) → colonne de l'import. Tolère les intitulés écrits par les
+    enseignants, notamment pour l'arrêté 877 : « CC (40 %) », « Note CC », « C.C. », « Contrôle continu »,
+    « CT (60 %) », « Examen /10 », « Note de rattrapage »… (CC = controle, CT = examen).
+    """
+    e = ALIAS.get(entete, entete)
+    if e in COLONNES or not e:
+        return e
+    mots = [m for m in re.split(r'[^a-z0-9]+', re.sub(r'\(.*?\)', ' ', e))
+            if m and not m.isdigit() and m not in _MOTS_VIDES]
+    for candidat in ('_'.join(mots), ''.join(mots)):           # « c_c » (C.C.) → « cc »
+        candidat = ALIAS.get(candidat, candidat)
+        if candidat in COLONNES or candidat in COLONNES_INFO:
+            return candidat
+    return e
 
 
 def cle_intitule(texte_brut):
@@ -67,6 +94,7 @@ class RapportNotes:
         self.simulation = False
         self.colonnes_ignorees = []
         self.reparations = 0
+        self.code_fiche = ''                # fiche gePed : code de contrôle vérifié
         self.journal = None         # ImportNotes enregistré (import réel)
         self.inscriptions_creees = []  # [(1re ligne, matricule, étudiant, session, licence, programme, promotion)]
         self.reglements = []           # [(nom du règlement appliqué, nombre de lignes)]
@@ -125,7 +153,12 @@ def _nom_court(nom, defaut):
     return f"{p.stem[:80]}{p.suffix[:6].lower()}" if p.stem else defaut
 
 
-def importer_notes(fichier, profil, utilisateur=None, simulation=False, pdf_enseignant=None):
+def importer_notes(fichier, profil, utilisateur=None, simulation=False, pdf_enseignant=None, code_fiche=''):
+    """
+    `code_fiche` : code de contrôle lu sur la fiche de notes signée (fiche gePed, voir pfe/fiche_notes.py).
+    Pour une fiche gePed, il est obligatoire : s'il diffère du code recalculé depuis le fichier, rien n'est importé.
+    """
+    from . import fiche_notes
     rapport = RapportNotes()
     rapport.simulation = simulation
     if pdf_enseignant:
@@ -134,8 +167,20 @@ def importer_notes(fichier, profil, utilisateur=None, simulation=False, pdf_ense
         raise ValueError("Le PDF de l'enseignant (fiche de notes signée) est obligatoire pour importer des notes.")
     entetes, lignes = lire_lignes(fichier)
     rapport.reparations = getattr(fichier, 'gped_reparations', 0)
-    entetes = [ALIAS.get(e, e) for e in entetes]
-    rapport.colonnes_ignorees = [e for e in entetes if e and e not in COLONNES]
+    entetes = [colonne_import(e) for e in entetes]
+    # Titre au-dessus du tableau (fiche de l'enseignant) : la ligne d'en-têtes est celle qui contient « matricule »
+    premiere = 2                                         # numéro (Excel) de la première ligne de données
+    from .importer import normaliser_entete
+    while 'matricule' not in entetes and premiere < 30:
+        suivante = next(lignes, None)
+        if suivante is None:
+            break
+        premiere += 1
+        if any(texte(c) for c in suivante):
+            candidats = [colonne_import(normaliser_entete(c)) for c in suivante]
+            if 'matricule' in candidats:
+                entetes = candidats
+    rapport.colonnes_ignorees = [e for e in entetes if e and e not in COLONNES and e not in COLONNES_INFO]
     manquantes = [c for c in OBLIGATOIRES if c not in entetes]
     if manquantes:
         raise ValueError("Colonnes obligatoires manquantes : " + ", ".join(f"« {c} »" for c in manquantes) + ".")
@@ -149,11 +194,19 @@ def importer_notes(fichier, profil, utilisateur=None, simulation=False, pdf_ense
 
     # 1) Lecture des lignes ---------------------------------------------------
     brutes = []
-    for numero, brut in enumerate(lignes, start=2):
+    est_fiche = fiche_notes.COLONNE_MARQUEUR in entetes          # fiche de notes de l'enseignant (gePed)
+    total_fiche = 0
+    for numero, brut in enumerate(lignes, start=premiere):
         if brut is None or all(texte(c) == '' for c in brut):
             continue
-        rapport.lignes += 1
         ligne = {entetes[i]: brut[i] for i in range(min(len(entetes), len(brut))) if entetes[i]}
+        if est_fiche and re.search(r'\d', texte(ligne.get('matricule'))):
+            total_fiche += fiche_notes.total_ligne(texte(ligne.get('matricule')),
+                                                   [ligne.get(c) for c in fiche_notes.CHAMPS_FICHE])
+        # Sans note et sans vrai matricule (signature, visa, total sous le tableau) : pas une ligne de notes
+        if not any(texte(ligne.get(c)) for c in CHAMPS_SAISIE) and not re.search(r'\d', texte(ligne.get('matricule'))):
+            continue
+        rapport.lignes += 1
         try:
             vides = [c for c in OBLIGATOIRES if not texte(ligne.get(c))]
             if vides:
@@ -183,6 +236,18 @@ def importer_notes(fichier, profil, utilisateur=None, simulation=False, pdf_ense
             rapport.erreur(numero, str(e))
             continue
         brutes.append((numero, texte(ligne['matricule']), session, programme, texte(ligne['matiere']), valeurs))
+
+    # Fiche gePed : le fichier doit correspondre à la fiche signée (même code de contrôle)
+    if est_fiche:
+        attendu, saisi = fiche_notes.code_fiche(total_fiche), fiche_notes.nettoyer_code(code_fiche)
+        rapport.code_fiche = attendu
+        if not saisi:
+            raise ValueError("Fiche de notes gePed : saisissez le code de contrôle imprimé sur la fiche signée "
+                             "(sous le tableau, à côté de « Code de contrôle »).")
+        if saisi != attendu:
+            raise ValueError(f"Import annulé : le fichier Excel ne correspond pas à la fiche signée (code de la fiche "
+                             f"{saisi}, code du fichier {attendu}). Au moins une note a changé depuis l'impression : "
+                             f"comparez le fichier et la fiche signée ligne par ligne, corrigez, puis relancez l'import.")
 
     # 2) Étudiants, inscriptions et matières concernés --------------------------
     matricules = list({b[1] for b in brutes})
@@ -320,6 +385,7 @@ def importer_notes(fichier, profil, utilisateur=None, simulation=False, pdf_ense
             changements = []
             delibres = semestres_delibres([m for _, _, m, _ in retenues])
             ouvertes = set() if profil.est_scolarite else autorisations_actives([m for _, _, m, _ in retenues])
+            valides_chef = set() if profil.est_scolarite else semestres_valides([m for _, _, m, _ in retenues])
             for numero, etu, matiere, valeurs in retenues:
                 note = existantes.get((etu.pk, matiere.pk))
                 if note is not None:
@@ -332,11 +398,16 @@ def importer_notes(fichier, profil, utilisateur=None, simulation=False, pdf_ense
                     ecoulees[matiere.session_id] = session_ecoulee(matiere.session)
                 delibere = (matiere.filiere_id, matiere.session_id, matiere.semestre_id) in delibres
                 # Programme : un semestre délibéré ou une année écoulée ne s'ouvre que sur autorisation
+                valide = (matiere.filiere_id, matiere.session_id, matiere.semestre_id) in valides_chef
                 if not profil.est_scolarite and not peut_modifier(profil, matiere, delibere, ouvertes,
-                                                                  ecoulees[matiere.session_id]):
-                    quoi = "année écoulée" if ecoulees[matiere.session_id] else "semestre délibéré"
+                                                                  ecoulees[matiere.session_id], valide):
+                    if ecoulees[matiere.session_id] or delibere:
+                        quoi = "année écoulée" if ecoulees[matiere.session_id] else "semestre délibéré"
+                        pourquoi = f"{quoi}, import impossible sans autorisation de la scolarité"
+                    else:
+                        pourquoi = "semestre validé par le chef de département, seul lui peut encore modifier ces notes"
                     rapport.erreur(numero, f"{etu.matricule} · {matiere.nom} ({matiere.licence.nom}, {matiere.session}) : "
-                                           f"{quoi}, import impossible sans autorisation de la scolarité")
+                                           f"{pourquoi}")
                     continue
                 if note is not None:
                     if ecoulees[matiere.session_id] and profil.est_scolarite and not profil.est_chef_de(matiere.filiere):

@@ -235,7 +235,8 @@ class MotDePasseForm(BootstrapMixin, PasswordChangeForm):
 class PersonnelForm(BootstrapMixin, forms.ModelForm):
     """
     Fiche du personnel et son compte. Le rôle découle des services cochés (voir pfe/roles.py) :
-    Service Scolarité → scolarité ; un programme → chef de programme ; autre service → département.
+    Service Scolarité → scolarité ; un département + « chef » → chef de département ; un programme → directeur
+    de programme ; personnel d'un département → consultation du département ; autre service → consultation.
     Seul un super utilisateur peut rattacher quelqu'un au Service Scolarité (droits complets).
     À la création, le compte est créé sans mot de passe : l'invitation par e-mail permet de le choisir.
     """
@@ -247,9 +248,9 @@ class PersonnelForm(BootstrapMixin, forms.ModelForm):
         model = Personnel
         fields = ['civilite', 'prenom', 'nom', 'fonc', 'email', 'telephone', 'service', 'chef']
         labels = {'fonc': 'Fonction', 'service': 'Services'}
-        help_texts = {'chef': "Chef du Service Scolarité, d'un département ou d'un programme. Le chef signe les "
-                              "documents (chef de la scolarité ; chef du programme pour le Master) ; seul un chef "
-                              "de la scolarité ou d'un département modifie les notes d'une année écoulée.",
+        help_texts = {'chef': "Chef du Service Scolarité, chef de département (premier responsable des programmes "
+                              "du département : il valide les notes de leurs semestres) ou directeur d'un Master "
+                              "(il signe les documents du Master).",
                       'fonc': "Imprimée au-dessus de la signature (ex. Le Chef Service de la Scolarité)."}
         widgets = {'service': forms.CheckboxSelectMultiple, 'email': forms.EmailInput()}
 
@@ -263,8 +264,11 @@ class PersonnelForm(BootstrapMixin, forms.ModelForm):
         f['service'].required = False                 # message explicite dans clean_service
         f['service'].widget.attrs = {}
         self.services_scolarite = {s.pk for s in services if est_service_scolarite(s)}
-        self.groupes_services = [('Programmes (chef de programme)', [s for s in services if s.programme]),
-                                 ('Services', [s for s in services if not s.programme])]
+        departements = set(Service.objects.filter(programme=True, departement__isnull=False)
+                           .values_list('departement_id', flat=True))
+        self.services_departements = departements | {s.pk for s in services if s.programme and not s.departement_id}
+        self.groupes_services = [('Programmes (directeur de programme)', [s for s in services if s.programme]),
+                                 ('Départements et services', [s for s in services if not s.programme])]
         f['prenom'].widget.attrs['placeholder'] = 'Ex. Mariam'
         f['nom'].widget.attrs['placeholder'] = 'Ex. CAMARA'
         f['fonc'].widget.attrs['placeholder'] = 'Ex. Chef de programme'
@@ -333,12 +337,13 @@ class PersonnelForm(BootstrapMixin, forms.ModelForm):
         d = super().clean()
         services = d.get('service')
         if d.get('chef') and services is not None:
-            # Chef : du Service Scolarité, ou d'un programme (département ou non : le chef de programme signe
-            # les documents du Master ; les droits de chef sur les notes restent ceux des départements)
-            dirige = [s for s in services if s.pk in self.services_scolarite or s.programme]
+            # Chef : du Service Scolarité, d'un département (service auquel des programmes sont rattachés,
+            # ou programme qui est son propre département), ou d'un programme (directeur du Master)
+            dirige = [s for s in services if s.pk in self.services_scolarite or s.programme
+                      or s.pk in self.services_departements]
             if not dirige:
-                self.add_error('chef', "Impossible : un chef doit être rattaché au Service Scolarité ou à un "
-                                       "programme.")
+                self.add_error('chef', "Impossible : un chef doit être rattaché au Service Scolarité, à un département "
+                                       "ou à un programme.")
         return d
 
     def save(self, commit=True):
@@ -887,6 +892,11 @@ class ImportNotesForm(ImportMatieresForm):
     """
     pdf_enseignant = forms.FileField(label="PDF de l'enseignant (fiche de notes signée)", required=False,
                                      widget=forms.ClearableFileInput(attrs={'accept': '.pdf,application/pdf'}))
+    code_fiche = forms.CharField(label='Code de contrôle (fiche gePed)', required=False, max_length=12,
+                                 help_text="Pour une fiche de notes téléchargée dans gePed : le code imprimé sous le "
+                                           "tableau de la fiche signée.",
+                                 widget=forms.TextInput(attrs={'placeholder': 'Ex. 482913', 'inputmode': 'numeric',
+                                                               'autocomplete': 'off'}))
 
     def __init__(self, *args, profil=None, **kwargs):
         super().__init__(*args, **kwargs)

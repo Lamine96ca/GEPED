@@ -3089,9 +3089,14 @@ class GpedTests(TestCase):
         self.connecter('info')
         r = self.client.get(reverse('notes_resultats'), params)
         self.assertContains(r, 'N0')
-        self.assertNotContains(r, 'Délibérer le semestre')                      # réservé à la scolarité
+        self.assertNotContains(r, 'Délibérer le semestre')                      # réservé au chef de la scolarité
         self.assertEqual(self.client.post(reverse('notes_deliberer'), params).status_code, 403)
-        self.connecter('scol')
+        self.connecter('scol')                                                  # agent de la scolarité : non
+        r = self.client.get(reverse('notes_resultats'), params)
+        self.assertNotContains(r, 'Délibérer le semestre')
+        self.assertContains(r, 'faite par le <strong>chef de la scolarité</strong>')
+        self.assertEqual(self.client.post(reverse('notes_deliberer'), params).status_code, 403)
+        Personnel.objects.filter(utilisateur__username='scol').update(chef=True)  # chef de la scolarité : oui
         self.assertContains(self.client.get(reverse('notes_resultats'), params), 'Délibérer le semestre')
         self.client.post(reverse('notes_deliberer'), params)
         self.assertTrue(Deliberation.objects.filter(filiere=self.info, semestre=s1).exists())
@@ -3134,7 +3139,7 @@ class GpedTests(TestCase):
         m = mail.outbox[0]
         self.assertEqual((m.to, m.subject), (['mariam@ist.gn'], 'Votre compte gePed a été créé'))
         self.assertIn('mariam.camara', m.body)
-        self.assertIn('Programme', m.body)
+        self.assertIn('Directeur de programme', m.body)
         lien = re.search(r'https?://\S+/compte/activer/\S+/', m.body).group(0)
         # Activation : choix du mot de passe, connexion directe, droits du service
         self.client.logout()
@@ -3433,6 +3438,18 @@ class GpedTests(TestCase):
         self.assertEqual((n.controle, n.examen, n.moyenne_finale, n.reglement), (6, 4.5, 5.1, '877'))
         modele = openpyxl.load_workbook(io.BytesIO(self.client.get(reverse('notes_modele'), {'reglement': '877'}).content))
         self.assertEqual([c.value for c in modele.active[1]][4:7], ['cc', 'tp', 'ct'])
+        # Fichier d'un enseignant : titre au-dessus, intitulés « CC (40 %) » / « CT (60 %) », colonnes d'information
+        # (prénom, nom, téléphone) et signature sous le tableau : rien de bloquant
+        physique = self._matiere('Optique', tc, s2, credit=2)
+        fichier = fichier_xlsx([
+            ['IST de Mamou · Fiche de notes'], ['Matière : Optique', None, None, 'Enseignant : M. Camara'], [],
+            ['N°', 'Matricule', 'Prénom', 'Nom', 'Téléphone', 'Matière', 'Session', 'CC (40 %)', 'TP', 'CT (60 %)'],
+            [1, 'M9', 'P', 'N9', '620000000', 'Optique', '2025-2026', 7, None, 5],
+            [], [None, "Signature de l'enseignant", None, None, None, 'Visa du directeur']])
+        r = importer_notes(fichier, scol, User.objects.get(username='scol'))
+        self.assertEqual((r.lignes, r.creees, r.erreurs, r.colonnes_ignorees), (1, 1, [], []))
+        n = Note.objects.get(etudiant=e9, matiere=physique)
+        self.assertEqual((n.controle, n.examen, n.moyenne_finale), (7, 5, 5.8))       # 7 × 0,4 + 5 × 0,6
 
     # ---------------------------------------------------------------- statistiques
 
@@ -3821,3 +3838,217 @@ class GpedTests(TestCase):
                                          ['M0', 'Probabilité Statistique', '2025-2026', 7]]), scol)
         self.assertEqual((r.creees, r.nb_erreurs), (1, 0))
         self.assertEqual(Note.objects.get(etudiant__matricule='M0').matiere.nom, 'Probabilité_Statistique')
+
+    def test_chef_de_departement_et_directeur_de_programme(self):
+        """
+        Le chef de département gère tous les programmes de son département et valide leurs semestres ; le directeur
+        de programme gère le sien, plus rien après la validation ; le personnel du département consulte.
+        """
+        import shutil, tempfile
+        from pathlib import Path
+        from django.test import override_settings
+        from .import_notes import importer_notes
+        from .models import Note, ValidationSemestre
+        from .roles import CHEF_DEPARTEMENT, DEPARTEMENT, PROGRAMME, SERVICE, get_profil
+        dossier = tempfile.mkdtemp()                       # justificatifs : stockage privé temporaire
+        self.addCleanup(shutil.rmtree, dossier, True)
+        reglage = override_settings(BASE_DIR=Path(dossier))
+        reglage.enable()
+        self.addCleanup(reglage.disable)
+        s1, algo, _ = self._preparer_notes()
+        e0 = Etudiant.objects.get(matricule='M0')
+        # Département « Sciences » (service non-programme) : Informatique et Génie civil y sont rattachés
+        sciences = Service.objects.create(nom='Sciences', code='SCI')
+        Service.objects.filter(pk__in=[self.info.pk, self.gc.pk]).update(departement=sciences)
+        autre = Service.objects.create(nom='Chimie', code='CHI', programme=True, cycle='Licence')
+        e9 = Etudiant.objects.create(matricule='M9', prenom='P', nom='N9', email='e9@t.local')
+        Inscription.objects.create(etudiant=e9, session=self.session, licence=self.licence, filiere=autre)
+
+        def personnel(login, service, chef=False):
+            p = Personnel.objects.create(utilisateur=User.objects.create_user(login, password='x'), prenom=login,
+                                         nom='T', telephone=login, email=f'{login}@t.local', fonc='Agent', chef=chef)
+            p.service.add(service)
+        personnel('chef_sci', sciences, chef=True)
+        personnel('secr_sci', sciences)
+        self.connecter('chef_sci')
+        profil = get_profil(self.client.get(reverse('tableau_de_bord')).wsgi_request)
+        self.assertEqual((profil.role, profil.libelle, profil.structure), (CHEF_DEPARTEMENT, 'Chef de département',
+                                                                           'Sciences'))
+        self.assertEqual(set(profil.programme_ids), {self.info.pk, self.gc.pk})
+        self.assertEqual(self.donnees()['total'], 3)                         # son département, pas la Chimie
+        self.connecter('secr_sci')
+        profil = get_profil(self.client.get(reverse('tableau_de_bord')).wsgi_request)
+        self.assertEqual((profil.role, profil.gere_matieres, profil.lit_notes), (DEPARTEMENT, False, False))
+        self.assertEqual(self.donnees()['total'], 3)
+        self.connecter('dep')                                                # autre service : tout, en consultation
+        self.assertEqual(get_profil(self.client.get(reverse('tableau_de_bord')).wsgi_request).role, SERVICE)
+        self.assertEqual(self.donnees()['total'], 4)
+        self.connecter('info')
+        self.assertEqual(get_profil(self.client.get(reverse('tableau_de_bord')).wsgi_request).role, PROGRAMME)
+
+        # Le chef saisit dans tous les programmes de son département (ici Génie civil)
+        self.connecter('chef_sci')
+        topo = self._matiere('Topographie', self.gc, s1)
+        e2 = Etudiant.objects.get(matricule='M2')
+        url_topo = reverse('notes_saisie', args=[topo.pk])
+        self.assertRedirects(self.client.post(url_topo, {f'controle_{e2.pk}': '6', f'examen_{e2.pk}': '8'}), url_topo)
+        self.assertEqual(Note.objects.get(etudiant=e2, matiere=topo).moyenne_finale, 7.2)
+
+        # Le directeur saisit ; le chef valide le semestre ; le directeur ne modifie plus, le chef si
+        url = reverse('notes_saisie', args=[algo.pk])
+        self.connecter('info')
+        self.client.post(url, {f'controle_{e0.pk}': '6', f'examen_{e0.pk}': '8'})
+        resultats = f"{reverse('notes_resultats')}?session={self.session.pk}&programme={self.info.pk}&semestre={s1.pk}"
+        r = self.client.get(resultats)
+        self.assertContains(r, 'Pas encore validé')
+        self.assertNotContains(r, 'Valider le semestre')
+        valider = {'programme': self.info.pk, 'session': self.session.pk, 'semestre': s1.pk}
+        self.assertEqual(self.client.post(reverse('notes_valider'), valider).status_code, 403)
+        self.connecter('chef_sci')
+        self.assertContains(self.client.get(resultats), 'Valider le semestre')
+        self.assertRedirects(self.client.post(reverse('notes_valider'), valider), resultats)
+        v = ValidationSemestre.objects.get()
+        self.assertEqual((v.filiere, v.par.username), (self.info, 'chef_sci'))
+        self.connecter('info')
+        r = self.client.get(url)
+        self.assertContains(r, 'Semestre validé par le chef de département')
+        self.assertEqual(self.client.post(url, {f'controle_{e0.pk}': '9', f'examen_{e0.pk}': '9'}).status_code, 403)
+        info = get_profil(self.client.get(reverse('notes_importer')).wsgi_request)
+        rapport = importer_notes(fichier_xlsx([['matricule', 'matiere', 'session', 'moyenne'],
+                                               ['M0', 'Algorithmique', '2025-2026', 9]]), info, simulation=True,
+                                 pdf_enseignant=SimpleUploadedFile('f.pdf', b'%PDF-1.4 f'))
+        self.assertIn('validé par le chef de département', ' '.join(str(e) for e in rapport.erreurs))
+        self.assertEqual(Note.objects.get(etudiant=e0, matiere=algo).moyenne_finale, 7.2)
+        self.connecter('chef_sci')
+        modif = {'motif': 'Erreur de report', 'justificatif': SimpleUploadedFile('j.pdf', b'%PDF-1.4 j')}
+        self.assertRedirects(self.client.post(url, {f'controle_{e0.pk}': '7', f'examen_{e0.pk}': '8', **modif}), url)
+        self.assertEqual(Note.objects.get(etudiant=e0, matiere=algo).moyenne_finale, 7.6)
+        # La scolarité est avertie si elle délibère sans validation ; le chef annule sa validation
+        r = self.client.get(reverse('notes_validations'))                      # page « Validation des semestres »
+        self.assertContains(r, 'Validé le')
+        self.assertEqual([(l['programme'], l['semestre'], l['etat']) for l in r.context['lignes']],
+                         [(self.gc, s1, 'a_valider'), (self.info, s1, 'valide')])
+        r = self.client.post(reverse('notes_valider'), {**valider, 'action': 'annuler', 'retour': 'validations'})
+        self.assertRedirects(r, f"{reverse('notes_validations')}?session={self.session.pk}")
+        self.client.post(reverse('notes_valider'), valider)
+        self.connecter('info')                                                  # directeur : pas cette page
+        self.assertEqual(self.client.get(reverse('notes_validations')).status_code, 403)
+        self.connecter('scol')                                                  # scolarité : suivi, sans bouton
+        r = self.client.get(reverse('notes_validations'))
+        self.assertEqual(r.status_code, 200)
+        self.assertNotContains(r, 'name="retour"')
+        self.assertNotContains(self.client.get(resultats), "n'a pas encore validé ce semestre")
+        self.connecter('chef_sci')
+        self.client.post(reverse('notes_valider'), {**valider, 'action': 'annuler'})
+        self.assertFalse(ValidationSemestre.objects.exists())
+        self.connecter('scol')
+        self.assertContains(self.client.get(resultats), "n'a pas encore validé ce semestre")
+        self.connecter('info')
+        modif['justificatif'] = SimpleUploadedFile('j.pdf', b'%PDF-1.4 j')
+        self.assertRedirects(self.client.post(url, {f'controle_{e0.pk}': '8', f'examen_{e0.pk}': '8', **modif}), url)
+        # Hors de son département : refusé
+        chimie = self._matiere('Chimie générale', autre, s1)
+        self.connecter('chef_sci')
+        self.assertEqual(self.client.get(reverse('notes_saisie', args=[chimie.pk])).status_code, 404)
+        self.assertEqual(self.client.post(reverse('notes_valider'), {**valider, 'programme': autre.pk}).status_code,
+                         403)
+
+    def test_espace_de_deliberation(self):
+        """Grille du jury : tout validé, pas tout, exactement N matières, répartition, recherche, export, droits."""
+        from .models import Note
+        s1, algo, anglais = self._preparer_notes()
+        e0, e1 = Etudiant.objects.get(matricule='M0'), Etudiant.objects.get(matricule='M1')
+        Etudiant.objects.filter(pk=e1.pk).update(ine='INE-777')
+        Note.objects.create(etudiant=e0, matiere=algo, controle=6, examen=8)           # 7,2 : validée
+        Note.objects.create(etudiant=e0, matiere=anglais, controle=6, examen=6)        # 6   : validée
+        Note.objects.create(etudiant=e1, matiere=algo, controle=4, examen=4)           # 4   : non ; anglais sans note
+        url = reverse('notes_deliberation')
+        base = {'session': self.session.pk, 'programme': self.info.pk, 'licence': self.licence.pk, 'semestre': s1.pk}
+
+        self.connecter('dep')                                     # autre service (hors DGE) : pas de notes
+        self.assertEqual(self.client.get(url, base).status_code, 403)
+        self.connecter('info')
+        r = self.client.get(url)
+        self.assertContains(r, 'Choisissez la <strong>session</strong>')
+        r = self.client.get(url, base)
+        self.assertEqual((r.context['nb_etudiants'], r.context['nb_tout'], r.context['nb_pas_tout']), (2, 1, 1))
+        self.assertEqual([(x['n'], x['effectif']) for x in r.context['repartition']], [(2, 1), (1, 0), (0, 1)])
+        l0, l1 = r.context['lignes']
+        self.assertEqual((l0['etudiant'], l0['nb_validees'], l0['credits_valides'], l0['moyenne']), (e0, 2, 10, 6.72))
+        self.assertEqual((l1['etudiant'], l1['nb_validees'], l1['manquantes'], l1['moyenne']), (e1, 0, 1, 2.4))
+        def etudiants(**params):
+            return [l['etudiant'] for l in self.client.get(url, {**base, **params}).context['lignes']]
+        self.assertEqual(etudiants(statut='tout'), [e0])
+        self.assertEqual(etudiants(statut='pas_tout'), [e1])
+        self.assertEqual(etudiants(statut='n', n=0), [e1])
+        self.assertEqual(etudiants(statut='n', n=1), [])
+        self.assertEqual(etudiants(q='INE-777'), [e1])
+        self.assertEqual(etudiants(q='M0'), [e0])
+        r = self.client.get(url, {**base, 'matiere': anglais.pk})                     # une seule matière
+        self.assertEqual((r.context['nb_matieres'], r.context['nb_tout']), (1, 1))
+        sans_semestre = {k: v for k, v in base.items() if k != 'semestre'}               # toute l'année
+        self.assertEqual(self.client.get(url, sans_semestre).context['portee'], 'Année (Licence 1)')
+        r = self.client.get(url, {**base, 'export': 'xlsx'})
+        self.assertEqual(r['Content-Type'], 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        # Génie civil n'est pas dans le périmètre du directeur d'Informatique
+        r = self.client.get(url, {**base, 'programme': self.gc.pk})
+        self.assertNotEqual(r.context['cascade']['programme'], self.gc.pk)
+
+    def test_fiche_enseignant_et_code_de_controle(self):
+        """Fiche Excel de l'enseignant selon le règlement ; l'import est annulé si le fichier diffère de la fiche signée."""
+        from .fiche_notes import code_fiche, total_ligne
+        from .import_notes import importer_notes
+        from .models import Note
+        from .roles import get_profil
+        self._prive()                                                    # fichiers importés : dossier temporaire
+        s1, algo, _ = self._preparer_notes()
+        url = reverse('notes_fiche_enseignant', args=[algo.pk])
+        self.connecter('dep')
+        self.assertEqual(self.client.get(url).status_code, 403)
+        self.connecter('info')
+        r = self.client.get(url)
+        self.assertEqual(r['Content-Type'], 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        wb = openpyxl.load_workbook(io.BytesIO(r.content))
+        ws = wb.active
+        self.assertEqual([c.value for c in ws[10]][:13], ['N°', 'Matricule', 'Prénom', 'Nom', 'Téléphone', 'Matière',
+                                                          'Session', 'Contrôle', 'TP', 'Examen', 'Moyenne',
+                                                          'Rattrapage', 'Clé gePed'])
+        self.assertEqual([ws.cell(row=11, column=k).value for k in (6, 7)], ['Algorithmique', '2025-2026'])
+        self.assertTrue(ws.column_dimensions['M'].hidden)
+        self.assertTrue(ws.protection.sheet)
+        self.assertEqual([ws.cell(row=k, column=2).value for k in (11, 12)], ['M0', 'M1'])
+        self.assertTrue(str(ws['D14'].value).startswith('=TEXT(MOD(SUM(M11:M12)'))       # code sous le tableau
+
+        # L'enseignant remplit (contrôle, TP, examen, moyenne, rattrapage) : M0 6 / - / 8 ; M1 donne la moyenne 4,5
+        # et un rattrapage de 7
+        notes = {11: [6, None, 8, None, None], 12: ['ABS', None, None, 4.5, 7]}
+        for ligne, valeurs in notes.items():
+            for j, v in enumerate(valeurs):
+                ws.cell(row=ligne, column=8 + j).value = v
+        def fichier():
+            flux = io.BytesIO()
+            wb.save(flux)
+            return SimpleUploadedFile('fiche.xlsx', flux.getvalue())
+        attendu = code_fiche(total_ligne('M0', notes[11]) + total_ligne('M1', notes[12]))
+        self.connecter('scol')
+        scol = get_profil(self.client.get(reverse('notes_importer')).wsgi_request)
+        with self.assertRaisesMessage(ValueError, 'saisissez le code de contrôle'):
+            importer_notes(fichier(), scol, simulation=True)
+        faux = str((int(attendu) + 1) % 999983).zfill(6)
+        with self.assertRaisesMessage(ValueError, 'Import annulé'):
+            importer_notes(fichier(), scol, simulation=True, code_fiche=faux)
+        self.assertFalse(Note.objects.exists())
+        r = importer_notes(fichier(), scol, User.objects.get(username='scol'), code_fiche=f'{attendu[:3]} {attendu[3:]}')
+        self.assertEqual((r.creees, r.erreurs, r.code_fiche, r.colonnes_ignorees), (2, [], attendu, []))
+        self.assertEqual(Note.objects.get(etudiant__matricule='M0', matiere=algo).moyenne_finale, 7.2)
+        n1 = Note.objects.get(etudiant__matricule='M1', matiere=algo)
+        self.assertEqual((n1.moyenne, n1.moyenne_deposee, n1.moyenne_finale, n1.par_session), (4.5, True, 7, True))
+        # Une note changée dans le fichier après la signature : l'ancien code ne passe plus
+        ws.cell(row=11, column=10).value = 9
+        with self.assertRaisesMessage(ValueError, 'ne correspond pas à la fiche signée'):
+            importer_notes(fichier(), scol, simulation=True, code_fiche=attendu)
+        # Arrêté 877 (Tronc commun depuis 2025-2026) : colonnes CC / TP / CT
+        Inscription.objects.update(cycle='Tronc commun')
+        self.connecter('info')
+        ws = openpyxl.load_workbook(io.BytesIO(self.client.get(url).content)).active
+        self.assertEqual([c.value for c in ws[10]][7:12], ['CC', 'TP', 'CT', 'Moyenne', 'Rattrapage'])

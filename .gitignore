@@ -51,3 +51,6 @@ sauvegardes/
 Thumbs.db
 desktop.ini
 /etudiants_liste.html
+
+# Supports de formation (captures avec des données réelles d'étudiants)
+formation/

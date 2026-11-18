@@ -2,7 +2,7 @@
 {% load humanize %}
 {% block titre %}Liste des notes{% endblock %}
 {% block titre_page %}Liste des notes{% endblock %}
-{% block sous_titre %}<div class="sous-titre">{{ page.paginator.count|intcomma }} note{{ page.paginator.count|pluralize }} · sur 10, validée à partir de {{ seuil }}{% if profil.role == 'programme' %} · {{ profil.structure }}{% endif %}</div>{% endblock %}
+{% block sous_titre %}<div class="sous-titre">{{ page.paginator.count|intcomma }} note{{ page.paginator.count|pluralize }} · sur 10, validée à partir de {{ seuil }}{% if profil.a_perimetre %} · {{ profil.structure }}{% endif %}</div>{% endblock %}
 {% block actions %}
   <a href="?{{ params }}{% if params %}&{% endif %}export=xlsx" class="btn btn-or"><i class="bi bi-file-earmark-excel"></i> <span class="d-none d-sm-inline">Exporter (Excel)</span></a>
   {% if profil.gere_matieres %}<a href="{% url 'notes_matieres' %}" class="btn btn-primary"><i class="bi bi-pencil-square"></i> <span class="d-none d-sm-inline">Saisir des notes</span></a>{% endif %}

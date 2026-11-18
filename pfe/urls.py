@@ -42,6 +42,7 @@ urlpatterns = [
     path('notes/', views_notes.notes_matieres, name='notes_matieres'),
     path('notes/liste/', views_notes.notes_liste, name='notes_liste'),
     path('notes/saisie/<int:pk>/', views_notes.notes_saisie, name='notes_saisie'),        # pk = matière
+    path('notes/saisie/<int:pk>/fiche.xlsx', views_notes.notes_fiche_enseignant, name='notes_fiche_enseignant'),
     path('notes/importer/', views_notes.notes_importer, name='notes_importer'),
     path('notes/importer/modele/', views_notes.notes_modele, name='notes_modele'),
     path('notes/importer/<int:pk>/pdf/', views_notes.notes_import_pdf, name='notes_import_pdf'),
@@ -58,6 +59,9 @@ urlpatterns = [
          name='notes_autorisation_clore'),
     path('notes/resultats/', views_notes.notes_resultats, name='notes_resultats'),
     path('notes/deliberer/', views_notes.notes_deliberer, name='notes_deliberer'),
+    path('notes/valider/', views_notes.notes_valider, name='notes_valider'),
+    path('notes/validations/', views_notes.notes_validations, name='notes_validations'),
+    path('notes/deliberation/', views_notes.notes_deliberation, name='notes_deliberation'),
     path('soutenances/', views_soutenances.soutenances_liste, name='soutenances'),
     path('soutenances/ajouter/', views_soutenances.soutenance_creer, name='soutenance_creer'),
     path('soutenances/<int:pk>/modifier/', views_soutenances.soutenance_modifier, name='soutenance_modifier'),

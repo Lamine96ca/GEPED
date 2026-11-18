@@ -2,7 +2,7 @@
 {% load humanize %}
 {% block titre %}Personnel{% endblock %}
 {% block titre_page %}Personnel{% endblock %}
-{% block sous_titre %}<div class="sous-titre">{{ nb_total }} membre{{ nb_total|pluralize }} · les droits découlent des services : Scolarité, chef de programme ou autre service</div>{% endblock %}
+{% block sous_titre %}<div class="sous-titre">{{ nb_total }} membre{{ nb_total|pluralize }} · les droits découlent des services : Scolarité, chef de département, directeur de programme ou autre service</div>{% endblock %}
 {% block actions %}
   <a href="{% url 'personnel_creer' %}" class="btn btn-primary"><i class="bi bi-person-plus"></i> <span class="d-none d-sm-inline">Nouveau membre</span></a>
 {% endblock %}

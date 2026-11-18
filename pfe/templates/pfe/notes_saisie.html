@@ -3,6 +3,7 @@
 {% block titre_page %}<a href="{% if retour %}{{ retour }}{% else %}{% url 'notes_matieres' %}?session={{ matiere.session_id }}&programme={{ matiere.filiere_id }}&licence={{ matiere.licence_id }}&semestre={{ matiere.semestre_id }}{% endif %}" class="text-decoration-none text-secondary me-1" title="{% if retour %}Retour à la liste des notes{% else %}Retour aux matières{% endif %}"><i class="bi bi-arrow-left"></i></a> {{ matiere.nom }}{% endblock %}
 {% block sous_titre %}<div class="sous-titre">{{ matiere.filiere }} · {{ matiere.licence.nom }} · {{ matiere.semestre.nom }} · {{ matiere.session.annee }} · {{ matiere.credit }} crédits{% if matiere.code %} · {{ matiere.code }}{% endif %}</div>{% endblock %}
 {% block actions %}
+  <a href="{% url 'notes_fiche_enseignant' matiere.pk %}{% if promotion_choisie %}?promotion={{ promotion_choisie }}{% endif %}" class="btn btn-or" title="Fiche Excel à remplir par l'enseignant, à imprimer, signer puis importer"><i class="bi bi-file-earmark-excel"></i> <span class="d-none d-sm-inline">Fiche enseignant (Excel)</span></a>
   <a href="{% url 'notes_resultats' %}?session={{ matiere.session_id }}&programme={{ matiere.filiere_id }}&semestre={{ matiere.semestre_id }}" class="btn btn-light"><i class="bi bi-bar-chart"></i> <span class="d-none d-sm-inline">Résultats du semestre</span></a>
 {% endblock %}
 {% block contenu %}
@@ -27,11 +28,22 @@
         <strong>Autorisation de la scolarité jusqu'au {{ autorisation.date_fin|date:"d/m/Y" }}</strong> : vous pouvez saisir et modifier ces notes (motif et justificatif PDF pour toute modification ; chaque modification est tracée).
       {% elif modifiable %}
         Vous pouvez encore les modifier : indiquez le motif et joignez le justificatif PDF ; chaque modification est tracée.
-      {% elif profil.role == 'programme' %}
+      {% elif profil.a_perimetre %}
         Notes fermées : seule une <strong>autorisation du chef de la scolarité</strong> (période limitée) permet de les saisir, de les modifier ou de les importer.
       {% else %}
         Seul le chef de la scolarité ou un super utilisateur peut les modifier.
       {% endif %}
+    </div>
+  </div>
+{% endif %}
+
+{% if validation and not ecoulee and not delibere %}
+  <div class="alert {% if modifiable %}alert-info{% else %}alert-secondary{% endif %} d-flex gap-2 align-items-start">
+    <i class="bi bi-patch-check-fill mt-1"></i>
+    <div>
+      <strong>Semestre validé par le chef de département</strong> le {{ validation.date|date:"d/m/Y à H:i" }}{% if validation.par %} ({{ validation.par.get_full_name|default:validation.par.username }}){% endif %}.
+      {% if profil.role == 'programme' %}Notes fermées : seul le chef de département peut encore les corriger, ou annuler sa validation.
+      {% elif modifiable %}Vous pouvez encore les corriger avant la délibération.{% endif %}
     </div>
   </div>
 {% endif %}

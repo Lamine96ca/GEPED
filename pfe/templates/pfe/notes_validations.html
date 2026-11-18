@@ -1,0 +1,90 @@
+{% extends 'pfe/base.html' %}
+{% block titre %}Validation des semestres{% endblock %}
+{% block titre_page %}Validation des semestres{% endblock %}
+{% block sous_titre %}<div class="sous-titre">{% if session %}Session {{ session.annee }} · {% endif %}le directeur de programme saisit, le chef de département valide, le chef de la scolarité délibère</div>{% endblock %}
+{% block contenu %}
+<div class="card carte-gped liste mb-3">
+  <form method="get" class="barre-filtres">
+    <div class="row g-2 align-items-end">
+      <div class="col-6 col-md-3">
+        <label class="form-label small text-secondary mb-1" for="v-session">Session</label>
+        <select id="v-session" name="session" class="form-select" onchange="this.form.submit()">
+          {% for s in sessions %}<option value="{{ s.pk }}" {% if session and session.pk == s.pk %}selected{% endif %}>{{ s.annee }}{% if s.en_cours %} (en cours){% endif %}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-md-5">
+        <label class="form-label small text-secondary mb-1" for="v-programme">Programme</label>
+        <select id="v-programme" name="programme" class="form-select" onchange="this.form.submit()">
+          <option value="">{% if profil.est_chef_departement %}Tous les programmes du département{% else %}Tous les programmes{% endif %}</option>
+          {% for p in programmes %}<option value="{{ p.pk }}" {% if programme_choisi == p.pk %}selected{% endif %}>{{ p.nom }}</option>{% endfor %}
+        </select>
+      </div>
+      <noscript><div class="col-auto"><button class="btn btn-primary">Afficher</button></div></noscript>
+    </div>
+  </form>
+</div>
+
+{% if ecoulee %}
+  <div class="alert alert-secondary d-flex gap-2"><i class="bi bi-info-circle mt-1"></i><div><strong>Année écoulée ({{ session.annee }})</strong> : ses notes sont considérées comme délibérées, il n'y a plus rien à valider. Choisissez la <strong>session en cours</strong>.</div></div>
+{% elif profil.est_chef_departement %}
+  <div class="alert alert-info d-flex gap-2"><i class="bi bi-patch-check mt-1"></i><div>Quand toutes les notes d'un semestre sont saisies et vérifiées, cliquez sur <strong>Valider</strong>. Le directeur de programme ne peut alors plus les modifier ; vous pouvez encore les corriger, ou annuler votre validation, jusqu'à la délibération par le chef de la scolarité.</div></div>
+{% endif %}
+
+<div class="d-flex flex-wrap gap-2 mb-3">
+  <span class="pill">{{ lignes|length }} semestre{{ lignes|length|pluralize }}</span>
+  {% if not ecoulee %}<span class="pill pill-attention">{{ nb_a_valider }} à valider</span>{% endif %}
+  <span class="pill pill-accent">{{ nb_valides }} validé{{ nb_valides|pluralize }}</span>
+  <span class="pill">{{ nb_delibres }} délibéré{{ nb_delibres|pluralize }}</span>
+</div>
+
+<div class="card carte-gped liste">
+  <div class="table-responsive">
+    <table class="table table-etudiants mb-0">
+      <thead><tr><th>Programme</th><th>Licence</th><th>Semestre</th><th class="text-end">Matières</th><th>Saisie des notes</th><th>État</th><th class="text-end"></th></tr></thead>
+      <tbody>
+      {% for l in lignes %}
+        <tr style="cursor:default">
+          <td style="white-space:normal;min-width:200px"><b style="color:var(--encre);font-weight:600">{{ l.programme.nom }}</b></td>
+          <td>{{ l.licence.nom }}</td>
+          <td>{{ l.semestre.nom }}</td>
+          <td class="text-end">{{ l.nb_matieres }} <span class="small text-secondary">· {{ l.credits }} cr.</span></td>
+          <td style="min-width:190px">
+            <div class="d-flex align-items-center gap-2">
+              <div class="progress flex-grow-1" style="height:6px"><div class="progress-bar {% if l.attendues and l.saisies >= l.attendues %}bg-success{% endif %}" style="width:{{ l.pourcent }}%"></div></div>
+              <span class="small text-secondary text-nowrap">{{ l.saisies }} / {{ l.attendues }}</span>
+            </div>
+          </td>
+          <td class="text-nowrap">
+            {% if l.etat == 'delibere' %}<span class="pill"><i class="bi bi-lock-fill"></i> Délibéré</span>
+            {% elif l.etat == 'valide' %}<span class="pill pill-accent" title="Validé le {{ l.validation.date|date:'d/m/Y à H:i' }}{% if l.validation.par %} par {{ l.validation.par.get_full_name|default:l.validation.par.username }}{% endif %}"><i class="bi bi-patch-check-fill"></i> Validé le {{ l.validation.date|date:'d/m/Y' }}</span>
+            {% elif ecoulee %}<span class="pill"><i class="bi bi-lock"></i> Année écoulée</span>
+            {% else %}<span class="pill pill-attention"><i class="bi bi-hourglass-split"></i> À valider</span>{% endif %}
+          </td>
+          <td class="text-end text-nowrap">
+            <a class="btn btn-sm btn-light" href="{% url 'notes_resultats' %}?session={{ session.pk }}&amp;programme={{ l.programme.pk }}&amp;semestre={{ l.semestre.pk }}" title="Résultats du semestre"><i class="bi bi-bar-chart"></i></a>
+            <a class="btn btn-sm btn-light" href="{% url 'notes_deliberation' %}?session={{ session.pk }}&amp;programme={{ l.programme.pk }}&amp;licence={{ l.licence.pk }}&amp;semestre={{ l.semestre.pk }}" title="Grille du jury (espace de délibération)"><i class="bi bi-easel"></i></a>
+            {% if peut_valider and l.etat != 'delibere' %}
+              <form method="post" action="{% url 'notes_valider' %}" class="d-inline"
+                    onsubmit="return confirm('{% if l.etat == 'valide' %}Annuler la validation ? Le directeur de programme pourra de nouveau modifier les notes.{% else %}Valider les notes de ce semestre ? Le directeur de programme ne pourra plus les modifier.{% endif %}');">
+                {% csrf_token %}
+                <input type="hidden" name="programme" value="{{ l.programme.pk }}">
+                <input type="hidden" name="session" value="{{ session.pk }}">
+                <input type="hidden" name="semestre" value="{{ l.semestre.pk }}">
+                <input type="hidden" name="retour" value="validations">
+                {% if l.etat == 'valide' %}
+                  <button class="btn btn-sm btn-outline-danger" name="action" value="annuler"><i class="bi bi-x-circle"></i> Annuler</button>
+                {% else %}
+                  <button class="btn btn-sm btn-or-plein"><i class="bi bi-patch-check"></i> Valider</button>
+                {% endif %}
+              </form>
+            {% endif %}
+          </td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="7"><div class="etat-vide"><i class="bi bi-patch-check"></i>Aucune matière pour cette session{% if programme_choisi %} et ce programme{% endif %} : les semestres apparaîtront dès que les matières de la session seront enregistrées.</div></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

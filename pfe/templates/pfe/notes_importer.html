@@ -32,6 +32,11 @@
             <div class="small text-secondary mt-1">{% if form.pdf_enseignant.field.required %}Obligatoire : la fiche déposée par l'enseignant.{% elif profil.superuser %}Facultatif pour vous (super utilisateur), même si l'import modifie des notes déjà enregistrées.{% else %}Obligatoire si l'import modifie des notes déjà enregistrées.{% endif %} Gardée avec l'import, jamais publiée.</div>
             {% for err in form.pdf_enseignant.errors %}<div class="invalid-feedback d-block">{{ err }}</div>{% endfor %}
           </div>
+          <div class="mb-3">
+            <label class="form-label small mb-1" for="{{ form.code_fiche.id_for_label }}"><i class="bi bi-shield-check"></i> {{ form.code_fiche.label }}</label>
+            {{ form.code_fiche }}
+            <div class="small text-secondary mt-1">{{ form.code_fiche.help_text }} Si le fichier ne correspond plus à la fiche signée, l'import est annulé.</div>
+          </div>
           <label class="option-import mb-3" for="{{ form.simulation.id_for_label }}">
             {{ form.simulation }}
             <div><strong>Mode simulation</strong><span>Vérifie le fichier sans rien enregistrer. Conseillé pour un premier essai.</span></div>
@@ -82,6 +87,7 @@
             </details>
           {% endif %}
           {% include 'pfe/_reparation_fichier.html' %}
+          {% if rapport.code_fiche %}<p class="small text-success"><i class="bi bi-shield-check"></i> Fiche de l'enseignant vérifiée : le fichier correspond à la fiche signée (code {{ rapport.code_fiche }}).</p>{% endif %}
           {% if rapport.reglements %}<p class="small text-secondary"><i class="bi bi-journal-check"></i> Règlement appliqué : {% for nom, n in rapport.reglements %}{{ nom }} ({{ n|intcomma }} ligne{{ n|pluralize }}){% if not forloop.last %} · {% endif %}{% endfor %}</p>{% endif %}
           {% if rapport.colonnes_ignorees %}<p class="small text-secondary"><i class="bi bi-dash-circle"></i> Colonnes ignorées : {{ rapport.colonnes_ignorees|join:", " }}</p>{% endif %}
           {% if rapport.simulation and rapport.lignes %}
@@ -127,7 +133,9 @@
           <li>Obligatoires : {% for c in obligatoires %}<code>{{ c }}</code>{% if not forloop.last %}, {% endif %}{% endfor %} (<code>matiere</code> = nom ou code). Notes : <code>controle</code>, <code>tp</code>, <code>examen</code>, <code>moyenne</code>, <code>rattrapage</code> (au moins une). <code>programme</code> si besoin de préciser.</li>
           <li><strong>Sur 10.</strong> <code>ABS</code> = 0. La colonne <code>moyenne</code> (déposée par le programme) est prise telle quelle ; sinon elle est calculée : contrôle 25 % + TP 35 % + examen 40 % (sans TP : 40 % + 60 %). Si la moyenne est remplie et que contrôle, TP et examen valent <strong>tous 0</strong>, ces 0 sont <strong>considérés comme vides</strong>.</li>
           <li><code>rattrapage</code> : on garde la meilleure des deux notes, avec la mention « Session ».</li>
-          <li><strong>Arrêté 877</strong> (Tronc commun et cycle Ingénieur, depuis 2025-2026) : <code>cc</code> (ou <code>controle</code>) = contrôle continu, <code>ct</code> (ou <code>examen</code>) = contrôle terminal ; moyenne = <strong>CC 40 % + CT 60 %</strong> (un TP donné entre dans le CC) ; le rattrapage retenu est <strong>plafonné à 5</strong>. Le règlement est trouvé d'après l'inscription de chaque étudiant : le même fichier sert pour tous les cycles.</li>
+          <li><strong>Arrêté 877</strong> (Tronc commun et cycle Ingénieur, depuis 2025-2026) : <code>cc</code> (ou <code>controle</code>) = contrôle continu, <code>ct</code> (ou <code>examen</code>) = contrôle terminal ; moyenne = <strong>CC 40 % + CT 60 %</strong> (un TP donné entre dans le CC) ; le rattrapage retenu est <strong>plafonné à 5</strong>. Le règlement est trouvé d'après l'inscription de chaque étudiant : le même fichier sert pour tous les cycles. Les intitulés des enseignants sont reconnus : « CC (40 %) », « Note CC », « C.C. », « Contrôle continu », « CT (60 %) », « Contrôle terminal »…</li>
+          <li><strong>Fiche enseignant gePed</strong> (<a href="{% url 'notes_matieres' %}">Saisie des notes</a>, bouton « Fiche enseignant » de chaque matière) : colonnes <strong>CC / TP / CT</strong> pour l'arrêté 877, <strong>Contrôle / TP / Examen</strong> pour les autres cycles. Elle porte un <strong>code de contrôle</strong> calculé à partir des notes : saisissez celui de la fiche signée ; s'il ne correspond pas au fichier, <strong>l'import est annulé</strong> jusqu'à correction.</li>
+          <li><strong>Fiche de l'enseignant acceptée telle quelle :</strong> un titre au-dessus du tableau (la ligne d'en-têtes est celle qui contient « matricule »), des colonnes d'information (<code>prénom</code>, <code>nom</code>, <code>téléphone</code>, <code>N°</code>…) et une zone de signature sous le tableau ne gênent pas l'import.</li>
           <li>La matière est cherchée dans le programme et la licence de l'inscription de l'étudiant pour la session. Une note déjà enregistrée est <strong>mise à jour</strong> (modification tracée) ; une ligne répétée est ignorée.</li>
           {% if not mes_programmes %}<li><strong>Étudiant non inscrit dans la session :</strong> il y est <strong>inscrit automatiquement</strong> si la matière est unique dans la session (sinon ajoutez la colonne <code>programme</code>) et si toutes ses notes de la session sont du même programme et de la même licence. Jamais pour un préinscrit ni pour un étudiant déjà inscrit dans la session. La simulation liste ces inscriptions avant l'import.</li>{% endif %}
           {% if profil.est_scolarite %}

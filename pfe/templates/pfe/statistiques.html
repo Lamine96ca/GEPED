@@ -2,7 +2,7 @@
 {% load humanize %}
 {% block titre %}Statistiques{% endblock %}
 {% block titre_page %}Statistiques des inscriptions{% endblock %}
-{% block sous_titre %}<div class="sous-titre">{{ filtres_texte }} · inscrits uniquement (hors préinscrits){% if nb_conges %}, hors {{ nb_conges }} année{{ nb_conges|pluralize }} en congé académique{% endif %}{% if profil.role == 'programme' %} · {{ profil.structure }}{% endif %}</div>{% endblock %}
+{% block sous_titre %}<div class="sous-titre">{{ filtres_texte }} · inscrits uniquement (hors préinscrits){% if nb_conges %}, hors {{ nb_conges }} année{{ nb_conges|pluralize }} en congé académique{% endif %}{% if profil.a_perimetre %} · {{ profil.structure }}{% endif %}</div>{% endblock %}
 {% block actions %}
   <button type="button" class="btn btn-light" onclick="window.print()"><i class="bi bi-printer"></i> <span class="d-none d-sm-inline">Imprimer</span></button>
   <a href="?{{ params }}{% if params %}&{% endif %}export=xlsx" class="btn btn-or"><i class="bi bi-file-earmark-excel"></i> <span class="d-none d-sm-inline">Exporter (Excel)</span></a>

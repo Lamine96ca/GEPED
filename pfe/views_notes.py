@@ -20,13 +20,14 @@ from django.views.decorators.http import require_POST
 from .forms import ImportNotesForm
 from .import_notes import OBLIGATOIRES as OBLIGATOIRES_NOTES, importer_notes, modele_notes_xlsx
 from .models import (Deliberation, Etudiant, ImportNotes, Inscription, Licence, Matiere, Note, Resultat, Semestre,
-                     Session)
+                     Session, ValidationSemestre)
 from .notes import (CHAMPS_SAISIE, MOTIF_SUPER_UTILISATEUR, avec_promotion, code_reglement, en_note,
                     enregistrer_notes, est_delibere,
                     filtrer_promotion, peut_modifier, recalculer, regles, saisie_de, semestres_delibres,
-                    session_ecoulee, verifier_pdf)
-from .roles import (gestion_matieres_requise, get_profil, lecture_notes_requise, matieres_visibles,
-                    programmes_du_profil, scolarite_requise)
+                    semestres_valides, session_ecoulee, verifier_pdf)
+from .roles import (chef_departement_requis, chef_scolarite_requis, gestion_matieres_requise, get_profil,
+                    lecture_notes_requise, matieres_visibles, programmes_du_profil, scolarite_requise,
+                    validations_requises)
 
 LIBELLES = {'controle': 'Contrôle', 'tp': 'TP', 'examen': 'Examen', 'moyenne': 'Moyenne', 'rattrapage': 'Rattrapage'}
 
@@ -143,9 +144,11 @@ def notes_matieres(request):
                   .values_list('filiere_id', 'session_id', 'licence_id').annotate(n=Count('id'))):
             effectifs[t[:3]] = t[3]
     delibres = semestres_delibres(matieres)
+    valides = semestres_valides(matieres)
     for m in matieres:
         m.inscrits = effectifs.get((m.filiere_id, m.session_id, m.licence_id), 0)
         m.delibere = (m.filiere_id, m.session_id, m.semestre_id) in delibres
+        m.valide = (m.filiere_id, m.session_id, m.semestre_id) in valides
     params = request.GET.copy()
     params.pop('page', None)
     return render(request, 'pfe/notes_matieres.html', {
@@ -188,8 +191,8 @@ def notes_saisie(request, pk):
 
     if request.method == 'POST':
         if not modifiable:
-            raise PermissionDenied("Notes fermées : semestre délibéré ou année écoulée. Seule la scolarité peut les "
-                                   "modifier, ou un programme pendant une autorisation du chef de la scolarité.")
+            raise PermissionDenied("Notes fermées : semestre validé par le chef de département, délibéré ou année "
+                                   "écoulée.")
         motif = (request.POST.get('motif') or '').strip()
         changements = []
         for insc in inscrits:
@@ -265,7 +268,7 @@ def notes_saisie(request, pk):
     from django.utils import timezone
     aujourd_hui = timezone.localdate()
     autorisation = None
-    if profil.role == 'programme' and modifiable:
+    if not profil.est_scolarite and modifiable:
         autorisation = (AutorisationNotes.objects.filter(
             programmes=matiere.filiere_id, session_id=matiere.session_id, licences=matiere.licence_id,
             date_debut__lte=aujourd_hui, date_fin__gte=aujourd_hui).order_by('-date_fin').first())
@@ -275,6 +278,8 @@ def notes_saisie(request, pk):
         'promotions_matiere': promotions_matiere, 'promotion_choisie': promotion, 'matricule': matricule,
         'deliberation': Deliberation.objects.filter(filiere_id=matiere.filiere_id, session_id=matiere.session_id,
                                                     semestre_id=matiere.semestre_id).select_related('par').first(),
+        'validation': ValidationSemestre.objects.filter(filiere_id=matiere.filiere_id, session_id=matiere.session_id,
+                                                        semestre_id=matiere.semestre_id).select_related('par').first(),
         'erreurs': bool(erreurs), 'erreur_motif': erreur_motif, 'motif': request.POST.get('motif', ''),
         'nb_notes': nb_notes, 'regle': regle, 'libelles': libelles, 'actif': 'notes_saisie',
         'reglements': {code: regles(code) for code in set(codes.values()) | {''}},
@@ -416,7 +421,8 @@ def notes_importer(request):
             try:
                 rapport = importer_notes(form.cleaned_data['fichier'], profil, request.user,
                                          simulation=form.cleaned_data['simulation'],
-                                         pdf_enseignant=form.cleaned_data.get('pdf_enseignant'))
+                                         pdf_enseignant=form.cleaned_data.get('pdf_enseignant'),
+                                         code_fiche=form.cleaned_data.get('code_fiche', ''))
             except ValueError as e:
                 form.add_error('fichier', str(e))
             else:
@@ -432,6 +438,26 @@ def notes_importer(request):
         'mes_programmes': None if profil.est_scolarite else programmes_du_profil(profil),
         'journal': journal[:15],
     })
+
+
+@login_required
+@gestion_matieres_requise
+def notes_fiche_enseignant(request, pk):
+    """Fiche de notes de l'enseignant (Excel) d'une matière : colonnes CC / CT (arrêté 877) ou contrôle / examen."""
+    from django.utils.text import slugify
+    from .fiche_notes import fiche_notes_xlsx
+    profil = get_profil(request)
+    matiere = get_object_or_404(matieres_visibles(profil).select_related('filiere', 'licence', 'semestre', 'session'),
+                                pk=pk)
+    inscrits = inscrits_de(matiere).select_related('session')
+    promotion = _entier(request.GET.get('promotion'))
+    if promotion:
+        inscrits = inscrits.filter(promotion_id=promotion)
+    reponse = HttpResponse(fiche_notes_xlsx(matiere, list(inscrits)),
+                           content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    nom = slugify(f"fiche notes {matiere.nom} {matiere.session.annee}")[:80] or 'fiche_notes'
+    reponse['Content-Disposition'] = f'attachment; filename="{nom}.xlsx"'
+    return reponse
 
 
 def _fichier_import(request, pk, champ):
@@ -524,6 +550,11 @@ def notes_resultats(request):
             'notes_manquantes': sum(r.notes_manquantes for r in resultats),
             'deliberation': Deliberation.objects.filter(filiere_id=f['programme'], session_id=f['session'],
                                                         semestre=semestre).select_related('par').first(),
+            'validation': ValidationSemestre.objects.filter(filiere_id=f['programme'], session_id=f['session'],
+                                                            semestre=semestre).select_related('par').first(),
+            'annee_ecoulee': session_ecoulee(Session.objects.get(pk=f['session'])),
+            'peut_valider': profil.est_chef_departement and f['programme'] in profil.programme_ids
+                            and not session_ecoulee(Session.objects.get(pk=f['session'])),
             'programme_choisi': next((p for p in programmes if p.pk == f['programme']), None),
             'session_choisie': next((s for s in sessions if s.pk == f['session']), None),
         })
@@ -531,10 +562,10 @@ def notes_resultats(request):
 
 
 @login_required
-@scolarite_requise
+@chef_scolarite_requis
 @require_POST
 def notes_deliberer(request):
-    """Délibérer (scolarité) ou annuler une délibération (super utilisateur seulement)."""
+    """Délibérer (chef de la scolarité) ou annuler une délibération (super utilisateur seulement)."""
     filiere, session, semestre = (_entier(request.POST.get(k)) for k in ('programme', 'session', 'semestre'))
     if not (filiere and session and semestre):
         raise Http404()
@@ -551,3 +582,240 @@ def notes_deliberer(request):
                                   "scolarité, avec un motif)." if cree else "Ce semestre était déjà délibéré.")
     return redirect(retour)
 
+
+@login_required
+@chef_departement_requis
+@require_POST
+def notes_valider(request):
+    """
+    Le chef de département valide les notes d'un semestre de l'un de ses programmes (ou annule sa validation),
+    avant la délibération : après validation, le directeur de programme ne peut plus les modifier.
+    """
+    profil = get_profil(request)
+    filiere, session, semestre = (_entier(request.POST.get(k)) for k in ('programme', 'session', 'semestre'))
+    if not (filiere and session and semestre):
+        raise Http404()
+    if filiere not in profil.programme_ids:
+        raise PermissionDenied("Ce programme n'est pas dans votre département.")
+    retour = f"{reverse('notes_resultats')}?session={session}&programme={filiere}&semestre={semestre}"
+    if request.POST.get('retour') == 'validations':          # depuis la page « Validation des semestres »
+        retour = f"{reverse('notes_validations')}?session={session}"
+    if Deliberation.objects.filter(filiere_id=filiere, session_id=session, semestre_id=semestre).exists():
+        messages.error(request, "Ce semestre est déjà délibéré : sa validation ne peut plus changer.")
+        return redirect(retour)
+    if session_ecoulee(get_object_or_404(Session, pk=session)):
+        messages.error(request, "Année écoulée : ses notes sont considérées comme délibérées.")
+        return redirect(retour)
+    if request.POST.get('action') == 'annuler':
+        ValidationSemestre.objects.filter(filiere_id=filiere, session_id=session, semestre_id=semestre).delete()
+        messages.success(request, "Validation annulée : le directeur de programme peut de nouveau modifier les notes.")
+    else:
+        _, cree = ValidationSemestre.objects.get_or_create(filiere_id=filiere, session_id=session, semestre_id=semestre,
+                                                           defaults={'par': request.user})
+        messages.success(request, "Semestre validé : la scolarité peut le délibérer. Le directeur de programme ne "
+                                  "peut plus modifier ses notes." if cree else "Ce semestre était déjà validé.")
+    return redirect(retour)
+
+
+
+# ------------------------------------------------------------------ espace de délibération (jury)
+
+STATUTS_JURY = [('', 'Tous les étudiants'), ('tout', 'Ont tout validé'), ('pas_tout', "N'ont pas tout validé"),
+                ('n', 'Ont validé exactement…')]
+
+
+def grille_deliberation(profil, f):
+    """
+    Grille du jury : une ligne par étudiant inscrit (programme, session, licence ; promotion et recherche
+    facultatives), une colonne par matière du semestre choisi, ou de toute l'année (licence) sans semestre,
+    ou de la seule matière choisie. Une matière est validée à partir du seuil (5) ; sans note, elle ne l'est pas.
+    Renvoie (matières, lignes) ; chaque ligne : inscription, cases, nb_validees, credits_valides, moyenne.
+    """
+    from .notes import arrondi, est_validee, mention
+    matieres = matieres_visibles(profil).filter(session_id=f['session'], filiere_id=f['programme'],
+                                                licence_id=f['licence'])
+    if f.get('semestre'):
+        matieres = matieres.filter(semestre_id=f['semestre'])
+    if f.get('matiere'):
+        matieres = matieres.filter(pk=f['matiere'])
+    matieres = list(matieres.select_related('semestre').order_by('semestre_id', 'nom'))
+    inscriptions = (Inscription.objects.filter(filiere_id=f['programme'], session_id=f['session'],
+                                               licence_id=f['licence'], etudiant__preinscrit=False, conge__isnull=True)
+                    .select_related('etudiant', 'promotion', 'session'))
+    if f.get('promotion'):
+        inscriptions = inscriptions.filter(promotion_id=f['promotion'])
+    if f.get('q'):
+        q = f['q']
+        inscriptions = inscriptions.filter(Q(etudiant__matricule__icontains=q) | Q(etudiant__ine__icontains=q)
+                                           | Q(etudiant__nom__icontains=q) | Q(etudiant__prenom__icontains=q))
+    inscriptions = list(inscriptions.order_by('etudiant__nom', 'etudiant__prenom'))
+    notes = {(n.etudiant_id, n.matiere_id): n for n in
+             Note.objects.filter(matiere__in=matieres, etudiant_id__in=[i.etudiant_id for i in inscriptions])}
+    total_credits = sum(m.credit for m in matieres)
+    lignes = []
+    for insc in inscriptions:
+        cases, nb, credits, points = [], 0, 0, 0
+        for m in matieres:
+            n = notes.get((insc.etudiant_id, m.pk))
+            valeur = n.moyenne_finale if n else None
+            ok = est_validee(valeur)
+            nb += ok
+            credits += m.credit if ok else 0
+            points += (valeur or 0) * m.credit
+            cases.append({'note': valeur, 'ok': ok, 'session': bool(n and n.par_session)})
+        manquantes = sum(1 for c in cases if c['note'] is None)
+        moyenne = arrondi(points / total_credits) if total_credits and manquantes < len(matieres) else None
+        lignes.append({'inscription': insc, 'etudiant': insc.etudiant, 'cases': cases, 'nb_validees': nb,
+                       'credits_valides': credits, 'manquantes': manquantes, 'moyenne': moyenne,
+                       'mention': mention(moyenne, code_reglement(insc.cycle, insc.session.annee))})
+    return matieres, lignes
+
+
+def _export_deliberation(matieres, lignes, titre):
+    """Excel de la grille du jury (une colonne par matière, puis le bilan)."""
+    import io
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = 'Délibération'
+    ws.append([titre])
+    ws['A1'].font = Font(bold=True, size=12)
+    ws.append(['N°', 'Matricule', 'INE', 'Nom', 'Prénom', 'Promotion']
+              + [f"{m.nom} ({m.credit} cr.)" for m in matieres]
+              + ['Matières validées', 'Crédits validés', 'Moyenne', 'Mention'])
+    for cell in ws[2]:
+        cell.font, cell.fill = Font(bold=True, color='FFFFFF'), PatternFill('solid', fgColor='41627C')
+    vert, rouge = PatternFill('solid', fgColor='DCFCE7'), PatternFill('solid', fgColor='FEE2E2')
+    total = sum(m.credit for m in matieres)
+    for k, l in enumerate(lignes, start=1):
+        e, promotion = l['etudiant'], l['inscription'].promotion
+        ws.append([k, e.matricule, e.ine or '', e.nom, e.prenom, promotion.nom if promotion else '']
+                  + [c['note'] for c in l['cases']]
+                  + [f"{l['nb_validees']} / {len(matieres)}", f"{l['credits_valides']} / {total}", l['moyenne'],
+                     l['mention']])
+        for j, c in enumerate(l['cases']):
+            ws.cell(row=k + 2, column=7 + j).fill = vert if c['ok'] else rouge
+    flux = io.BytesIO()
+    wb.save(flux)
+    reponse = HttpResponse(flux.getvalue(),
+                           content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    reponse['Content-Disposition'] = 'attachment; filename="deliberation_geped.xlsx"'
+    return reponse
+
+
+@login_required
+@lecture_notes_requise
+def notes_deliberation(request):
+    """
+    Espace de délibération (à projeter devant le jury) : grille étudiants × matières, filtres (programme,
+    promotion, session, licence, semestre, matière, matricule ou INE), tri des étudiants qui ont tout validé,
+    pas tout validé, ou exactement N matières, et répartition par nombre de matières validées.
+    """
+    profil = get_profil(request)
+    g = request.GET
+    f, sessions, programmes = _filtres(request, profil)
+    f['matiere'] = _entier(g.get('matiere'))
+    cascade = _cascade(profil, f)                      # vide les choix qui n'existent plus sous ceux du dessus
+    statut = g.get('statut') if g.get('statut') in {s for s, _ in STATUTS_JURY} else ''
+    n_choisi = _entier(g.get('n'))
+    tri = g.get('tri') if g.get('tri') in ('nom', 'moyenne', 'validees') else 'nom'
+    contexte = {'actif': 'notes_deliberation', **cascade, 'filtres': f, 'statuts': STATUTS_JURY, 'statut': statut,
+                'n_choisi': n_choisi, 'tri': tri, 'promotions': promotions_de(f) if f['licence'] else []}
+    if f['session'] and f['programme'] and f['licence']:
+        matieres, lignes = grille_deliberation(profil, f)
+        nb = len(matieres)
+        tous = len(lignes)
+        repartition = [{'n': k, 'effectif': sum(1 for l in lignes if l['nb_validees'] == k)} for k in range(nb, -1, -1)]
+        for r in repartition:
+            r['pourcent'] = round(100 * r['effectif'] / tous, 1) if tous else 0
+        if statut == 'tout':
+            lignes = [l for l in lignes if nb and l['nb_validees'] == nb]
+        elif statut == 'pas_tout':
+            lignes = [l for l in lignes if l['nb_validees'] < nb]
+        elif statut == 'n' and n_choisi is not None:
+            lignes = [l for l in lignes if l['nb_validees'] == n_choisi]
+        if tri == 'moyenne':
+            lignes.sort(key=lambda l: (l['moyenne'] is None, -(l['moyenne'] or 0)))
+        elif tri == 'validees':
+            lignes.sort(key=lambda l: (-l['nb_validees'], -(l['moyenne'] or 0)))
+        programme = next((p for p in programmes if p.pk == f['programme']), None)
+        semestre = Semestre.objects.filter(pk=f['semestre']).first() if f['semestre'] else None
+        licence = Licence.objects.filter(pk=f['licence']).first()
+        session = next((s for s in sessions if s.pk == f['session']), None)
+        portee = semestre.nom if semestre else f"Année ({licence.nom})"
+        titre = ' · '.join(str(x) for x in (programme, portee, session.annee if session else '') if x)
+        if g.get('export') == 'xlsx':
+            return _export_deliberation(matieres, lignes, f"Délibération · {titre}")
+        params = g.copy()
+        for cle in ('statut', 'n', 'export', 'tri'):
+            params.pop(cle, None)
+        contexte.update({
+            'matieres': matieres, 'lignes': lignes, 'nb_matieres': nb, 'nb_etudiants': tous,
+            'repartition': repartition, 'titre_grille': titre, 'portee': portee, 'params_base': params.urlencode(),
+            'credits_total': sum(m.credit for m in matieres),
+            'nb_tout': repartition[0]['effectif'] if nb else 0,
+            'nb_pas_tout': tous - (repartition[0]['effectif'] if nb else 0),
+            'seuil': regles()['seuil_validation'],
+        })
+    return render(request, 'pfe/notes_deliberation.html', contexte)
+
+
+# ------------------------------------------------------------------ validation des semestres (chef de département)
+
+@login_required
+@validations_requises
+def notes_validations(request):
+    """
+    Validation des semestres : pour la session choisie (en cours par défaut), chaque semestre des programmes du
+    périmètre, avec l'avancement de la saisie (notes saisies / attendues) et son état : à valider, validé par le
+    chef de département, délibéré. Le chef de département valide (ou annule) d'ici ; la scolarité suit.
+    """
+    from collections import defaultdict
+    profil = get_profil(request)
+    sessions = list(Session.objects.order_by('-annee'))
+    sid = _entier(request.GET.get('session'))
+    session = next((s for s in sessions if s.pk == sid), None) or next((s for s in sessions if s.en_cours), None) \
+        or (sessions[0] if sessions else None)
+    programmes = list(programmes_du_profil(profil))
+    pid = _entier(request.GET.get('programme'))
+    if pid not in {p.pk for p in programmes}:
+        pid = None
+    choisis = [p for p in programmes if p.pk == pid] if pid else programmes
+    lignes = []
+    if session and choisis:
+        matieres = list(Matiere.objects.filter(session=session, filiere__in=choisis)
+                        .select_related('filiere', 'licence', 'semestre')
+                        .annotate(nb_notes=Count('notes', filter=Q(notes__moyenne_finale__isnull=False))))
+        effectifs = dict(((f, l), n) for f, l, n in
+                         Inscription.objects.filter(session=session, filiere__in=choisis, etudiant__preinscrit=False,
+                                                    conge__isnull=True)
+                         .values_list('filiere_id', 'licence_id').annotate(n=Count('id')))
+        delibres = semestres_delibres(matieres)
+        validations = {(v.filiere_id, v.semestre_id): v for v in
+                       ValidationSemestre.objects.filter(session=session, filiere__in=choisis).select_related('par')}
+        groupes = defaultdict(list)
+        for m in matieres:
+            groupes[(m.filiere, m.semestre)].append(m)
+        for (programme, semestre), ms in sorted(groupes.items(), key=lambda g: (g[0][0].nom, g[0][1].licence_id,
+                                                                             g[0][1].pk)):
+            inscrits = effectifs.get((programme.pk, ms[0].licence_id), 0)
+            attendues = inscrits * len(ms)
+            saisies = sum(min(m.nb_notes, inscrits) for m in ms)
+            delibere = (programme.pk, session.pk, semestre.pk) in delibres
+            validation = validations.get((programme.pk, semestre.pk))
+            lignes.append({
+                'programme': programme, 'semestre': semestre, 'licence': ms[0].licence, 'nb_matieres': len(ms),
+                'credits': sum(m.credit for m in ms), 'inscrits': inscrits, 'saisies': saisies, 'attendues': attendues,
+                'pourcent': round(100 * saisies / attendues) if attendues else 0,
+                'etat': 'delibere' if delibere else 'valide' if validation else 'a_valider', 'validation': validation,
+            })
+    ecoulee = session_ecoulee(session) if session else False
+    return render(request, 'pfe/notes_validations.html', {
+        'actif': 'notes_validations', 'sessions': sessions, 'session': session, 'programmes': programmes,
+        'programme_choisi': pid, 'lignes': lignes, 'ecoulee': ecoulee,
+        'peut_valider': profil.est_chef_departement and not ecoulee,
+        'nb_a_valider': sum(1 for l in lignes if l['etat'] == 'a_valider'),
+        'nb_valides': sum(1 for l in lignes if l['etat'] == 'valide'),
+        'nb_delibres': sum(1 for l in lignes if l['etat'] == 'delibere'),
+    })

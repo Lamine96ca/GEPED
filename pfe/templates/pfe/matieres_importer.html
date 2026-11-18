@@ -106,7 +106,7 @@
           {% if mes_programmes %}
             <li class="pb-0"><strong>Votre périmètre :</strong> {% for p in mes_programmes %}{{ p.nom }}{% if not forloop.last %}, {% endif %}{% endfor %}. Si une seule ligne porte un autre programme, <strong>tout l'import est refusé</strong>.</li>
           {% else %}
-            <li class="pb-0">Un chef de programme ne peut importer que les matières de son ou ses programmes : sinon tout son import est refusé.</li>
+            <li class="pb-0">Un chef de département ou un directeur de programme ne peut importer que les matières de ses programmes : sinon tout son import est refusé.</li>
           {% endif %}
         </ol>
       </div>

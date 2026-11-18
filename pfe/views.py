@@ -111,7 +111,7 @@ def tableau_de_bord(request):
 
 def _options_filtres(profil):
     programmes = Service.objects.filter(programme=True).order_by('nom')
-    if profil.role == 'programme':
+    if profil.a_perimetre:
         programmes = programmes.filter(id__in=profil.programme_ids)
     return {
         'sessions': Session.objects.order_by('-annee'),
@@ -683,7 +683,7 @@ def statistiques(request):
     conges_annee = inscriptions_visibles(profil).filter(conge__isnull=False)
     resultats = Resultat.objects.filter(niveau=Resultat.ANNEE, filiere__isnull=False)
     sout = Soutenance.objects.all()
-    if profil.role == 'programme':
+    if profil.a_perimetre:
         resultats = resultats.filter(filiere_id__in=profil.programme_ids)
         sout = sout.filter(filiere_id__in=profil.programme_ids)
     if cycle:

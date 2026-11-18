@@ -426,6 +426,27 @@ class Deliberation(models.Model):
         return f"Délibération {self.filiere} · {self.semestre} · {self.session}"
 
 
+class ValidationSemestre(models.Model):
+    """
+    Validation des notes d'un semestre (programme, session) par le chef de département, avant la délibération
+    par la scolarité. Après validation, le directeur de programme ne modifie plus ces notes ; le chef de
+    département peut encore les corriger, ou annuler sa validation.
+    """
+    filiere = models.ForeignKey(Service, on_delete=models.CASCADE, related_name='validations', verbose_name='Programme')
+    session = models.ForeignKey(Session, on_delete=models.CASCADE, verbose_name='Session')
+    semestre = models.ForeignKey(Semestre, on_delete=models.CASCADE, verbose_name='Semestre')
+    date = models.DateTimeField('Date de validation', auto_now_add=True)
+    par = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, verbose_name='Par')
+
+    class Meta:
+        verbose_name = 'Validation de semestre'
+        verbose_name_plural = 'Validations de semestre'
+        constraints = [models.UniqueConstraint(fields=['filiere', 'session', 'semestre'], name='validation_semestre_unique')]
+
+    def __str__(self):
+        return f"Validation {self.filiere} · {self.semestre} · {self.session}"
+
+
 class NoteHistorique(models.Model):
     """Trace de chaque modification d'une note : avant / après, auteur, date, motif et justificatif."""
     note = models.ForeignKey(Note, on_delete=models.CASCADE, related_name='historique')

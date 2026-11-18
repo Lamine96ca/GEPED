@@ -3,7 +3,7 @@
 {% block titre %}Matières{% endblock %}
 {% block titre_page %}Matières{% endblock %}
 {% block sous_titre %}<div class="sous-titre">
-  {% if profil.role == 'programme' %}Matières de {{ profil.structure }}{% elif peut_gerer %}Toutes les matières, tous les programmes{% else %}Consultation des matières de tous les programmes{% endif %}
+  {% if profil.a_perimetre %}Matières de {{ profil.structure }}{% elif peut_gerer %}Toutes les matières, tous les programmes{% else %}Consultation des matières de tous les programmes{% endif %}
 </div>{% endblock %}
 {% block actions %}
   {% if peut_gerer %}

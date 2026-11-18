@@ -4,42 +4,72 @@ Rôles gePed et périmètre de visibilité des étudiants.
 - Scolarité   : superutilisateur, ou personnel rattaché au service de la scolarité
                 (code settings.GPED_SCOLARITE_CODE ou nom dans settings.GPED_SCOLARITE_NOMS).
                 Peut inscrire, importer, modifier, exporter.
-- Département : personnel rattaché à un Service non-programme. Consulte et exporte la liste.
-- Programme   : personnel rattaché à un Service programme. Consulte et exporte
-                uniquement les étudiants inscrits dans ses programmes.
+- Chef de département : personnel « chef » rattaché à un département, c'est-à-dire un service auquel
+                des programmes sont rattachés (Service.departement), ou un programme qui est son propre
+                département. Premier responsable des programmes du département : il a sur TOUS ces
+                programmes les droits d'un directeur de programme, et il VALIDE les notes d'un semestre
+                avant la délibération (après validation, ses directeurs ne les modifient plus).
+- Directeur de programme : personnel rattaché à un Service programme (adjoint du chef de département).
+                Gère les matières, les notes et les soutenances de son ou ses programmes.
+- Département : personnel (non chef) d'un département : consulte les étudiants et les matières des
+                programmes du département.
+- Service     : personnel d'un autre service (Direction générale, Direction Générale des Études…) :
+                consulte les étudiants et les matières de tout l'établissement ; la Direction Générale
+                des Études lit aussi les notes, leur historique et les congés, sans rien modifier.
 
-Matières : la scolarité voit et gère toutes les matières ; un chef de programme voit et gère
-uniquement celles de son ou ses programmes ; les autres services les voient toutes, sans
-pouvoir les modifier.
+Périmètre : la scolarité et les services voient tout ; le chef de département, le directeur de programme
+et le personnel d'un département ne voient que leurs programmes (`programme_ids`).
 """
 from functools import wraps
 
 from django.conf import settings
 from django.core.exceptions import PermissionDenied
 
+from django.db.models import Q
+
 from .models import Inscription, Matiere, Service
 
 SCOLARITE = 'scolarite'
-DEPARTEMENT = 'departement'
+CHEF_DEPARTEMENT = 'chef_departement'
 PROGRAMME = 'programme'
+DEPARTEMENT = 'departement'
+SERVICE = 'service'
 AUCUN = 'aucun'
 
 LIBELLES = {
     SCOLARITE: 'Scolarité',
+    CHEF_DEPARTEMENT: 'Chef de département',
+    PROGRAMME: 'Directeur de programme',
     DEPARTEMENT: 'Département',
-    PROGRAMME: 'Programme',
+    SERVICE: 'Service',
     AUCUN: 'Aucun accès',
 }
 
+# Rôles limités à des programmes (`programme_ids`) ; la scolarité et les services voient tout l'établissement
+ROLES_PERIMETRE = (CHEF_DEPARTEMENT, PROGRAMME, DEPARTEMENT)
+
+
+def programmes_des_departements(departement_ids):
+    """Programmes rattachés à ces départements (un programme sans département est son propre département)."""
+    ids = list(departement_ids)
+    if not ids:
+        return []
+    return list(Service.objects.filter(programme=True)
+                .filter(Q(departement_id__in=ids) | Q(pk__in=ids, departement__isnull=True)).order_by('nom'))
+
 
 class Profil:
-    def __init__(self, role, services=(), personnel=None, superuser=False, tous_services=None):
+    def __init__(self, role, services=(), personnel=None, superuser=False, tous_services=None, programmes=None,
+                 departements=()):
         self.role = role
         self.services = list(services)
         self.personnel = personnel
         self.superuser = superuser
         # Tous les services du personnel (le rôle n'en garde qu'une partie) : sert aux droits de chef
         self.tous_services = list(tous_services if tous_services is not None else services)
+        # Programmes du périmètre (rôles limités) ; par défaut, les services programmes du rôle
+        self.programmes = list(programmes if programmes is not None else [s for s in self.services if s.programme])
+        self.departements = list(departements)       # départements du chef ou du personnel de département
 
     @property
     def est_chef(self):
@@ -52,10 +82,23 @@ class Profil:
 
     @property
     def departements_diriges(self):
-        """Départements dont le profil est chef : programmes qui sont leur propre département."""
-        if not self.est_chef:
-            return set()
-        return {s.id for s in self.tous_services if s.programme and s.departement_id == s.id}
+        """Départements dont le profil est chef (identifiants des services départements)."""
+        return {d.id for d in self.departements} if self.role == CHEF_DEPARTEMENT else set()
+
+    @property
+    def est_chef_departement(self):
+        """Chef de département : valide les notes des semestres de ses programmes avant la délibération."""
+        return self.role == CHEF_DEPARTEMENT
+
+    @property
+    def voit_validations(self):
+        """Page « Validation des semestres » : le chef de département (il valide), la scolarité (elle suit)."""
+        return self.est_chef_departement or self.est_scolarite
+
+    @property
+    def a_perimetre(self):
+        """Limité à ses programmes (chef de département, directeur de programme, personnel de département)."""
+        return self.role in ROLES_PERIMETRE
 
     @property
     def masters_diriges(self):
@@ -96,12 +139,12 @@ class Profil:
 
     @property
     def programme_ids(self):
-        return [s.id for s in self.services if s.programme]
+        return [p.id for p in self.programmes]
 
     @property
     def gere_matieres(self):
-        """Ajouter, modifier, supprimer, importer des matières (dans son périmètre)."""
-        return self.role in (SCOLARITE, PROGRAMME)
+        """Matières, notes et soutenances (dans son périmètre) : scolarité, chef de département, directeur."""
+        return self.role in (SCOLARITE, CHEF_DEPARTEMENT, PROGRAMME)
 
     @property
     def est_dge(self):
@@ -110,7 +153,7 @@ class Profil:
 
     @property
     def lit_notes(self):
-        """Liste des notes et résultats : scolarité, chefs de programme, Direction Générale des Études (lecture)."""
+        """Notes et résultats : scolarité, chefs de département, directeurs, Direction Générale des Études (lecture)."""
         return self.gere_matieres or self.est_dge
 
     @property
@@ -125,8 +168,8 @@ class Profil:
 
     @property
     def structure(self):
-        """Nom des services affichés à côté du rôle."""
-        return ', '.join(s.nom for s in self.services)
+        """Nom des services affichés à côté du rôle (le département pour son chef et son personnel)."""
+        return ', '.join(s.nom for s in (self.departements or self.services))
 
 
 def est_service_scolarite(service):
@@ -168,10 +211,21 @@ def _calculer_profil(user):
     if user.is_superuser or scolarite:
         return Profil(SCOLARITE, scolarite, personnel, **options)
     programmes = [s for s in services if s.programme]
+    # Départements de la personne : ses services auxquels des programmes sont rattachés
+    du_departement = programmes_des_departements([s.id for s in services])
+    dep_ids = {p.departement_id or p.id for p in du_departement}
+    departements = [s for s in services if s.id in dep_ids]
+    if departements and personnel and personnel.chef:
+        perimetre = {p.id: p for p in du_departement + programmes}
+        return Profil(CHEF_DEPARTEMENT, departements, personnel, departements=departements,
+                      programmes=sorted(perimetre.values(), key=lambda p: p.nom), **options)
     if programmes:
         return Profil(PROGRAMME, programmes, personnel, **options)
+    if departements:
+        return Profil(DEPARTEMENT, departements, personnel, programmes=du_departement, departements=departements,
+                      **options)
     if services:
-        return Profil(DEPARTEMENT, services, personnel, **options)
+        return Profil(SERVICE, services, personnel, programmes=[], **options)
     return Profil(AUCUN, [], personnel, **options)
 
 
@@ -185,9 +239,9 @@ def get_profil(request):
 def inscriptions_visibles(profil):
     """QuerySet des inscriptions que le profil a le droit de voir."""
     qs = Inscription.objects.all()
-    if profil.role in (SCOLARITE, DEPARTEMENT):
+    if profil.role in (SCOLARITE, SERVICE):
         return qs
-    if profil.role == PROGRAMME:
+    if profil.a_perimetre:
         return qs.filter(filiere_id__in=profil.programme_ids)
     return qs.none()
 
@@ -195,26 +249,27 @@ def inscriptions_visibles(profil):
 def matieres_visibles(profil):
     """QuerySet des matières que le profil a le droit de voir."""
     qs = Matiere.objects.all()
-    if profil.role in (SCOLARITE, DEPARTEMENT):
+    if profil.role in (SCOLARITE, SERVICE):
         return qs
-    if profil.role == PROGRAMME:
+    if profil.a_perimetre:
         return qs.filter(filiere_id__in=profil.programme_ids)
     return qs.none()
 
 
 def programmes_du_profil(profil):
-    """Programmes proposés dans les listes : tous (scolarité, autres services), sinon les siens."""
+    """Programmes proposés dans les listes : tous (scolarité, autres services), sinon ceux de son périmètre."""
     qs = Service.objects.filter(programme=True).order_by('nom')
-    if profil.role == PROGRAMME:
+    if profil.a_perimetre:
         return qs.filter(id__in=profil.programme_ids)
-    return qs if profil.role in (SCOLARITE, DEPARTEMENT) else qs.none()
+    return qs if profil.role in (SCOLARITE, SERVICE) else qs.none()
 
 
 def gestion_matieres_requise(vue):
     @wraps(vue)
     def wrapper(request, *args, **kwargs):
         if not get_profil(request).gere_matieres:
-            raise PermissionDenied("Action réservée à la scolarité et aux chefs de programme.")
+            raise PermissionDenied("Action réservée à la scolarité, aux chefs de département et aux directeurs de "
+                                   "programme.")
         return vue(request, *args, **kwargs)
     return wrapper
 
@@ -230,8 +285,11 @@ def _exige(propriete, message):
     return decorateur
 
 
-lecture_notes_requise = _exige('lit_notes', "Notes : réservé à la scolarité, aux chefs de programme et à la "
-                                            "Direction Générale des Études.")
+lecture_notes_requise = _exige('lit_notes', "Notes : réservé à la scolarité, aux chefs de département, aux "
+                                            "directeurs de programme et à la Direction Générale des Études.")
+chef_departement_requis = _exige('est_chef_departement', "Réservé au chef de département.")
+validations_requises = _exige('voit_validations', "Validation des semestres : réservé aux chefs de département et à "
+                                                  "la scolarité.")
 suivi_notes_requis = _exige('voit_suivi_notes', "Réservé à la scolarité, à l'administrateur et à la Direction "
                                                 "Générale des Études.")
 lecture_conges_requise = _exige('voit_conges', "Congés académiques : réservé à la scolarité et à la Direction "
@@ -240,7 +298,7 @@ chef_scolarite_requis = _exige('est_chef_scolarite', "Réservé au chef de la sc
 
 
 def acces_requis(vue):
-    """L'utilisateur doit avoir un rôle gePed (scolarité, département ou programme)."""
+    """L'utilisateur doit avoir un rôle gePed (scolarité, département, programme ou autre service)."""
     @wraps(vue)
     def wrapper(request, *args, **kwargs):
         if not get_profil(request).a_acces:
