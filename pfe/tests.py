@@ -4082,7 +4082,7 @@ class GpedTests(TestCase):
         from .releves import contenu
         self.assertEqual([code_reglement('Licence', '2026-2027'), code_reglement('Licence', '2026-2027', '2025-2026'),
                           code_reglement('Licence', '2025-2026'), code_reglement('Ingénieur', '2026-2027'),
-                          code_reglement('DUT', '2026-2027')], ['879', '', '', '877', ''])
+                          code_reglement('DUT', '2025-2026')], ['879', '', '', '877', ''])
         self.assertEqual([lettre(v, '879') for v in (9, 8.49, 7, 5, 4.99)], ['A+', 'A-', 'B-', 'D-', 'E'])
         self.assertEqual([mention(v, '879') for v in (8, 7, 6, 5, 4.9)],
                          ['Très bien', 'Bien', 'Assez bien', 'Passable', ''])
@@ -4150,3 +4150,41 @@ class GpedTests(TestCase):
             return [c.value for c in ws[10]][7:10]
         self.assertEqual(entetes([i_neuf]), ['CC', 'TP', 'CT'])
         self.assertEqual(entetes([i_ancien]), ['Contrôle', 'TP', 'Examen'])
+
+    def test_reglement_878_dut_nouveaux_etudiants_seulement(self):
+        """Arrêté 878 : nouveaux étudiants de DUT (première inscription en 2026-2027 ou après), mêmes calculs que le 879."""
+        from .models import Matiere, Note, ReleveNote, Semestre
+        from .notes import code_reglement, lettre, mention, recalculer
+        from .releves import contenu
+        self.assertEqual([code_reglement('DUT', '2026-2027'), code_reglement('DUT', '2027-2028', '2025-2026'),
+                          code_reglement('DUT', '2025-2026'), code_reglement('Licence', '2026-2027'),
+                          code_reglement('Master', '2026-2027')], ['878', '', '', '879', ''])
+        self.assertEqual([lettre(v, '878') for v in (9, 7.4, 5.2, 4.99)], ['A+', 'B', 'D-', 'E'])
+        self.assertEqual(mention(7.44, '878'), 'Bien')                              # exemple de l'art. 56
+        s2627 = Session.objects.create(annee='2026-2027')
+        dut = Service.objects.create(nom='DUT EN SYSTEME PHOTOVOLTAIQUE', code='DUT', programme=True, cycle='DUT')
+        s1 = Semestre.objects.create(nom='SEMESTRE 1', abrege='S1', licence=self.licence)
+        neuf = Etudiant.objects.create(matricule='D1', prenom='Dian', nom='NOUVEAU', email='d1@t.local')
+        i_neuf = Inscription.objects.create(etudiant=neuf, session=s2627, licence=self.licence, filiere=dut,
+                                            cycle='DUT')
+        ancien = Etudiant.objects.create(matricule='D0', prenom='Dian', nom='ANCIEN', email='d0@t.local')
+        Inscription.objects.create(etudiant=ancien, session=self.session, licence=self.licence, filiere=dut,
+                                   cycle='DUT')
+        Inscription.objects.create(etudiant=ancien, session=s2627, licence=self.licence, filiere=dut, cycle='DUT')
+        solaire = Matiere.objects.create(nom='Énergie solaire', filiere=dut, semestre=s1, licence=self.licence,
+                                         session=s2627, credit=6)
+        sae = Matiere.objects.create(nom='SAE 1 : dimensionnement', filiere=dut, semestre=s1, licence=self.licence,
+                                     session=s2627, credit=4)
+        # Exemple de l'art. 56 : NCC 7, NCT 7,5 → 7,3 ; rattrapage plafonné à 5
+        n = Note.objects.create(etudiant=neuf, matiere=solaire, controle=7, examen=7.5)
+        r = Note.objects.create(etudiant=neuf, matiere=sae, moyenne=3, moyenne_deposee=True, rattrapage=9)
+        a = Note.objects.create(etudiant=ancien, matiere=solaire, controle=7, examen=7.5)
+        self.assertEqual((n.reglement, n.moyenne_finale, n.lettre, r.moyenne_finale), ('878', 7.3, 'B-', 5))
+        self.assertEqual((a.reglement, a.moyenne_finale), ('', 7.3))                  # 40 / 60 sans TP aussi
+        recalculer([neuf.pk, ancien.pk])
+        self.connecter('scol')
+        self.client.post(reverse('releve_creer'), {'type': 'S', 'inscription': i_neuf.pk, 'semestre': s1.pk})
+        c = contenu(ReleveNote.objects.get(type='S', etudiant=neuf))
+        # (7,3 × 6 + 5 × 4) / 10 = 6,38
+        self.assertEqual((c['moyenne'], c['cumul']['moyenne'], c['cumul']['credits_valides']), (6.38, 6.38, 10))
+        self.assertEqual(self.client.get(reverse('notes_saisie', args=[solaire.pk])).status_code, 200)

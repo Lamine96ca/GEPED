@@ -405,6 +405,27 @@ GPED_NOTES = {
             'lettres': [(9, 'A+'), (8.5, 'A'), (8, 'A-'), (7.67, 'B+'), (7.34, 'B'), (7, 'B-'), (6.67, 'C+'),
                         (6.34, 'C'), (6, 'C-'), (5.67, 'D+'), (5.34, 'D'), (5, 'D-'), (0, 'E')],      # art. 47
         },
+        '878': {
+            'nom': "Arrêté 878 (règlement des études de DUT)",
+            'cycles': ['DUT'],
+            'premiere_session': 2026,
+            # Art. 88 : les étudiants déjà inscrits gardent les règles de leur première inscription ; le règlement
+            # ne vaut que pour ceux dont la PREMIÈRE inscription en DUT date de 2026-2027 ou après.
+            'premiere_inscription': True,
+            # Note de l'ECUE (art. 41 et 56) : CC 40 % + CT 60 % ; CC = contrôle (et TP s'il est donné), CT = examen.
+            # SAE, stages, PPP / portfolio : des matières comme les autres, au prorata de leurs crédits (art. 56).
+            'calcul': 'cc_ct',
+            'poids_cc_ct': {'cc': 0.40, 'ct': 0.60},
+            'plafond_rattrapage': 5,                 # art. 43
+            'moyenne_cycle': 'cumulative',           # art. 55-56 : moyenne cumulative des 4 semestres, par crédits
+            'dettes': True,                          # art. 52 : UE non validée après rattrapage → dette (E)
+            'libelle_session': 'Validée au rattrapage',
+            'libelles': {'controle': 'CC', 'tp': 'TP', 'examen': 'CT'},
+            'releve_cumul': True,                    # art. 49 : moyenne cumulative et cumul de crédits au relevé
+            'mentions': [(8, 'Très bien'), (7, 'Bien'), (6, 'Assez bien'), (5, 'Passable')],      # art. 55
+            'lettres': [(9, 'A+'), (8.5, 'A'), (8, 'A-'), (7.67, 'B+'), (7.34, 'B'), (7, 'B-'), (6.67, 'C+'),
+                        (6.34, 'C'), (6, 'C-'), (5.67, 'D+'), (5.34, 'D'), (5, 'D-'), (0, 'E')],      # art. 45
+        },
     },
 }
 
