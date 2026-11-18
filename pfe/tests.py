@@ -3340,7 +3340,7 @@ class GpedTests(TestCase):
         self.assertContains(r, '>CC</th>', html=False)
         e8 = Etudiant.objects.create(matricule='M8', prenom='Ali', nom='N8', email='e8@t.local')
         Inscription.objects.create(etudiant=e8, session=self.session, licence=self.licence, filiere=tc, cycle='Licence')
-        self.assertContains(self.client.get(url), "suivent l'arrêté 877")          # matière partagée
+        self.assertContains(self.client.get(url), "Arrêté 877 (règlement des études d&#x27;ingénierie)")
         # Filtre matricule : un seul étudiant affiché (et enregistré)
         r = self.client.get(url, {'matricule': 'm9'})
         self.assertContains(r, f'name="controle_{e9.pk}"')
@@ -4069,3 +4069,84 @@ class GpedTests(TestCase):
         self.connecter('info')
         ws = openpyxl.load_workbook(io.BytesIO(self.client.get(url).content)).active
         self.assertEqual([c.value for c in ws[10]][7:12], ['CC', 'TP', 'CT', 'Moyenne', 'Rattrapage'])
+
+    def test_reglement_879_licence_nouveaux_etudiants_seulement(self):
+        """
+        Arrêté 879 : nouveaux étudiants de Licence (première inscription en 2026-2027 ou après) : CC 40 % + CT 60 %,
+        rattrapage plafonné à 5, 13 lettres, cumul au relevé. Les étudiants déjà inscrits avant gardent les anciennes
+        règles et l'ancien relevé, même pour leurs notes de 2026-2027 (art. 89).
+        """
+        from .fiche_notes import fiche_notes_xlsx
+        from .models import Matiere, Note, ReleveNote, Semestre
+        from .notes import code_reglement, lettre, mention, recalculer
+        from .releves import contenu
+        self.assertEqual([code_reglement('Licence', '2026-2027'), code_reglement('Licence', '2026-2027', '2025-2026'),
+                          code_reglement('Licence', '2025-2026'), code_reglement('Ingénieur', '2026-2027'),
+                          code_reglement('DUT', '2026-2027')], ['879', '', '', '877', ''])
+        self.assertEqual([lettre(v, '879') for v in (9, 8.49, 7, 5, 4.99)], ['A+', 'A-', 'B-', 'D-', 'E'])
+        self.assertEqual([mention(v, '879') for v in (8, 7, 6, 5, 4.9)],
+                         ['Très bien', 'Bien', 'Assez bien', 'Passable', ''])
+
+        s2627 = Session.objects.create(annee='2026-2027')
+        meca = Service.objects.create(nom='MECATRONIQUE', code='MECA', programme=True, cycle='Licence')
+        s1 = Semestre.objects.create(nom='SEMESTRE 1', abrege='S1', licence=self.licence)
+        s2 = Semestre.objects.create(nom='SEMESTRE 2', abrege='S2', licence=self.licence)
+        neuf = Etudiant.objects.create(matricule='N1', prenom='Nene', nom='NOUVEAU', email='n1@t.local')
+        i_neuf = Inscription.objects.create(etudiant=neuf, session=s2627, licence=self.licence, filiere=meca,
+                                            cycle='Licence', promotion=self.p20)
+        ancien = Etudiant.objects.create(matricule='A1', prenom='Alpha', nom='ANCIEN', email='a1@t.local')
+        Inscription.objects.create(etudiant=ancien, session=self.session, licence=self.licence, filiere=meca,
+                                   cycle='Licence')                          # déjà inscrit en 2025-2026
+        i_ancien = Inscription.objects.create(etudiant=ancien, session=s2627, licence=self.licence, filiere=meca,
+                                              cycle='Licence')               # redouble en 2026-2027
+        mecanique = Matiere.objects.create(nom='Mécanique', filiere=meca, semestre=s1, licence=self.licence,
+                                           session=s2627, credit=6)
+        electro = Matiere.objects.create(nom='Électronique', filiere=meca, semestre=s2, licence=self.licence,
+                                         session=s2627, credit=4)
+
+        # Saisie : les deux règlements dans la même matière, chaque ligne selon le sien
+        self.connecter('scol')
+        url = reverse('notes_saisie', args=[mecanique.pk])
+        self.assertContains(self.client.get(url), 'Arrêté 879 (règlement des études de Licence)')
+        vide = {f'{c}_{e}': '' for c in ('controle', 'tp', 'examen', 'moyenne', 'rattrapage')
+                for e in (neuf.pk, ancien.pk)}
+        self.client.post(url, {**vide, f'controle_{neuf.pk}': '6', f'tp_{neuf.pk}': '8', f'examen_{neuf.pk}': '4,5',
+                               f'controle_{ancien.pk}': '6', f'tp_{ancien.pk}': '8', f'examen_{ancien.pk}': '4,5'})
+        n_neuf, n_ancien = Note.objects.get(etudiant=neuf), Note.objects.get(etudiant=ancien)
+        # Nouveau : CC = (6 + 8) / 2 = 7 ; 7 × 0,4 + 4,5 × 0,6 = 5,5. Ancien : 6 × 0,25 + 8 × 0,35 + 4,5 × 0,4 = 6,1
+        self.assertEqual((n_neuf.reglement, n_neuf.moyenne_finale, n_neuf.lettre, n_neuf.mention),
+                         ('879', 5.5, 'D', 'Passable'))
+        self.assertEqual((n_ancien.reglement, n_ancien.moyenne_finale, n_ancien.lettre, n_ancien.mention),
+                         ('', 6.1, 'C', 'Assez bien'))
+        # Rattrapage : plafonné à 5 pour le nouveau, pas pour l'ancien
+        r_neuf = Note.objects.create(etudiant=neuf, matiere=electro, moyenne=3, moyenne_deposee=True, rattrapage=8)
+        r_ancien = Note.objects.create(etudiant=ancien, matiere=electro, moyenne=3, moyenne_deposee=True,
+                                       rattrapage=8)
+        self.assertEqual((r_neuf.moyenne_finale, r_ancien.moyenne_finale), (5, 8))
+        recalculer([neuf.pk, ancien.pk])
+
+        # Relevés : moyenne et crédits cumulés pour le nouveau (art. 51), relevé inchangé pour l'ancien
+        for insc in (i_neuf, i_ancien):
+            self.client.post(reverse('releve_creer'), {'type': 'S', 'inscription': insc.pk, 'semestre': s1.pk})
+            self.client.post(reverse('releve_creer'), {'type': 'A', 'inscription': insc.pk})
+        c_s1 = contenu(ReleveNote.objects.get(type='S', etudiant=neuf))
+        self.assertEqual((c_s1['moyenne'], c_s1['cumul']['moyenne'], c_s1['cumul']['credits_valides'],
+                          c_s1['cumul']['credits_total']), (5.5, 5.5, 6, 6))           # jusqu'au S1 seulement
+        c_an = contenu(ReleveNote.objects.get(type='A', etudiant=neuf))
+        # (5,5 × 6 + 5 × 4) / 10 = 5,3
+        self.assertEqual((c_an['moyenne'], c_an['cumul']['moyenne'], c_an['cumul']['credits_valides']), (5.3, 5.3, 10))
+        self.assertTrue(c_an['blocs'][0]['detaille'])                       # normale / rattrapage / retenue
+        for type_ in ('S', 'A'):
+            c = contenu(ReleveNote.objects.get(type=type_, etudiant=ancien))
+            self.assertNotIn('cumul', c)
+            self.assertFalse(c['blocs'][0]['detaille'])
+        for rel in ReleveNote.objects.filter(etudiant__in=[neuf, ancien]):
+            r = self.client.get(reverse('releve_pdf', args=[rel.pk]))
+            self.assertEqual((r.status_code, r.content[:4]), (200, b'%PDF'))
+
+        # Fiche enseignant : CC / CT pour les nouveaux, Contrôle / Examen pour les anciens
+        def entetes(inscriptions):
+            ws = openpyxl.load_workbook(io.BytesIO(fiche_notes_xlsx(mecanique, inscriptions))).active
+            return [c.value for c in ws[10]][7:10]
+        self.assertEqual(entetes([i_neuf]), ['CC', 'TP', 'CT'])
+        self.assertEqual(entetes([i_ancien]), ['Contrôle', 'TP', 'Examen'])

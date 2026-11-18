@@ -86,7 +86,7 @@
         {% else %}
           <i class="bi bi-calculator"></i> Moyenne = contrôle 25 % + TP 35 % + examen 40 % (sans TP : 40 % + 60 %).
           Si vous remplissez <strong>Moyenne</strong>, elle est prise telle quelle. Le <strong>rattrapage</strong> remplace la moyenne s'il est meilleur (« Session »).
-          {% if reglements_melanges %}<br><i class="bi bi-exclamation-triangle"></i> Des étudiants de cette matière suivent l'arrêté 877 : leur ligne est calculée selon ce règlement.{% endif %}
+          {% if reglements_melanges %}<br><i class="bi bi-exclamation-triangle"></i> Des étudiants de cette matière suivent un règlement particulier ({% for code, r in reglements.items %}{% if code %}{{ r.nom }}{% endif %}{% endfor %}) : leur ligne est calculée selon ce règlement.{% endif %}
         {% endif %}
       </div>
     </div>

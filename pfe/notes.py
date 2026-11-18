@@ -52,16 +52,55 @@ def regles(code=''):
     return r
 
 
-def code_reglement(cycle, annee):
-    """Règlement d'une inscription : son cycle et l'année de sa session (« 2025 - 2026 »). '' sinon."""
+def code_reglement(cycle, annee, debut_cycle=None):
+    """
+    Règlement d'une inscription : son cycle et l'année de sa session (« 2025 - 2026 »). '' sinon.
+    Règlement « premiere_inscription » (arrêté 879, art. 89) : c'est l'année de la PREMIÈRE inscription de
+    l'étudiant dans ce cycle (`debut_cycle`, « 2026 - 2027 ») qui compte ; les étudiants déjà inscrits avant
+    gardent les anciennes règles jusqu'au bout.
+    """
     for code, r in settings.GPED_NOTES.get('reglements', {}).items():
-        if cycle in r.get('cycles', ()) and _debut(annee) >= r.get('premiere_session', 0):
+        if cycle not in r.get('cycles', ()):
+            continue
+        annee_ref = (debut_cycle or annee) if r.get('premiere_inscription') else annee
+        if _debut(annee_ref) >= r.get('premiere_session', 0):
             return code
     return ''
 
 
-def code_inscription(inscription):
-    return code_reglement(inscription.cycle, inscription.session.annee)
+def _cycles_premiere_inscription():
+    return {c for r in settings.GPED_NOTES.get('reglements', {}).values() if r.get('premiere_inscription')
+            for c in r.get('cycles', ())}
+
+
+def debuts_cycle(etudiant_ids):
+    """{(etudiant_id, cycle): année de la première inscription dans ce cycle} (cycles concernés seulement)."""
+    from .models import Inscription
+    cycles, debuts = _cycles_premiere_inscription(), {}
+    if not cycles or not etudiant_ids:
+        return debuts
+    for etu, cycle, annee in Inscription.objects.filter(etudiant_id__in=set(etudiant_ids), cycle__in=cycles) \
+            .values_list('etudiant_id', 'cycle', 'session__annee'):
+        if (etu, cycle) not in debuts or _debut(annee) < _debut(debuts[(etu, cycle)]):
+            debuts[(etu, cycle)] = annee
+    return debuts
+
+
+def code_inscription(inscription, debuts=None):
+    """Règlement d'une inscription ; `debuts` : résultat de debuts_cycle() déjà calculé (sinon : une requête)."""
+    debut = None
+    if inscription.cycle in _cycles_premiere_inscription():
+        if debuts is None:
+            debuts = debuts_cycle([inscription.etudiant_id])
+        debut = debuts.get((inscription.etudiant_id, inscription.cycle))
+    return code_reglement(inscription.cycle, inscription.session.annee, debut)
+
+
+def codes_inscriptions(inscriptions):
+    """{inscription.pk: code} pour une liste d'inscriptions (avec leur session), en une requête."""
+    inscriptions = list(inscriptions)
+    debuts = debuts_cycle({i.etudiant_id for i in inscriptions})
+    return {i.pk: code_inscription(i, debuts) for i in inscriptions}
 
 
 def codes_reglement(paires):
@@ -73,11 +112,13 @@ def codes_reglement(paires):
         return {}
     matieres = [m for _, m in paires]
     par_cle = {}
+    debuts = debuts_cycle({e for e, _ in paires})
     for etu, ses, fil, lic, cycle, annee in Inscription.objects.filter(
             etudiant_id__in={e for e, _ in paires}, session_id__in={m.session_id for m in matieres},
             filiere_id__in={m.filiere_id for m in matieres}, licence_id__in={m.licence_id for m in matieres}
     ).values_list('etudiant_id', 'session_id', 'filiere_id', 'licence_id', 'cycle', 'session__annee'):
-        par_cle[(etu, ses, fil, lic)] = par_cle.get((etu, ses, fil, lic)) or code_reglement(cycle, annee)
+        par_cle[(etu, ses, fil, lic)] = par_cle.get((etu, ses, fil, lic)) or code_reglement(
+            cycle, annee, debuts.get((etu, cycle)))
     return {(e, m.pk): par_cle.get((e, m.session_id, m.filiere_id, m.licence_id), '') for e, m in paires}
 
 
@@ -500,11 +541,12 @@ def recalculer(etudiant_ids):
              Note.objects.filter(etudiant_id__in=ids).values_list('etudiant_id', 'matiere_id', 'moyenne_finale')}
 
     nouveaux, annees_par_programme = [], defaultdict(list)
+    debuts = debuts_cycle(ids)
     for insc in inscriptions:
         matieres = matieres_par_triplet.get((insc.filiere_id, insc.session_id, insc.licence_id))
         if not matieres:
             continue
-        code = code_inscription(insc)
+        code = code_inscription(insc, debuts)
         commun = {'etudiant_id': insc.etudiant_id, 'filiere_id': insc.filiere_id, 'session_id': insc.session_id,
                   'licence_id': insc.licence_id, 'cycle': insc.cycle}
         par_semestre = defaultdict(list)
@@ -523,7 +565,7 @@ def recalculer(etudiant_ids):
     for (etudiant_id, filiere_id), annees in annees_par_programme.items():
         retenues = list(annees_retenues(annees).values())
         derniere_insc = max((i for i, _ in retenues), key=lambda i: i.session.annee)
-        code = code_inscription(derniere_insc)
+        code = code_inscription(derniere_insc, debuts)
         note_soutenance = soutenances.get((etudiant_id, filiere_id))
         if regles(code)['moyenne_cycle'] == 'cumulative':
             # Arrêté 877 : moyenne générale cumulative de toutes les matières du programme, pondérée par les

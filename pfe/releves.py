@@ -81,17 +81,18 @@ def bloc(inscription, semestre=None):
 
 
 def libelle_cumul(inscription):
-    """Arrêté 877 : la moyenne cumulative du Tronc commun est celle du CPC, sinon celle du cycle ingénieur."""
+    """Arrêté 877 : la moyenne cumulative du Tronc commun est celle du CPC, sinon celle du cycle."""
     if inscription.cycle == 'Tronc commun':
         return 'Moyenne générale du CPC'
     return 'Moyenne générale du cycle'
 
 
-def cumul(inscription):
+def cumul(inscription, jusqu_au_semestre=None):
     """
-    Arrêté 877 (extrait du livret) : moyenne générale cumulative (pondérée par les crédits) et crédits
-    cumulés de l'étudiant dans le programme de l'inscription, jusqu'à cette inscription comprise ; une
-    année par niveau (redoublement : la dernière, jusqu'à cette session).
+    Arrêtés 877 et 879 : moyenne générale cumulative (pondérée par les crédits) et crédits cumulés de
+    l'étudiant dans le programme de l'inscription, jusqu'à cette inscription comprise ; une année par niveau
+    (redoublement : la dernière, jusqu'à cette session). `jusqu_au_semestre` : pour l'année de l'inscription,
+    seulement les semestres jusqu'à celui-ci (relevé semestriel).
     """
     code = code_inscription(inscription)
     inscriptions = list(Inscription.objects.filter(etudiant_id=inscription.etudiant_id,
@@ -103,8 +104,10 @@ def cumul(inscription):
     retenues = [i for i, _ in annees_retenues([(i.session.annee, i, None) for i in inscriptions]).values()]
     matieres = []
     for i in retenues:
-        matieres.extend(Matiere.objects.filter(filiere_id=i.filiere_id, session_id=i.session_id,
-                                               licence_id=i.licence_id))
+        qs = Matiere.objects.filter(filiere_id=i.filiere_id, session_id=i.session_id, licence_id=i.licence_id)
+        if jusqu_au_semestre is not None and i.pk == inscription.pk:
+            qs = qs.filter(semestre_id__lte=jusqu_au_semestre.pk)
+        matieres.extend(qs)
     notes = {(inscription.etudiant_id, mat): v for mat, v in Note.objects.filter(
         etudiant_id=inscription.etudiant_id, matiere__in=[m.pk for m in matieres],
         moyenne_finale__isnull=False).values_list('matiere_id', 'moyenne_finale')}
@@ -128,14 +131,21 @@ def contenu(releve):
         raise ValueError("L'inscription de ce relevé n'existe plus.")
     if releve.type == ReleveNote.SEMESTRE:
         b = bloc(insc, releve.semestre)
-        return {'titre': 'RELEVÉ DE NOTES', 'niveau': releve.semestre.nom, 'libelle_moyenne': 'Moyenne semestrielle',
-                'session': insc.session.annee, 'blocs': [b], 'definitif': b['definitif'], 'promotion': insc.promotion,
-                'moyenne': b['moyenne'], 'mention': b['mention']}
-    b = bloc(insc)
-    abreges = ' et '.join(s.abrege or s.nom for s in sorted(b['semestres'], key=lambda s: s.pk))
-    return {'titre': 'RELEVÉ DE NOTES', 'niveau': f"{insc.licence.nom}" + (f" ({abreges})" if abreges else ''),
-            'libelle_moyenne': 'Moyenne annuelle', 'session': insc.session.annee, 'blocs': [b],
-            'definitif': b['definitif'], 'promotion': insc.promotion, 'moyenne': b['moyenne'], 'mention': b['mention']}
+        c = {'titre': 'RELEVÉ DE NOTES', 'niveau': releve.semestre.nom, 'libelle_moyenne': 'Moyenne semestrielle',
+             'session': insc.session.annee, 'blocs': [b], 'definitif': b['definitif'], 'promotion': insc.promotion,
+             'moyenne': b['moyenne'], 'mention': b['mention']}
+    else:
+        b = bloc(insc)
+        abreges = ' et '.join(s.abrege or s.nom for s in sorted(b['semestres'], key=lambda s: s.pk))
+        c = {'titre': 'RELEVÉ DE NOTES', 'niveau': f"{insc.licence.nom}" + (f" ({abreges})" if abreges else ''),
+             'libelle_moyenne': 'Moyenne annuelle', 'session': insc.session.annee, 'blocs': [b],
+             'definitif': b['definitif'], 'promotion': insc.promotion, 'moyenne': b['moyenne'],
+             'mention': b['mention']}
+    # Arrêté 879 (art. 51) : le relevé porte aussi la moyenne cumulative et le cumul des crédits. Les autres
+    # règlements (anciens étudiants de Licence, arrêté 877) gardent le relevé de la période seule.
+    if regles(b['reglement']).get('releve_cumul'):
+        c['cumul'] = cumul(insc, releve.semestre if releve.type == ReleveNote.SEMESTRE else None)
+    return c
 
 
 def contenu_extrait(releve):

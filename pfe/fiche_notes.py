@@ -70,8 +70,8 @@ def _formule_case(ref):
 def code_majoritaire(inscriptions):
     """Règlement de la plupart des inscrits (une matière n'en a normalement qu'un)."""
     from collections import Counter
-    from .notes import code_inscription
-    codes = Counter(code_inscription(i) for i in inscriptions)
+    from .notes import codes_inscriptions
+    codes = Counter(codes_inscriptions(inscriptions).values())
     return codes.most_common(1)[0][0] if codes else ''
 
 

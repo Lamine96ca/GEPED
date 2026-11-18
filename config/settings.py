@@ -385,6 +385,26 @@ GPED_NOTES = {
             'lettres': [(9, 'A+'), (8.5, 'A'), (8, 'A-'), (7.67, 'B+'), (7.34, 'B'), (7, 'B-'), (6.67, 'C+'),
                         (6.34, 'C'), (6, 'C-'), (5.67, 'D+'), (5.34, 'D'), (5, 'D-'), (0, 'E')],
         },
+        '879': {
+            'nom': "Arrêté 879 (règlement des études de Licence)",
+            'cycles': ['Licence'],
+            'premiere_session': 2026,
+            # Art. 89 : les étudiants déjà inscrits gardent les règles de leur première inscription. Le règlement
+            # ne vaut donc que pour ceux dont la PREMIÈRE inscription en Licence date de 2026-2027 ou après.
+            'premiere_inscription': True,
+            # Note de l'ECUE (art. 43) : CC 40 % + CT 60 % ; CC = contrôle (et TP s'il est donné), CT = examen
+            'calcul': 'cc_ct',
+            'poids_cc_ct': {'cc': 0.40, 'ct': 0.60},
+            'plafond_rattrapage': 5,                 # art. 45
+            'moyenne_cycle': 'cumulative',           # art. 57 : moyenne cumulative des 6 semestres, par crédits
+            'dettes': True,                          # art. 54 : UE non validée après rattrapage → dette (E)
+            'libelle_session': 'Validée au rattrapage',
+            'libelles': {'controle': 'CC', 'tp': 'TP', 'examen': 'CT'},
+            'releve_cumul': True,                    # art. 51 : moyenne cumulative et cumul de crédits au relevé
+            'mentions': [(8, 'Très bien'), (7, 'Bien'), (6, 'Assez bien'), (5, 'Passable')],      # art. 57
+            'lettres': [(9, 'A+'), (8.5, 'A'), (8, 'A-'), (7.67, 'B+'), (7.34, 'B'), (7, 'B-'), (6.67, 'C+'),
+                        (6.34, 'C'), (6, 'C-'), (5.67, 'D+'), (5.34, 'D'), (5, 'D-'), (0, 'E')],      # art. 47
+        },
     },
 }
 

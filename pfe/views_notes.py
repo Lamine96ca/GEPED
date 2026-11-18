@@ -21,7 +21,8 @@ from .forms import ImportNotesForm
 from .import_notes import OBLIGATOIRES as OBLIGATOIRES_NOTES, importer_notes, modele_notes_xlsx
 from .models import (Deliberation, Etudiant, ImportNotes, Inscription, Licence, Matiere, Note, Resultat, Semestre,
                      Session, ValidationSemestre)
-from .notes import (CHAMPS_SAISIE, MOTIF_SUPER_UTILISATEUR, avec_promotion, code_reglement, en_note,
+from .notes import (CHAMPS_SAISIE, MOTIF_SUPER_UTILISATEUR, avec_promotion, code_reglement, codes_inscriptions,
+                    en_note,
                     enregistrer_notes, est_delibere,
                     filtrer_promotion, peut_modifier, recalculer, regles, saisie_de, semestres_delibres,
                     semestres_valides, session_ecoulee, verifier_pdf)
@@ -165,7 +166,7 @@ def notes_saisie(request, pk):
                                 pk=pk)
     delibere = est_delibere(matiere)
     modifiable = peut_modifier(profil, matiere, delibere)
-    inscrits = inscrits_de(matiere).select_related('promotion')
+    inscrits = inscrits_de(matiere).select_related('promotion', 'session')
     from .models import Promotion
     from django.db.models.functions import Length
     promotions_matiere = list(Promotion.objects.filter(pk__in=inscrits.values('promotion_id'))
@@ -243,7 +244,8 @@ def notes_saisie(request, pk):
             return redirect(retour or request.get_full_path())
 
     # Règlement de chaque étudiant (arrêté 877 : CC / CT, rattrapage plafonné) ; en-têtes : celui de tous
-    codes = {insc.etudiant_id: code_reglement(insc.cycle, matiere.session.annee) for insc in inscrits}
+    codes_insc = codes_inscriptions(inscrits)
+    codes = {insc.etudiant_id: codes_insc[insc.pk] for insc in inscrits}
     regle = regles(next(iter(set(codes.values())))) if len(set(codes.values())) == 1 else regles()
     libelles = {c: regle['libelles'].get(c, LIBELLES[c]) for c in CHAMPS_SAISIE}
     lignes = []
@@ -649,6 +651,7 @@ def grille_deliberation(profil, f):
         inscriptions = inscriptions.filter(Q(etudiant__matricule__icontains=q) | Q(etudiant__ine__icontains=q)
                                            | Q(etudiant__nom__icontains=q) | Q(etudiant__prenom__icontains=q))
     inscriptions = list(inscriptions.order_by('etudiant__nom', 'etudiant__prenom'))
+    codes_insc = codes_inscriptions(inscriptions)
     notes = {(n.etudiant_id, n.matiere_id): n for n in
              Note.objects.filter(matiere__in=matieres, etudiant_id__in=[i.etudiant_id for i in inscriptions])}
     total_credits = sum(m.credit for m in matieres)
@@ -667,7 +670,7 @@ def grille_deliberation(profil, f):
         moyenne = arrondi(points / total_credits) if total_credits and manquantes < len(matieres) else None
         lignes.append({'inscription': insc, 'etudiant': insc.etudiant, 'cases': cases, 'nb_validees': nb,
                        'credits_valides': credits, 'manquantes': manquantes, 'moyenne': moyenne,
-                       'mention': mention(moyenne, code_reglement(insc.cycle, insc.session.annee))})
+                       'mention': mention(moyenne, codes_insc[insc.pk])})
     return matieres, lignes
 
 

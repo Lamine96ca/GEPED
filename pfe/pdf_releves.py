@@ -251,8 +251,14 @@ def _pdf_releve(c, releve, contenu, url, cachet_signature):
     y = _tableau_releve(c, b, y - 8, annuel=releve.type == ReleveNote.ANNUEL)
     y_mention = _resume(c, y, ([('Notes manquantes', str(b['notes_manquantes']))] if b['notes_manquantes'] else [])
                         + [(contenu['libelle_moyenne'], f"{fmt(contenu['moyenne'])}/10"),
-                           ('Crédits validés', f"{b['credits_valides']} / {b['credits_total']}"),
-                           ('Mention', contenu['mention'] or '—')])
+                           ('Crédits validés', f"{b['credits_valides']} / {b['credits_total']}")]
+                        # Arrêté 879 (art. 51) : moyenne cumulative et crédits cumulés ; « Mention » reste la
+                        # dernière ligne (la signature s'aligne sur elle)
+                        + ([('Moyenne cumulative', f"{fmt(contenu['cumul']['moyenne'])}/10"),
+                            ('Crédits cumulés', f"{contenu['cumul']['credits_valides']} / "
+                                                f"{contenu['cumul']['credits_total']}")]
+                           if contenu.get('cumul') else [])
+                        + [('Mention', contenu['mention'] or '—')])
     _pied(c, releve, cachet_signature, y_mention, contenu['signataire'])
 
 
