@@ -3,7 +3,7 @@
 {% block titre_page %}<a href="{% if retour %}{{ retour }}{% else %}{% url 'notes_matieres' %}?session={{ matiere.session_id }}&programme={{ matiere.filiere_id }}&licence={{ matiere.licence_id }}&semestre={{ matiere.semestre_id }}{% endif %}" class="text-decoration-none text-secondary me-1" title="{% if retour %}Retour à la liste des notes{% else %}Retour aux matières{% endif %}"><i class="bi bi-arrow-left"></i></a> {{ matiere.nom }}{% endblock %}
 {% block sous_titre %}<div class="sous-titre">{{ matiere.filiere }} · {{ matiere.licence.nom }} · {{ matiere.semestre.nom }} · {{ matiere.session.annee }} · {{ matiere.credit }} crédits{% if matiere.code %} · {{ matiere.code }}{% endif %}</div>{% endblock %}
 {% block actions %}
-  <a href="{% url 'notes_fiche_enseignant' matiere.pk %}{% if promotion_choisie %}?promotion={{ promotion_choisie }}{% endif %}" class="btn btn-or" title="Fiche Excel à remplir par l'enseignant, à imprimer, signer puis importer"><i class="bi bi-file-earmark-excel"></i> <span class="d-none d-sm-inline">Fiche enseignant (Excel)</span></a>
+  {% if profil.telecharge_fiches %}<a href="{% url 'notes_fiche_enseignant' matiere.pk %}{% if promotion_choisie %}?promotion={{ promotion_choisie }}{% endif %}" class="btn btn-or" title="Fiche Excel à remplir par l'enseignant, à imprimer, signer puis importer"><i class="bi bi-file-earmark-excel"></i> <span class="d-none d-sm-inline">Fiche enseignant (Excel)</span></a>{% endif %}
   <a href="{% url 'notes_resultats' %}?session={{ matiere.session_id }}&programme={{ matiere.filiere_id }}&semestre={{ matiere.semestre_id }}" class="btn btn-light"><i class="bi bi-bar-chart"></i> <span class="d-none d-sm-inline">Résultats du semestre</span></a>
 {% endblock %}
 {% block contenu %}

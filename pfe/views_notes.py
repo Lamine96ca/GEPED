@@ -25,9 +25,9 @@ from .notes import (CHAMPS_SAISIE, MOTIF_SUPER_UTILISATEUR, avec_promotion, code
                     enregistrer_notes, est_delibere,
                     filtrer_promotion, peut_modifier, recalculer, regles, saisie_de, semestres_delibres,
                     semestres_valides, session_ecoulee, verifier_pdf)
-from .roles import (chef_departement_requis, chef_scolarite_requis, gestion_matieres_requise, get_profil,
-                    lecture_notes_requise, matieres_visibles, programmes_du_profil, scolarite_requise,
-                    validations_requises)
+from .roles import (chef_departement_requis, chef_scolarite_requis, fiches_requises,
+                    gestion_matieres_requise, get_profil, lecture_notes_requise, matieres_visibles,
+                    programmes_du_profil, scolarite_requise, validations_requises)
 
 LIBELLES = {'controle': 'Contrôle', 'tp': 'TP', 'examen': 'Examen', 'moyenne': 'Moyenne', 'rattrapage': 'Rattrapage'}
 
@@ -441,7 +441,7 @@ def notes_importer(request):
 
 
 @login_required
-@gestion_matieres_requise
+@fiches_requises
 def notes_fiche_enseignant(request, pk):
     """Fiche de notes de l'enseignant (Excel) d'une matière : colonnes CC / CT (arrêté 877) ou contrôle / examen."""
     from django.utils.text import slugify

@@ -39,7 +39,7 @@ def _lit_notes(profil, user):        # @lecture_notes_requise : + Direction Gén
     return profil.lit_notes
 
 
-def _validations(profil, user):      # @validations_requises : chef de département, scolarité
+def _validations(profil, user):      # @validations_requises : chef de département, super utilisateur
     return profil.voit_validations
 
 

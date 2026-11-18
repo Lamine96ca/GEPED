@@ -3933,11 +3933,18 @@ class GpedTests(TestCase):
         self.client.post(reverse('notes_valider'), valider)
         self.connecter('info')                                                  # directeur : pas cette page
         self.assertEqual(self.client.get(reverse('notes_validations')).status_code, 403)
-        self.connecter('scol')                                                  # scolarité : suivi, sans bouton
+        self.connecter('chef_sci')                       # le chef présente au jury, mais pas de cadre « Délibération »
+        r = self.client.get(resultats)
+        self.assertContains(r, 'Présenter au jury')
+        self.assertNotContains(r, 'Pas encore délibéré')
+        self.connecter('scol')                                                  # scolarité : pas cette page
+        self.assertEqual(self.client.get(reverse('notes_validations')).status_code, 403)
+        self.assertNotContains(self.client.get(resultats), "n'a pas encore validé ce semestre")
+        User.objects.create_superuser('admin_v', password='x')                 # super utilisateur : suivi
+        self.connecter('admin_v')
         r = self.client.get(reverse('notes_validations'))
         self.assertEqual(r.status_code, 200)
         self.assertNotContains(r, 'name="retour"')
-        self.assertNotContains(self.client.get(resultats), "n'a pas encore validé ce semestre")
         self.connecter('chef_sci')
         self.client.post(reverse('notes_valider'), {**valider, 'action': 'annuler'})
         self.assertFalse(ValidationSemestre.objects.exists())
@@ -3967,7 +3974,13 @@ class GpedTests(TestCase):
 
         self.connecter('dep')                                     # autre service (hors DGE) : pas de notes
         self.assertEqual(self.client.get(url, base).status_code, 403)
-        self.connecter('info')
+        self.connecter('scol')                                    # scolarité : tous les programmes
+        self.assertEqual(self.client.get(url, {**base, 'programme': self.gc.pk}).context['cascade']['programme'],
+                         self.gc.pk)
+        self.connecter('info')                 # directeur : présente au jury, sans le cadre « Délibération »
+        r = self.client.get(reverse('notes_resultats'), base)
+        self.assertContains(r, 'Présenter au jury')
+        self.assertNotContains(r, 'Pas encore délibéré')
         r = self.client.get(url)
         self.assertContains(r, 'Choisissez la <strong>session</strong>')
         r = self.client.get(url, base)
@@ -4003,9 +4016,13 @@ class GpedTests(TestCase):
         self._prive()                                                    # fichiers importés : dossier temporaire
         s1, algo, _ = self._preparer_notes()
         url = reverse('notes_fiche_enseignant', args=[algo.pk])
-        self.connecter('dep')
-        self.assertEqual(self.client.get(url).status_code, 403)
+        for login in ('dep', 'scol'):                                   # ni les autres services, ni la scolarité
+            self.connecter(login)
+            self.assertEqual(self.client.get(url).status_code, 403)
+            self.assertNotContains(self.client.get(reverse('notes_saisie', args=[algo.pk])), 'Fiche enseignant',
+                                   status_code=403 if login == 'dep' else 200)
         self.connecter('info')
+        self.assertContains(self.client.get(reverse('notes_saisie', args=[algo.pk])), 'Fiche enseignant (Excel)')
         r = self.client.get(url)
         self.assertEqual(r['Content-Type'], 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
         wb = openpyxl.load_workbook(io.BytesIO(r.content))

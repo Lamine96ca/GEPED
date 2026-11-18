@@ -92,8 +92,19 @@ class Profil:
 
     @property
     def voit_validations(self):
-        """Page « Validation des semestres » : le chef de département (il valide), la scolarité (elle suit)."""
-        return self.est_chef_departement or self.est_scolarite
+        """Page « Validation des semestres » : le chef de département (il valide) et le super utilisateur."""
+        return self.est_chef_departement or self.superuser
+
+    @property
+    def voit_deliberation(self):
+        """Cadre « Délibération » des résultats : la scolarité (le chef de la scolarité délibère) et la DGE, pas les
+        départements ni les programmes (eux présentent les résultats au jury dans l'espace de délibération)."""
+        return self.est_scolarite or self.est_dge
+
+    @property
+    def telecharge_fiches(self):
+        """Fiche de notes de l'enseignant (Excel) : chef de département et directeur de programme, pas la scolarité."""
+        return self.role in (CHEF_DEPARTEMENT, PROGRAMME)
 
     @property
     def a_perimetre(self):
@@ -288,8 +299,10 @@ def _exige(propriete, message):
 lecture_notes_requise = _exige('lit_notes', "Notes : réservé à la scolarité, aux chefs de département, aux "
                                             "directeurs de programme et à la Direction Générale des Études.")
 chef_departement_requis = _exige('est_chef_departement', "Réservé au chef de département.")
-validations_requises = _exige('voit_validations', "Validation des semestres : réservé aux chefs de département et à "
-                                                  "la scolarité.")
+validations_requises = _exige('voit_validations', "Validation des semestres : réservé aux chefs de département et "
+                                                  "au super utilisateur.")
+fiches_requises = _exige('telecharge_fiches', "Fiche de notes de l'enseignant : réservé aux chefs de département et "
+                                              "aux directeurs de programme.")
 suivi_notes_requis = _exige('voit_suivi_notes', "Réservé à la scolarité, à l'administrateur et à la Direction "
                                                 "Générale des Études.")
 lecture_conges_requise = _exige('voit_conges', "Congés académiques : réservé à la scolarité et à la Direction "
