@@ -4,7 +4,7 @@
 {% block titre_page %}Statistiques des inscriptions{% endblock %}
 {% block sous_titre %}<div class="sous-titre">{{ filtres_texte }} · inscrits uniquement (hors préinscrits){% if nb_conges %}, hors {{ nb_conges }} année{{ nb_conges|pluralize }} en congé académique{% endif %}{% if profil.a_perimetre %} · {{ profil.structure }}{% endif %}</div>{% endblock %}
 {% block actions %}
-  <button type="button" class="btn btn-light" onclick="window.print()"><i class="bi bi-printer"></i> <span class="d-none d-sm-inline">Imprimer</span></button>
+  <a href="?{{ params }}{% if params %}&amp;{% endif %}imprimer=pdf" target="_blank" rel="noopener" class="btn btn-light" id="imprimer-onglet" title="Imprimer l'onglet affiché (PDF, avec l'en-tête de l'IST)"><i class="bi bi-printer"></i> <span class="d-none d-sm-inline">Imprimer l'onglet</span></a>
   <a href="?{{ params }}{% if params %}&{% endif %}export=xlsx" class="btn btn-or"><i class="bi bi-file-earmark-excel"></i> <span class="d-none d-sm-inline">Exporter (Excel)</span></a>
 {% endblock %}
 {% block contenu %}
@@ -206,6 +206,17 @@
   (function () {
     var form = document.getElementById('filtres-stat');
     form.querySelectorAll('select').forEach(function (s) { s.addEventListener('change', function () { form.submit(); }); });
+    // « Imprimer l'onglet » : le PDF de l'onglet affiché
+    var imprimer = document.getElementById('imprimer-onglet');
+    function majImpression() {
+      var actif = document.querySelector('.onglets-stat .nav-link.active');
+      var url = new URL(imprimer.href, location.href);
+      url.searchParams.set('onglet', actif ? actif.dataset.bsTarget.replace('#st-', '') : 'croise');
+      imprimer.href = url.pathname + url.search;
+    }
+    document.querySelectorAll('.onglets-stat [data-bs-toggle="pill"]').forEach(function (b) {
+      b.addEventListener('shown.bs.tab', majImpression);
+    });
     // Onglet retenu d'une page à l'autre (préférence du navigateur)
     var cle = 'gped-stat-onglet';
     try {
@@ -215,6 +226,7 @@
     document.querySelectorAll('.onglets-stat [data-bs-toggle="pill"]').forEach(function (b) {
       b.addEventListener('shown.bs.tab', function () { try { localStorage.setItem(cle, b.dataset.bsTarget); } catch (e) {} });
     });
+    majImpression();
   })();
 </script>
 {% endblock %}

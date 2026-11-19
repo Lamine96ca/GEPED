@@ -6,7 +6,7 @@
 {% block actions %}
   {% if lignes is not None and matieres %}
     <a href="?{{ request.GET.urlencode }}&amp;export=xlsx" class="btn btn-or"><i class="bi bi-file-earmark-excel"></i> <span class="d-none d-sm-inline">Exporter (Excel)</span></a>
-    <button type="button" class="btn btn-outline-secondary" onclick="window.print()"><i class="bi bi-printer"></i> <span class="d-none d-sm-inline">Imprimer</span></button>
+    <a href="?{{ request.GET.urlencode }}&amp;imprimer=pdf" target="_blank" rel="noopener" class="btn btn-outline-secondary" title="Imprimer la grille (PDF, avec l'en-tête de l'IST)"><i class="bi bi-printer"></i> <span class="d-none d-sm-inline">Imprimer</span></a>
     <button type="button" class="btn btn-primary" id="jury-plein-ecran"><i class="bi bi-arrows-fullscreen"></i> <span class="d-none d-sm-inline">Plein écran</span></button>
   {% endif %}
 {% endblock %}

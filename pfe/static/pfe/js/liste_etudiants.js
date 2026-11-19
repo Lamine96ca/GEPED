@@ -319,7 +319,9 @@
       ev.preventDefault();
       const p = parametres(false);
       p.set('format', a.dataset.export);
-      location.href = cfg.urlExport + '?' + p.toString();   // exporte exactement la liste filtrée
+      const url = cfg.urlExport + '?' + p.toString();          // exporte exactement la liste filtrée
+      if (a.dataset.export === 'pdf') window.open(url, '_blank'); // impression : le PDF s'ouvre dans un onglet
+      else location.href = url;
     });
   });
 

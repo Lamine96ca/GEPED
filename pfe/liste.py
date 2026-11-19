@@ -142,6 +142,51 @@ def filtrer(profil, params):
     return qs, session_id
 
 
+LIBELLES_STATUT = {'inscrit': 'Inscrits', 'preinscrit': 'Préinscrits', 'redoublant': 'Redoublants',
+                   'passant': 'Passants'}
+
+# Colonnes de l'impression (PDF) : voir pfe/pdf_listes.py
+CHAMPS_IMPRESSION = [('matricule', 'etudiant__matricule'), ('ine', 'etudiant__ine'), ('prenom', 'etudiant__prenom'),
+                     ('nom', 'etudiant__nom'), ('telephone', 'etudiant__telephone'), ('niveau', 'licence__nom'),
+                     ('promotion', 'promotion__nom'), ('programme', 'filiere__nom')]
+
+
+def filtres_choisis(params):
+    """[(libellé, valeur)] des seuls filtres choisis dans la liste : ils forment le titre de l'impression."""
+    from .models import Licence, Promotion, Semestre, Service
+    noms = {'session': (Session, 'annee'), 'programme': (Service, 'nom'), 'licence': (Licence, 'nom'),
+            'semestre': (Semestre, 'nom'), 'promotion': (Promotion, 'nom')}
+    libelles = {'session': 'Session', 'programme': 'Programme', 'licence': 'Niveau', 'semestre': 'Semestre',
+                'promotion': 'Promotion'}
+    filtres = []
+    for cle in ('session', 'programme'):
+        pk = _entier(params.get(cle))
+        if pk:
+            modele, champ = noms[cle]
+            filtres.append((libelles[cle], modele.objects.filter(pk=pk).values_list(champ, flat=True).first()))
+    if params.get('cycle') in CYCLE_LIBELLES:
+        filtres.append(('Cycle', CYCLE_LIBELLES[params['cycle']]))
+    for cle in ('licence', 'semestre', 'promotion'):
+        pk = _entier(params.get(cle))
+        if pk:
+            modele, champ = noms[cle]
+            filtres.append((libelles[cle], modele.objects.filter(pk=pk).values_list(champ, flat=True).first()))
+    if params.get('sexe') in ('M', 'F'):
+        filtres.append(('Sexe', 'Filles' if params['sexe'] == 'F' else 'Garçons'))
+    if params.get('statut') in ('redoublant', 'passant'):
+        filtres.append(('Statut', LIBELLES_STATUT[params['statut']]))
+    if (params.get('q') or '').strip():
+        filtres.append(('Recherche', params['q'].strip()))
+    return filtres
+
+
+def lignes_impression(qs, avec_session=False):
+    """Lignes de l'impression ; `avec_session` (aucune session choisie) : l'année de chaque inscription s'affiche."""
+    champs = CHAMPS_IMPRESSION + ([('session', 'session__annee')] if avec_session else [])
+    cles = [c for c, _ in champs]
+    return [dict(zip(cles, v)) for v in qs.values_list(*[ch for _, ch in champs])]
+
+
 def trier(qs, params):
     champ = TRIS.get(params.get('tri'), 'etudiant__nom')
     prefixe = '-' if params.get('ordre') == 'desc' else ''

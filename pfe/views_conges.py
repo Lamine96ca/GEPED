@@ -129,6 +129,19 @@ def conges_liste(request):
                        | Q(inscription__etudiant__nom__icontains=terme)
                        | Q(inscription__etudiant__prenom__icontains=terme)
                        | Q(inscription__etudiant__ine__icontains=terme))
+    if g.get('imprimer') == 'pdf':
+        from .pdf_listes import imprimer_liste
+        filtres = [('Session', next((s.annee for s in sessions if s.pk == session_id), None)),
+                   ('État', {'en_cours': 'En cours', 'leves': 'Levés'}.get(etat)), ('Recherche', q)]
+        lignes = [{'matricule': c.inscription.etudiant.matricule, 'ine': c.inscription.etudiant.ine,
+                   'prenom': c.inscription.etudiant.prenom, 'nom': c.inscription.etudiant.nom,
+                   'telephone': c.inscription.etudiant.telephone,
+                   'niveau': c.inscription.licence.nom if c.inscription.licence else '',
+                   'promotion': c.inscription.promotion.nom if c.inscription.promotion else '',
+                   'programme': c.inscription.filiere.nom if c.inscription.filiere else '',
+                   'session': '' if session_id else c.inscription.session.annee}
+                  for c in qs.select_related('inscription__promotion')]
+        return imprimer_liste(request, 'ÉTUDIANTS EN CONGÉ ACADÉMIQUE', filtres, lignes, 'conges_academiques')
     page = Paginator(qs, 25).get_page(g.get('page'))
     return render(request, 'pfe/conges_liste.html', {
         'page': page, 'q': q, 'etat': etat, 'sessions': sessions, 'session_id': session_id,

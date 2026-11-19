@@ -4,6 +4,7 @@
 {% block titre_page %}Liste des notes{% endblock %}
 {% block sous_titre %}<div class="sous-titre">{{ page.paginator.count|intcomma }} note{{ page.paginator.count|pluralize }} · sur 10, validée à partir de {{ seuil }}{% if profil.a_perimetre %} · {{ profil.structure }}{% endif %}</div>{% endblock %}
 {% block actions %}
+  <a href="?{{ request.GET.urlencode }}{% if request.GET %}&amp;{% endif %}imprimer=pdf" target="_blank" rel="noopener" class="btn btn-light" title="Imprimer (PDF, avec l'en-tête de l'IST)"><i class="bi bi-printer"></i> <span class="d-none d-sm-inline">Imprimer</span></a>
   <a href="?{{ params }}{% if params %}&{% endif %}export=xlsx" class="btn btn-or"><i class="bi bi-file-earmark-excel"></i> <span class="d-none d-sm-inline">Exporter (Excel)</span></a>
   {% if profil.gere_matieres %}<a href="{% url 'notes_matieres' %}" class="btn btn-primary"><i class="bi bi-pencil-square"></i> <span class="d-none d-sm-inline">Saisir des notes</span></a>{% endif %}
 {% endblock %}

@@ -80,6 +80,22 @@ def demandes_liste(request):
     if q:
         demandes = demandes.filter(Q(etudiant__matricule__icontains=q) | Q(etudiant__nom__icontains=q)
                                    | Q(etudiant__prenom__icontains=q) | Q(etudiant__ine__icontains=q))
+    if request.GET.get('imprimer') == 'pdf':
+        from .pdf_listes import imprimer_liste
+        types, statuts = dict(DemandeEtudiant.TYPES), dict(DemandeEtudiant.STATUTS)
+        filtres = [('Session', str(session) if session else None), ('Demandes', f"{types[type_demande]}s"),
+                   ('Statut', statuts[statut]), ('Recherche', q)]
+        lignes = []
+        for d in demandes.select_related('derniere_inscription__promotion'):
+            e, i = d.etudiant, d.derniere_inscription
+            lignes.append({'matricule': e.matricule, 'ine': e.ine, 'prenom': e.prenom, 'nom': e.nom,
+                           'telephone': e.telephone,
+                           'niveau': d.licence.nom if d.licence else (i.licence.nom if i and i.licence else ''),
+                           'promotion': i.promotion.nom if i and i.promotion else '',
+                           'programme': i.filiere.nom if i and i.filiere else ''})
+        titre = 'DEMANDES D\'INSCRIPTION EN LIGNE' if type_demande == DemandeEtudiant.INSCRIPTION \
+            else 'DEMANDES DE RÉINSCRIPTION EN LIGNE'
+        return imprimer_liste(request, titre, filtres, lignes, 'demandes_en_ligne')
     demandes = list(demandes[:300])
     return render(request, 'pfe/demandes_liste.html', {
         'session': session, 'type_demande': type_demande, 'statut': statut, 'demandes': demandes, 'q': q,

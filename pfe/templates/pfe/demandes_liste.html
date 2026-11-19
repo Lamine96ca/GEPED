@@ -2,6 +2,9 @@
 {% block titre %}Demandes en ligne{% endblock %}
 {% block titre_page %}Demandes en ligne{% endblock %}
 {% block sous_titre %}<div class="sous-titre">Inscriptions et réinscriptions déposées par les étudiants dans l'espace étudiant{% if session %} · {{ session }}{% endif %}</div>{% endblock %}
+{% block actions %}
+  <a href="?{{ request.GET.urlencode }}{% if request.GET %}&amp;{% endif %}imprimer=pdf" target="_blank" rel="noopener" class="btn btn-light" title="Imprimer la liste (PDF, avec l'en-tête de l'IST)"><i class="bi bi-printer"></i> <span class="d-none d-sm-inline">Imprimer</span></a>
+{% endblock %}
 {% block contenu %}
 {% load humanize %}
 <div class="row g-3 mb-3">

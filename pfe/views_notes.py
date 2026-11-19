@@ -30,6 +30,8 @@ from .roles import (chef_departement_requis, chef_scolarite_requis, fiches_requi
                     gestion_matieres_requise, get_profil, lecture_notes_requise, matieres_visibles,
                     programmes_du_profil, scolarite_requise, validations_requises)
 
+from .pdf_listes import GRIS_CLAIR as GRIS_PDF, ROUGE as ROUGE_PDF, VERT as VERT_PDF
+
 LIBELLES = {'controle': 'Contrôle', 'tp': 'TP', 'examen': 'Examen', 'moyenne': 'Moyenne', 'rattrapage': 'Rattrapage'}
 
 
@@ -157,6 +159,38 @@ def notes_matieres(request):
     })
 
 
+def _imprimer_matiere(request, matiere, inscrits, notes, promotion):
+    """Notes d'une matière (PDF, signé par le chef du service), colonnes selon le règlement des inscrits."""
+    from .models import Promotion
+    from .pdf_listes import cellule, fmt_note, imprimer_tableau, nom_complet
+    codes = set(codes_inscriptions(inscrits).values())
+    regle = regles(next(iter(codes))) if len(codes) == 1 else regles()
+    lib = {c: regle['libelles'].get(c, LIBELLES[c]) for c in ('controle', 'tp', 'examen')}
+    filtres = [('Matière', f"{matiere.nom}{f' ({matiere.code})' if matiere.code else ''}"),
+               ('Programme', str(matiere.filiere or '')), ('Niveau', matiere.licence.nom),
+               ('Semestre', matiere.semestre.nom), ('Session', matiere.session.annee),
+               ('Crédits', matiere.credit),
+               ('Promotion', Promotion.objects.filter(pk=promotion).values_list('nom', flat=True).first()
+                if promotion else None)]
+    lignes = []
+    for k, insc in enumerate(inscrits, start=1):
+        e, n = insc.etudiant, notes.get(insc.etudiant_id)
+        valeurs = (n.controle, n.tp, n.examen, n.moyenne, n.rattrapage, n.moyenne_finale) if n else (None,) * 6
+        lignes.append([cellule(k, align='c'), cellule(e.matricule, f"INE {e.ine}" if e.ine else ''),
+                       cellule(nom_complet(e.prenom, e.nom), insc.promotion.nom if insc.promotion else ''),
+                       *[cellule(fmt_note(v), align='c') for v in valeurs[:5]],
+                       cellule(fmt_note(valeurs[5]), align='c', gras=True,
+                               fond=None if valeurs[5] is None else (VERT_PDF if n.validee else ROUGE_PDF)),
+                       (n.mention if n else '') or ''])
+    saisies = sum(1 for n in notes.values() if n.moyenne_finale is not None)
+    colonnes = [('N°', 22), ('Matricule / INE', 80), ('Étudiant', 150), (lib['controle'], 46), (lib['tp'], 40),
+                (lib['examen'], 46), ('Moyenne', 46), ('Rattrapage', 52), ('Note finale', 50), ('Mention', 66)]
+    return imprimer_tableau(request, 'notes_matiere', 'NOTES DE LA MATIÈRE', filtres, colonnes, lignes, paysage=True,
+                            total=f"{len(inscrits)} étudiant{'s' if len(inscrits) > 1 else ''} · "
+                                  f"{saisies} note{'s' if saisies > 1 else ''} saisie{'s' if saisies > 1 else ''}",
+                            vide='Aucun étudiant inscrit.')
+
+
 @login_required
 @gestion_matieres_requise
 def notes_saisie(request, pk):
@@ -189,6 +223,8 @@ def notes_saisie(request, pk):
         retour = ''
     notes = {n.etudiant_id: n for n in Note.objects.filter(matiere=matiere)}
     erreurs, valeurs_postees, erreur_motif = {}, {}, ''
+    if request.method == 'GET' and request.GET.get('imprimer') == 'pdf':
+        return _imprimer_matiere(request, matiere, inscrits, notes, promotion)
 
     if request.method == 'POST':
         if not modifiable:
@@ -299,6 +335,27 @@ def _fmt(v):
 
 # ------------------------------------------------------------------ liste des notes
 
+def _filtres_imprimes(f, sessions, programmes, statut=''):
+    """[(libellé, valeur)] des filtres choisis sur une page de notes (titre de l'impression)."""
+    from .models import Promotion
+    filtres = [('Session', next((s.annee for s in sessions if s.pk == f.get('session')), None)),
+               ('Programme', next((p.nom for p in programmes if p.pk == f.get('programme')), None))]
+    if f.get('licence'):
+        filtres.append(('Niveau', Licence.objects.filter(pk=f['licence']).values_list('nom', flat=True).first()))
+    if f.get('semestre'):
+        filtres.append(('Semestre', Semestre.objects.filter(pk=f['semestre']).values_list('nom', flat=True).first()))
+    if f.get('promotion'):
+        filtres.append(('Promotion', Promotion.objects.filter(pk=f['promotion']).values_list('nom', flat=True).first()))
+    if statut:
+        filtres.append(('Notes', dict(STATUTS_NOTE).get(statut)))
+    if f.get('q'):
+        filtres.append(('Recherche', f['q']))
+    return filtres
+
+
+MAX_LIGNES_IMPRESSION = 5000
+
+
 STATUTS_NOTE = [('validee', 'Validées (≥ 5)'), ('non_validee', 'Non validées (< 5)'), ('session', 'Validées en session'),
                 ('incomplete', 'Sans moyenne')]
 
@@ -359,6 +416,8 @@ def notes_liste(request):
     qs, tri, ordre = _notes_filtrees(profil, f, request.GET)
     if request.GET.get('export') == 'xlsx':
         return _export_notes(qs)
+    if request.GET.get('imprimer') == 'pdf':
+        return _imprimer_notes(request, qs, _filtres_imprimes(f, sessions, programmes, f.get('statut')))
     page = Paginator(qs, 50).get_page(request.GET.get('page'))
     params = request.GET.copy()
     for cle_ in ('page', 'export'):
@@ -376,6 +435,30 @@ def notes_liste(request):
         'statuts': STATUTS_NOTE, 'seuil': regles()['seuil_validation'], 'actif': 'notes_liste',
         **_contexte_filtres(f, sessions, programmes),
     })
+
+
+def _imprimer_notes(request, qs, filtres):
+    """Liste des notes filtrées (PDF paysage, signé par le chef du service) ; 5 000 lignes au plus."""
+    from .pdf_listes import cellule, fmt_note, imprimer_tableau, nom_complet
+    total = qs.count()
+    lignes = []
+    for k, n in enumerate(qs[:MAX_LIGNES_IMPRESSION], start=1):
+        e, m = n.etudiant, n.matiere
+        lignes.append([cellule(k, align='c'), cellule(e.matricule, f"INE {e.ine}" if e.ine else ''),
+                       cellule(nom_complet(e.prenom, e.nom), n.promotion_nom or ''),
+                       cellule(m.nom, f"{m.semestre.abrege or m.semestre.nom} · {m.licence.nom} · {m.credit} cr."),
+                       *[cellule(fmt_note(v), align='c') for v in (n.controle, n.tp, n.examen)],
+                       cellule(fmt_note(n.moyenne), align='c'), cellule(fmt_note(n.rattrapage), align='c'),
+                       cellule(fmt_note(n.moyenne_finale), align='c', gras=True,
+                               fond=None if n.moyenne_finale is None else (VERT_PDF if n.validee else ROUGE_PDF)),
+                       n.mention or ''])
+    texte = f"{total} note{'s' if total > 1 else ''}"
+    if total > MAX_LIGNES_IMPRESSION:
+        texte += f" · seules les {MAX_LIGNES_IMPRESSION} premières sont imprimées : affinez les filtres"
+    colonnes = [('N°', 22), ('Matricule / INE', 78), ('Étudiant', 130), ('Matière', 150), ('CC / Contrôle', 46),
+                ('TP', 36), ('CT / Examen', 46), ('Moyenne', 44), ('Rattr.', 40), ('Note finale', 46), ('Mention', 62)]
+    return imprimer_tableau(request, 'notes', 'LISTE DES NOTES', filtres, colonnes, lignes, paysage=True, total=texte,
+                            vide='Aucune note avec ces filtres.', taille=7.5)
 
 
 def _export_notes(qs):
@@ -548,6 +631,7 @@ def notes_resultats(request):
             'semestre': semestre, 'matieres': matieres, 'resultats': resultats, 'nb_inscrits': len(inscrits),
             'credits_semestre': sum(m.credit for m in matieres),
             'nb_valides': sum(1 for m in moyennes if m >= regles()['seuil_validation']),
+            'seuil_global': regles()['seuil_validation'],
             'moyenne_promo': round(sum(moyennes) / len(moyennes), 2) if moyennes else None,
             'notes_manquantes': sum(r.notes_manquantes for r in resultats),
             'deliberation': Deliberation.objects.filter(filiere_id=f['programme'], session_id=f['session'],
@@ -560,7 +644,32 @@ def notes_resultats(request):
             'programme_choisi': next((p for p in programmes if p.pk == f['programme']), None),
             'session_choisie': next((s for s in sessions if s.pk == f['session']), None),
         })
+        if request.GET.get('imprimer') == 'pdf':
+            return _imprimer_resultats(request, f, sessions, programmes, semestre, contexte)
     return render(request, 'pfe/notes_resultats.html', contexte)
+
+
+def _imprimer_resultats(request, f, sessions, programmes, semestre, c):
+    """Résultats du semestre (PDF, signé par le chef du service) : rang, moyenne, crédits, mention."""
+    from .pdf_listes import cellule, fmt_note, imprimer_tableau, nom_complet
+    filtres = _filtres_imprimes({**f, 'licence': semestre.licence_id}, sessions, programmes)
+    lignes = []
+    for r in c['resultats']:
+        e = r.etudiant
+        lignes.append([cellule(r.rang or '—', align='c'), cellule(e.matricule, f"INE {e.ine}" if e.ine else ''),
+                       nom_complet(e.prenom, e.nom), r.promotion_nom or '',
+                       cellule(fmt_note(r.moyenne), align='c', gras=True,
+                               fond=None if r.moyenne is None else (VERT_PDF if r.moyenne >= c['seuil_global']
+                                                                    else ROUGE_PDF)),
+                       cellule(f"{r.credits_valides} / {r.credits_total}", align='c'),
+                       cellule(r.notes_manquantes or '', align='c'), r.mention or ''])
+    total = (f"{c['nb_inscrits']} inscrit{'s' if c['nb_inscrits'] > 1 else ''} · {c['nb_valides']} avec une moyenne "
+             f"d'au moins {fmt_note(c['seuil_global'])} · moyenne de la promotion {fmt_note(c['moyenne_promo'])} · "
+             f"{len(c['matieres'])} matières, {c['credits_semestre']} crédits")
+    colonnes = [('Rang', 30), ('Matricule / INE', 90), ('Étudiant', 160), ('Promotion', 56), ('Moyenne /10', 56),
+                ('Crédits validés', 60), ('Manquantes', 56), ('Mention', 70)]
+    return imprimer_tableau(request, 'resultats', 'RÉSULTATS DU SEMESTRE', filtres, colonnes, lignes, total=total,
+                            vide='Aucun résultat.')
 
 
 @login_required
@@ -707,6 +816,42 @@ def _export_deliberation(matieres, lignes, titre):
     return reponse
 
 
+def _imprimer_deliberation(request, f, sessions, programmes, matieres, lignes, repartition, tous, statut, n_choisi):
+    """Grille du jury (PDF paysage, signé par le chef du service) : notes colorées, bilan, répartition."""
+    from .pdf_listes import cellule, fmt_note, imprimer_tableau, nom_complet
+    filtres = _filtres_imprimes(f, sessions, programmes)
+    if f.get('matiere'):
+        filtres.append(('Matière', next((m.nom for m in matieres), None)))
+    if not f.get('semestre'):
+        filtres.append(('Semestres', "toute l'année"))
+    choix = dict(STATUTS_JURY).get(statut)
+    if statut:
+        filtres.append(('Étudiants', f"{choix} {n_choisi} matière(s)" if statut == 'n' else choix))
+    nb = len(matieres)
+    credits = sum(m.credit for m in matieres)
+    rangs = []
+    for k, l in enumerate(lignes, start=1):
+        e = l['etudiant']
+        cases = [cellule(fmt_note(c['note']) + (' S' if c['session'] else ''), align='c',
+                         fond=GRIS_PDF if c['note'] is None else (VERT_PDF if c['ok'] else ROUGE_PDF))
+                 for c in l['cases']]
+        rangs.append([cellule(k, align='c'), cellule(nom_complet(e.prenom, e.nom), e.matricule),
+                      l['inscription'].promotion.nom if l['inscription'].promotion else '', *cases,
+                      cellule(f"{l['nb_validees']}/{nb}", align='c', gras=True),
+                      cellule(f"{l['credits_valides']}/{credits}", align='c'),
+                      cellule(fmt_note(l['moyenne']), align='c', gras=True), l['mention'] or ''])
+    repart = ' · '.join(f"{'toutes' if r['n'] == nb else r['n']} validée{'s' if r['n'] != 1 else ''} : {r['effectif']}"
+                        for r in repartition if r['effectif'])
+    total = f"{tous} étudiant{'s' if tous > 1 else ''} · {nb} matières, {credits} crédits · {repart}"
+    largeur_matiere = 42 if nb > 6 else 52
+    colonnes = ([('N°', 18), ('Étudiant', 120), ('Promo', 34)]
+                + [(f"{m.nom[:24]} ({m.credit} cr.)", largeur_matiere) for m in matieres]
+                + [('Validées', 38), ('Crédits', 38), ('Moy.', 36), ('Mention', 54)])
+    return imprimer_tableau(request, 'deliberation', 'GRILLE DE DÉLIBÉRATION', filtres, colonnes, rangs,
+                            paysage=True, total=total, vide='Aucun étudiant avec ces filtres.',
+                            taille=7 if nb > 6 else 7.5)
+
+
 @login_required
 @lecture_notes_requise
 def notes_deliberation(request):
@@ -750,6 +895,9 @@ def notes_deliberation(request):
         titre = ' · '.join(str(x) for x in (programme, portee, session.annee if session else '') if x)
         if g.get('export') == 'xlsx':
             return _export_deliberation(matieres, lignes, f"Délibération · {titre}")
+        if g.get('imprimer') == 'pdf':
+            return _imprimer_deliberation(request, f, sessions, programmes, matieres, lignes, repartition, tous, statut,
+                                          n_choisi)
         params = g.copy()
         for cle in ('statut', 'n', 'export', 'tri'):
             params.pop(cle, None)

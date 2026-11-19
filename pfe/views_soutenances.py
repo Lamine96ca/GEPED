@@ -115,12 +115,35 @@ def soutenances_liste(request):
     qs = _soutenances_filtrees(profil, f)
     if request.GET.get('export') == 'xlsx':
         return _export_soutenances(qs)
+    if request.GET.get('imprimer') == 'pdf':
+        return _imprimer_soutenances(request, f, contexte, qs)
     page = Paginator(qs, 50).get_page(request.GET.get('page'))
     liste = _avec_resultats(list(page))
     return render(request, 'pfe/soutenances_liste.html', {
         **contexte, 'page': page, 'liste': liste, 'params': _params(request), 'statuts': STATUTS_SOUTENANCE,
         'poids': regles(), 'seuil': regles()['seuil_validation'], 'actif': 'sout_liste',
     })
+
+
+def _imprimer_soutenances(request, f, contexte, qs):
+    """Liste des étudiants des soutenances filtrées (PDF) ; niveau : celui de l'inscription de la session."""
+    from .models import Inscription
+    from .pdf_listes import imprimer_liste
+    soutenances = list(qs.select_related('etudiant', 'filiere', 'session', 'promotion'))
+    niveaux = {(e, s, p): n for e, s, p, n in Inscription.objects.filter(
+        etudiant_id__in={s.etudiant_id for s in soutenances}).values_list(
+        'etudiant_id', 'session_id', 'filiere_id', 'licence__nom')}
+    statuts = dict(STATUTS_SOUTENANCE)
+    filtres = [('Session', next((s.annee for s in contexte['sessions'] if s.pk == f['session']), None)),
+               ('Programme', next((p.nom for p in contexte['programmes'] if p.pk == f['programme']), None)),
+               ('Promotion', next((p.nom for p in contexte['promotions'] if p.pk == f['promotion']), None)),
+               ('Statut', statuts.get(f['statut'])), ('Recherche', f['q'])]
+    lignes = [{'matricule': s.etudiant.matricule, 'ine': s.etudiant.ine, 'prenom': s.etudiant.prenom,
+               'nom': s.etudiant.nom, 'telephone': s.etudiant.telephone,
+               'niveau': niveaux.get((s.etudiant_id, s.session_id, s.filiere_id)) or s.cycle,
+               'promotion': str(s.promotion or ''), 'programme': str(s.filiere or ''),
+               'session': '' if f['session'] else s.session.annee} for s in soutenances]
+    return imprimer_liste(request, 'LISTE DES ÉTUDIANTS EN SOUTENANCE', filtres, lignes, 'soutenances')
 
 
 def _export_soutenances(qs):

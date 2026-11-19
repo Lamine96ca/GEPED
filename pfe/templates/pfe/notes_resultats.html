@@ -3,6 +3,9 @@
 {% block titre %}Résultats et délibérations{% endblock %}
 {% block titre_page %}Résultats et délibérations{% endblock %}
 {% block sous_titre %}<div class="sous-titre">{% if semestre %}{{ programme_choisi }} · {{ semestre.nom }} ({{ semestre.licence.nom }}) · {{ session_choisie.annee }}{% else %}Choisissez la session, le programme et le semestre{% endif %}</div>{% endblock %}
+{% block actions %}
+  {% if semestre %}<a href="?{{ request.GET.urlencode }}{% if request.GET %}&amp;{% endif %}imprimer=pdf" target="_blank" rel="noopener" class="btn btn-light" title="Imprimer (PDF, avec l'en-tête de l'IST)"><i class="bi bi-printer"></i> <span class="d-none d-sm-inline">Imprimer</span></a>{% endif %}
+{% endblock %}
 {% block contenu %}
 
 <div class="card carte-gped liste mb-3">

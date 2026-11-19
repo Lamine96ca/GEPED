@@ -3,6 +3,9 @@
 {% block titre %}Congés académiques{% endblock %}
 {% block titre_page %}Congés académiques{% endblock %}
 {% block sous_titre %}<div class="sous-titre">Inscriptions suspendues : hors de la liste des étudiants, des statistiques et des notes · un congé s'accorde depuis la fiche de l'étudiant</div>{% endblock %}
+{% block actions %}
+  <a href="?{{ request.GET.urlencode }}{% if request.GET %}&amp;{% endif %}imprimer=pdf" target="_blank" rel="noopener" class="btn btn-light" title="Imprimer la liste (PDF, avec l'en-tête de l'IST)"><i class="bi bi-printer"></i> <span class="d-none d-sm-inline">Imprimer</span></a>
+{% endblock %}
 {% block contenu %}
 <div class="card carte-gped liste">
   <div class="card-header">

@@ -4188,3 +4188,94 @@ class GpedTests(TestCase):
         # (7,3 × 6 + 5 × 4) / 10 = 6,38
         self.assertEqual((c['moyenne'], c['cumul']['moyenne'], c['cumul']['credits_valides']), (6.38, 6.38, 10))
         self.assertEqual(self.client.get(reverse('notes_saisie', args=[solaire.pk])).status_code, 200)
+
+    def test_impression_des_listes_d_etudiants(self):
+        """PDF avec l'en-tête de l'IST : liste des étudiants, préinscrits, congés, soutenances, demandes en ligne."""
+        from . import liste
+        from django.http import QueryDict
+        self.assertEqual(liste.filtres_choisis(QueryDict(
+            f'session={self.session.pk}&programme={self.info.pk}&licence={self.licence.pk}&sexe=F&q=M0&page=2')),
+            [('Session', '2025-2026'), ('Programme', 'Informatique'), ('Niveau', 'Licence 1'), ('Sexe', 'Filles'),
+             ('Recherche', 'M0')])
+        self.assertEqual(liste.filtres_choisis(QueryDict('')), [])
+        from .roles import get_profil
+        self.connecter('info')
+        info = get_profil(self.client.get(reverse('tableau_de_bord')).wsgi_request)
+        lignes = liste.lignes_impression(liste.filtrer(info, QueryDict(''))[0])
+        self.assertEqual(sorted(l['matricule'] for l in lignes), ['M0', 'M1'])          # périmètre du directeur
+        self.assertEqual(set(lignes[0]), {'matricule', 'ine', 'prenom', 'nom', 'telephone', 'niveau', 'promotion',
+                                          'programme'})
+        urls = [reverse('etudiants_export') + '?format=pdf', reverse('etudiants_export') + '?format=pdf&statut=preinscrit',
+                reverse('soutenances') + '?imprimer=pdf']
+        self.connecter('info')
+        for url in urls:
+            r = self.client.get(url)
+            self.assertEqual((r.status_code, r['Content-Type'], r.content[:4]), (200, 'application/pdf', b'%PDF'), url)
+            self.assertTrue(r['Content-Disposition'].startswith('inline'))
+        self.assertEqual(self.client.get(reverse('conges_liste') + '?imprimer=pdf').status_code, 403)
+        self.connecter('scol')
+        for url in (reverse('conges_liste') + '?imprimer=pdf', reverse('demandes_liste') + '?imprimer=pdf'):
+            r = self.client.get(url)
+            self.assertEqual((r.status_code, r.content[:4]), (200, b'%PDF'), url)
+        self.assertContains(self.client.get(reverse('etudiants_liste')), 'data-export="pdf"')
+        self.assertContains(self.client.get(reverse('conges_liste')), 'imprimer=pdf')
+
+    def test_signataire_des_listes_imprimees(self):
+        """Liste imprimée : signée par le chef du service, jamais par la personne qui imprime."""
+        from .roles import get_profil
+        from .signataires import signataire_du_profil
+        sciences = Service.objects.create(nom='Sciences', code='SCI')
+        Service.objects.filter(pk=self.info.pk).update(departement=sciences)
+        chef = Personnel.objects.create(utilisateur=User.objects.create_user('chef_sci', password='x'), civilite='Mme',
+                                        prenom='Awa', nom='Bah', telephone='77', email='chef@t.local',
+                                        fonc='Chef du département Sciences', chef=True)
+        chef.service.add(sciences)
+        Personnel.objects.filter(utilisateur__username='scol').update(chef=True, fonc='Chef Service de la Scolarité')
+
+        def signataire(login):
+            self.connecter(login)
+            return signataire_du_profil(get_profil(self.client.get(reverse('tableau_de_bord')).wsgi_request))
+        for login in ('info', 'chef_sci'):                       # directeur de programme et chef de département
+            s = signataire(login)
+            self.assertEqual((s.nom, s.fonction, s.service), ('Mme Awa BAH', 'Chef du département Sciences',
+                                                              'SCIENCES'))
+        self.assertEqual(signataire('scol').fonction, 'Chef Service de la Scolarité')
+        s = signataire('dep')                                     # service sans chef : fonction seule, espace pour signer
+        self.assertEqual((s.nom, s.fonction), ('', 'Le Chef du service Département'))
+        self.connecter('info')
+        r = self.client.get(reverse('etudiants_export') + '?format=pdf')
+        self.assertEqual((r.status_code, r.content[:4]), (200, b'%PDF'))
+
+    def test_impression_des_notes(self):
+        """Liste des notes, notes d'une matière, résultats, grille du jury : PDF signé, et seulement pour qui lit les notes."""
+        from .models import Note
+        s1, algo, _ = self._preparer_notes()
+        Note.objects.create(etudiant=Etudiant.objects.get(matricule='M0'), matiere=algo, controle=6, examen=8)
+        base = f'session={self.session.pk}&programme={self.info.pk}'
+        urls = [f"{reverse('notes_liste')}?{base}&imprimer=pdf",
+                f"{reverse('notes_saisie', args=[algo.pk])}?imprimer=pdf",
+                f"{reverse('notes_resultats')}?{base}&semestre={s1.pk}&imprimer=pdf",
+                f"{reverse('notes_deliberation')}?{base}&licence={self.licence.pk}&semestre={s1.pk}&imprimer=pdf",
+                f"{reverse('notes_deliberation')}?{base}&licence={self.licence.pk}&statut=n&n=0&imprimer=pdf"]
+        self.connecter('info')
+        for url in urls:
+            r = self.client.get(url)
+            self.assertEqual((r.status_code, r['Content-Type'], r.content[:4]), (200, 'application/pdf', b'%PDF'), url)
+        self.assertContains(self.client.get(reverse('notes_saisie', args=[algo.pk])), 'imprimer=pdf')
+        self.connecter('dep')                                     # autre service : pas d'accès aux notes
+        for url in urls:
+            self.assertEqual(self.client.get(url).status_code, 403, url)
+
+    def test_impression_des_statistiques_par_onglet(self):
+        """Chaque onglet des statistiques s'imprime (PDF signé) ; le bouton suit l'onglet affiché."""
+        from .pdf_statistiques import ONGLETS
+        self.connecter('info')
+        url = reverse('statistiques')
+        r = self.client.get(url)
+        self.assertContains(r, 'id="imprimer-onglet"')
+        self.assertNotContains(r, 'window.print()')
+        for onglet in list(ONGLETS) + ['inconnu']:
+            r = self.client.get(url, {'session': self.session.pk, 'imprimer': 'pdf', 'onglet': onglet})
+            self.assertEqual((r.status_code, r['Content-Type'], r.content[:4]), (200, 'application/pdf', b'%PDF'),
+                             onglet)
+            self.assertIn(f'statistiques_{onglet if onglet in ONGLETS else "croise"}', r['Content-Disposition'])

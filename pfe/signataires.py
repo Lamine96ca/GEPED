@@ -110,3 +110,46 @@ def signataire_attestation(attestation):
 
 def signataire_inscription(inscription):
     return signataire(inscription.filiere, inscription.cycle, inscription.licence)
+
+
+def _chef_du_service(service):
+    from .models import Personnel
+    return Personnel.objects.filter(chef=True, service=service).order_by('nom', 'prenom').first()
+
+
+def service_du_profil(profil):
+    """
+    Service dont le chef signe ce que le profil imprime (listes d'étudiants) : la scolarité ; le département
+    (chef de département, directeur de programme, personnel d'un département) ; sinon le service de la personne
+    (Direction Générale des Études, Direction générale…). None : la scolarité.
+    """
+    if profil.est_scolarite or profil.role == 'aucun':
+        return None
+    if profil.departements:
+        return profil.departements[0]
+    if profil.role == 'programme' and profil.programmes:
+        return profil.programmes[0].departement_effectif
+    return profil.services[0] if profil.services else None
+
+
+def signataire_du_profil(profil):
+    """
+    Signataire d'une liste imprimée : TOUJOURS le chef du service (jamais la personne qui imprime) ; à défaut
+    de chef enregistré, la fonction seule (« Le Chef du département … ») avec un espace pour signer à la main.
+    """
+    service = service_du_profil(profil)
+    if service is None:
+        return signataire()
+    defaut = _par_defaut()
+    chef = _chef_du_service(service)
+    nom_service = service.nom.upper()
+    if chef is not None:
+        return Signataire(chef.nom_signature, chef.fonc or f"Le Chef du {nom_service.title()}", nom_service,
+                          chef.email or defaut.email, chef.telephone or defaut.telephone, scolarite=False)
+    if service.programme or service.programmes_rattaches.exists():
+        fonction = f"Le Chef du département {service.nom}"
+    elif service.nom.strip().lower().startswith('direction'):
+        fonction = service.nom.strip()                    # « Direction Générale des Études »
+    else:
+        fonction = f"Le Chef du service {service.nom}"
+    return Signataire('', fonction, nom_service, defaut.email, defaut.telephone, scolarite=False)

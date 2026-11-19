@@ -4,6 +4,7 @@
 {% block sous_titre %}<div class="sous-titre">{{ matiere.filiere }} · {{ matiere.licence.nom }} · {{ matiere.semestre.nom }} · {{ matiere.session.annee }} · {{ matiere.credit }} crédits{% if matiere.code %} · {{ matiere.code }}{% endif %}</div>{% endblock %}
 {% block actions %}
   {% if profil.telecharge_fiches %}<a href="{% url 'notes_fiche_enseignant' matiere.pk %}{% if promotion_choisie %}?promotion={{ promotion_choisie }}{% endif %}" class="btn btn-or" title="Fiche Excel à remplir par l'enseignant, à imprimer, signer puis importer"><i class="bi bi-file-earmark-excel"></i> <span class="d-none d-sm-inline">Fiche enseignant (Excel)</span></a>{% endif %}
+  <a href="?{% if promotion_choisie %}promotion={{ promotion_choisie }}&amp;{% endif %}imprimer=pdf" target="_blank" rel="noopener" class="btn btn-light" title="Imprimer les notes de la matière (PDF, avec l'en-tête de l'IST)"><i class="bi bi-printer"></i> <span class="d-none d-sm-inline">Imprimer</span></a>
   <a href="{% url 'notes_resultats' %}?session={{ matiere.session_id }}&programme={{ matiere.filiere_id }}&semestre={{ matiere.semestre_id }}" class="btn btn-light"><i class="bi bi-bar-chart"></i> <span class="d-none d-sm-inline">Résultats du semestre</span></a>
 {% endblock %}
 {% block contenu %}

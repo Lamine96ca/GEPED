@@ -252,6 +252,13 @@ def etudiants_export(request):
     suffixe = (session.annee.replace('/', '-').replace(' ', '') if session else 'toutes-sessions')
     nom_fichier = f"etudiants_{suffixe}_{datetime.date.today():%Y%m%d}"
 
+    if request.GET.get('format') == 'pdf':
+        # Impression : en-tête de l'IST, titre selon les filtres choisis, colonnes essentielles
+        from .pdf_listes import imprimer_liste
+        titre = 'LISTE DES PRÉINSCRITS' if request.GET.get('statut') == 'preinscrit' else 'LISTE DES ÉTUDIANTS'
+        return imprimer_liste(request, titre, liste.filtres_choisis(request.GET),
+                              liste.lignes_impression(qs, avec_session=not session_id), nom_fichier)
+
     if request.GET.get('format') == 'csv':
         ecrivain = csv.writer(_Echo(), delimiter=';')
 
@@ -700,6 +707,25 @@ def statistiques(request):
     programme_choisi = next((p for p in programmes if p.pk == programme_id), None)
     filtres_texte = ' · '.join(x for x in (f"Session {session_choisie}" if session_choisie else 'Toutes les sessions',
                                            cycles.get(cycle, ''), str(programme_choisi or '')) if x)
+    if g.get('imprimer') == 'pdf':
+        # Impression de l'onglet affiché : en-tête de l'IST, filtres choisis, signature du chef du service
+        from .pdf_listes import imprimer_sections
+        from .pdf_statistiques import ONGLETS, sections_onglet
+        onglet = g.get('onglet') if g.get('onglet') in ONGLETS else 'croise'
+        t = s['niveaux'][1]
+        nb_conges = conges_annee.count()
+        chiffres = (f"{t.total} inscription{'s' if t.total > 1 else ''} · {t.h} hommes · {t.f} femmes ({str(t.pct_f).replace('.', ',')} %) · "
+                    f"{s['redoublants']['nb']} redoublant{'s' if s['redoublants']['nb'] > 1 else ''} · inscrits "
+                    f"uniquement (hors préinscrits" + (f", hors {nb_conges} en congé académique" if nb_conges else '')
+                    + ')')
+        filtres = [('Session', session_choisie.annee if session_choisie else 'toutes'), ('Cycle', cycles.get(cycle)),
+                   ('Programme', programme_choisi.nom if programme_choisi else None)]
+        paysage = onglet == 'croise' and len(s['croise']['niveaux']) > 4
+        from .pdf_listes import MARGE
+        from reportlab.lib.pagesizes import A4, landscape
+        utile = (landscape(A4) if paysage else A4)[0] - 2 * MARGE
+        return imprimer_sections(request, f"statistiques_{onglet}", f"STATISTIQUES · {ONGLETS[onglet].upper()}",
+                                 filtres, sections_onglet(onglet, s, utile), paysage=paysage, total=chiffres)
     if g.get('export') == 'xlsx':
         reponse = HttpResponse(st.classeur(s, filtres_texte),
                                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
