@@ -310,7 +310,7 @@ class GenerateurMatricules:
       COMPTEUR  : nombre d'inscriptions du programme + 1, sur 4 chiffres, puis +1 à chaque
                   matricule généré dans l'import
       LETTRE    : code de la 1re lettre du prénom (ord - 30)
-    Ex. Mamadou, GENIE INFORMATIQUE (04), 2025 - 2026, 2399 inscriptions → 26 04 2400 47.
+    Ex. Mariame CAMARA, GENIE INFORMATIQUE (04), 2025 - 2026, 2399 inscriptions → 26 04 2400 47.
     Un matricule déjà pris (en base ou dans le fichier) fait passer au compteur suivant.
     """
     def __init__(self, deja_pris=()):
@@ -608,10 +608,14 @@ def modele_import_xlsx():
     ws = wb.active
     ws.title = 'Inscriptions'
     ws.append(COLONNES_IMPORT)
-    ws.append(['2601000001', 'Mamadou', 'DIALLO', 'GENIE INFORMATIQUE', 'P20', '2025 - 2026', 'LICENCE 1',
-               'Licence', 'M', '31/10/2005', 'Conakry', 'Guinéenne', '620000000', '', 'Nom du père',
+    ws.append(['2601000001', 'Mariame', 'CAMARA', 'GENIE INFORMATIQUE', 'P20', '2025 - 2026', 'LICENCE 1',
+               'Licence', 'F', '31/10/2005', 'Conakry', 'Guinéenne', '620000000', '', 'Nom du père',
                'Nom de la mère', '', '', 'Conakry', '', '', '2025', '2025', 'Sciences mathématiques', 12.5,
                '', '', 'Conakry'])
+    ws.append(['2601000002', 'Aboubacar', 'SYLLA', 'GENIE INFORMATIQUE', 'P20', '2025 - 2026', 'LICENCE 1',
+               'Licence', 'M', '14/03/2006', 'Mamou', 'Guinéenne', '621000000', '', 'Nom du père',
+               'Nom de la mère', '', '', 'Mamou', '', '', '2025', '2025', 'Sciences expérimentales', 13,
+               '', '', 'Mamou'])
     for cell in ws[1]:
         obligatoire = cell.value in OBLIGATOIRES
         cell.font = Font(bold=True, color='1F2937' if obligatoire else 'FFFFFF')

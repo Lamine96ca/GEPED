@@ -22,7 +22,7 @@ SERVICE_ETUDES_AVANCEES = 'SERVICE DES ÉTUDES AVANCÉES'
 
 @dataclass(frozen=True)
 class Signataire:
-    nom: str                    # « M. Lanciné 2 CONDE »
+    nom: str                    # « Dre Mariame CAMARA »
     fonction: str               # « Le Chef Service de la Scolarité »
     service: str                # sous le bandeau de l'en-tête : « SERVICE SCOLARITÉ » ou le programme
     email: str

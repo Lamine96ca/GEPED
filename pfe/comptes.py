@@ -50,7 +50,7 @@ def _ascii(texte):
 
 
 def identifiant_propose(prenom, nom):
-    """« Mariam Kadiatou CAMARA » → « mariam.camara » (puis mariam.camara2… s'il est déjà pris)."""
+    """« Mariame CAMARA » → « mariame.camara » (puis mariame.camara2… s'il est déjà pris)."""
     base = '.'.join(p for p in (re.sub(r'[^a-z0-9]', '', _ascii(prenom.split()[0] if prenom.split() else '')),
                                 re.sub(r'[^a-z0-9]', '', _ascii(nom))) if p)[:140] or 'agent'
     identifiant, n = base, 1

@@ -20,9 +20,10 @@ from pfe.models import Etudiant, Inscription, Licence, Personnel, Promotion, Sem
 
 MOT_DE_PASSE_DEMO = 'gped-demo-2026'
 
-PRENOMS_M = ['Mamadou', 'Alpha', 'Ibrahima', 'Ousmane', 'Sekou', 'Mohamed', 'Abdoulaye', 'Thierno', 'Lansana', 'Moussa']
-PRENOMS_F = ['Mariama', 'Fatoumata', 'Aissatou', 'Kadiatou', 'Hawa', 'Fanta', 'Djenabou', 'Aminata', 'Binta', 'Oumou']
-NOMS = ['DIALLO', 'BAH', 'BARRY', 'SOW', 'CAMARA', 'CONDE', 'SYLLA', 'TOURE', 'KEITA', 'SOUARE', 'KOUROUMA', 'CISSE']
+# Noms des données de démonstration : Mariame CAMARA et Aboubacar SYLLA seulement (aucune personne réelle)
+PRENOMS_M = ['Aboubacar']
+PRENOMS_F = ['Mariame']
+NOMS_M, NOMS_F = ['SYLLA'], ['CAMARA']
 PROGRAMMES = [('Informatique', 'INFO'), ('Génie civil', 'GC'), ('Gestion', 'GEST'),
               ('Électrotechnique', 'ELEC'), ('Tronc commun', 'TC')]
 
@@ -72,7 +73,7 @@ class Command(BaseCommand):
         for k in range(deja, deja + n):
             f = rnd.random() < 0.45
             etudiants.append(Etudiant(
-                matricule=f'DEMO{k:06d}', prenom=rnd.choice(PRENOMS_F if f else PRENOMS_M), nom=rnd.choice(NOMS),
+                matricule=f'DEMO{k:06d}', prenom=rnd.choice(PRENOMS_F if f else PRENOMS_M), nom=rnd.choice(NOMS_F if f else NOMS_M),
                 sexe='F' if f else 'M', date_de_naissance=None, telephone=f'6{rnd.randint(20000000, 69999999)}',
                 email=f'demo{k:06d}@etudiant.gped', nationalite='Guinéenne', ine=f'INE{k:08d}'))
         Etudiant.objects.bulk_create(etudiants, batch_size=1000)

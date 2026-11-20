@@ -312,8 +312,8 @@ def modele_soutenances_xlsx():
     ws.append(COLONNES)
     exemples = [
         ['2104000123', 'GENIE INFORMATIQUE', '2021 - 2022', 'P18', '', 8.5, '', 'Projet 1',
-         'Gestion des inscriptions en ligne', 'Dr Mamadou BARRY', 'M. Ibrahima SOW', '', '', 'Pr Alpha DIALLO',
-         'Dr Fatoumata CAMARA', 'M. Ousmane BAH', 'Amphi A', '15/07/2022', '09:00', 'soutenue'],
+         'Gestion des inscriptions en ligne', 'Dre. Mariame CAMARA', 'M. Aboubacar SYLLA', '', '',
+         'M. Aboubacar SYLLA', 'Dre. Mariame CAMARA', 'Dre. Mariame CAMARA', 'Amphi A', '15/07/2022', '09:00', 'soutenue'],
         ['2104000217', 'GENIE INFORMATIQUE', '2021 - 2022', 'P18', '', 8.5, '', 'Projet 1'],
         ['2004000328', 'ENERGETIQUE', '2020 - 2021', 'P17', '', 'ABS', 6],
     ]

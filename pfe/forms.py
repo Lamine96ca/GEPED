@@ -269,7 +269,7 @@ class PersonnelForm(BootstrapMixin, forms.ModelForm):
         self.services_departements = departements | {s.pk for s in services if s.programme and not s.departement_id}
         self.groupes_services = [('Programmes (directeur de programme)', [s for s in services if s.programme]),
                                  ('Départements et services', [s for s in services if not s.programme])]
-        f['prenom'].widget.attrs['placeholder'] = 'Ex. Mariam'
+        f['prenom'].widget.attrs['placeholder'] = 'Ex. Mariame'
         f['nom'].widget.attrs['placeholder'] = 'Ex. CAMARA'
         f['fonc'].widget.attrs['placeholder'] = 'Ex. Chef de programme'
         f['email'].widget.attrs['placeholder'] = 'nom@exemple.com'
@@ -277,7 +277,7 @@ class PersonnelForm(BootstrapMixin, forms.ModelForm):
         if self.instance.pk:
             del f['identifiant'], f['envoyer_invitation']
         else:
-            f['identifiant'].widget.attrs['placeholder'] = 'Ex. mariam.camara'
+            f['identifiant'].widget.attrs['placeholder'] = 'Ex. mariame.camara'
 
     def services_coches(self):
         """Pour le gabarit : identifiants des services cochés (formulaire envoyé ou fiche existante)."""
@@ -1083,8 +1083,11 @@ class ProjetSoutenanceForm(BootstrapMixin, forms.ModelForm):
         f['cycle'].choices = [('', '— Cycle du programme —')] + Inscription.CYCLE_CHOICES
         f['cycle'].required = False
         f['intitule'].widget.attrs['placeholder'] = 'Ex. Projet 12'
-        for nom in ('encadreur', 'chef_departement', 'president_jury', 'examinateur', 'rapporteur', 'maitre_stage'):
-            f[nom].widget.attrs['placeholder'] = 'Ex. Mariam CAMARA'
+        exemples = {'encadreur': 'Ex. Dre. Mariame CAMARA', 'chef_departement': 'Ex. M. Aboubacar SYLLA',
+                    'president_jury': 'Ex. M. Aboubacar SYLLA', 'examinateur': 'Ex. Dre. Mariame CAMARA',
+                    'rapporteur': 'Ex. Dre. Mariame CAMARA', 'maitre_stage': 'Ex. M. Aboubacar SYLLA'}
+        for nom, exemple in exemples.items():
+            f[nom].widget.attrs['placeholder'] = exemple
         f['chef_departement'].help_text = "Signe le PV de soutenance avec l'encadreur."
         if not self.instance.pk:
             session = _session_courante()
@@ -1192,7 +1195,7 @@ class DossierEtudiantForm(BootstrapMixin, forms.Form):
     adresse = forms.CharField(label='Adresse', max_length=200,
                               widget=forms.TextInput(attrs={'placeholder': 'Quartier/Mamou'}))
     tuteur = forms.CharField(label='Nom du tuteur', max_length=100,
-                             widget=forms.TextInput(attrs={'placeholder': 'Ex. Mariam CAMARA'}))
+                             widget=forms.TextInput(attrs={'placeholder': 'Ex. Aboubacar SYLLA'}))
     contact_de_tuteur = forms.CharField(label='Contact du tuteur', max_length=25, widget=forms.TextInput(attrs={
         'placeholder': 'Ex. 622 00 00 00', 'inputmode': 'tel'}))
     photo = forms.FileField(label='Photo', required=False,

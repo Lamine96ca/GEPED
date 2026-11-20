@@ -123,7 +123,7 @@ class Command(BaseCommand):
                     raise CommandError(f"L'adresse {email} appartient déjà à un autre étudiant : choisissez-en une autre "
                                        f"avec --email-etudiant.")
                 etudiant = Etudiant.objects.create(
-                    matricule=MATRICULE_ETUDIANT, prenom='Mariama', nom='DIALLO', email=email, ine='DEMOMASTER01',
+                    matricule=MATRICULE_ETUDIANT, prenom='Mariame', nom='CAMARA', email=email, ine='DEMOMASTER01',
                     pvbac='000001', preinscrit=True, sexe='F', nationalite='Guinéenne')
             elif etudiant.email.lower() != email and opts['email_etudiant'] != EMAIL_ETUDIANT:
                 if Etudiant.objects.filter(email__iexact=email).exclude(pk=etudiant.pk).exists():
@@ -143,7 +143,7 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING(f"Mot de passe (affiché une seule fois, notez-le) : {mot_de_passe}"))
         else:
             self.stdout.write("Mot de passe inchangé (--nouveau-mot-de-passe pour en tirer un autre).")
-        self.stdout.write(f"Étudiante de démonstration : Mariama DIALLO, préinscrite en {m1.nom} — démarche Master de "
+        self.stdout.write(f"Étudiante de démonstration : Mariame CAMARA, préinscrite en {m1.nom} — démarche Master de "
                           f"/etudiant/ avec l'adresse {etudiant.email}")
         if not (session.inscriptions_ouvertes or session.reinscriptions_ouvertes):
             self.stdout.write(self.style.WARNING("Les inscriptions en ligne sont fermées : ouvrez-les dans « Demandes "
