@@ -1,6 +1,7 @@
 from django.urls import path
 
-from . import (views, views_conges, views_demandes, views_notes, views_personnel, views_releves, views_soutenances,
+from . import (views, views_conges, views_demandes, views_guides, views_notes, views_personnel, views_releves,
+               views_soutenances,
                views_suivi_notes)
 
 urlpatterns = [
@@ -77,6 +78,9 @@ urlpatterns = [
     path('soutenances/importer/', views_soutenances.soutenances_importer, name='soutenances_importer'),
     path('soutenances/importer/modele/', views_soutenances.soutenances_modele, name='soutenances_modele'),
     path('mon-compte/', views.mon_compte, name='mon_compte'),
+    path('guide/', views_guides.guide_ouvrir, name='guide_ouvrir'),
+    path('scolarite/guides/', views_guides.guides_gestion, name='guides_gestion'),
+    path('scolarite/guides/<int:pk>/', views_guides.guide_version, name='guide_version'),
     # Public (QR code). <path:...> : même un code trafiqué contenant « / » arrive sur la page gePed
     path('verifier/<path:code>/', views.verifier_document, name='verifier_document'),
     path('scolarite/attestations/', views.attestations, name='attestations'),

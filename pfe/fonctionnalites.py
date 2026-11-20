@@ -55,6 +55,11 @@ def _superuser(profil, user):        # @superuser_requis
     return user.is_superuser
 
 
+def _guide(profil, user):            # un guide est déposé pour ce type de compte
+    from .guides import guide_courant, public_du_profil
+    return guide_courant(public_du_profil(profil)) is not None
+
+
 def _admin(modele):
     """Espace admin : compte « équipe » ayant le droit de consulter ce modèle."""
     def droit(profil, user):
@@ -175,6 +180,11 @@ CATALOGUE = [
     ('Soutenances', 'Importer des soutenances', "Importer des soutenances depuis un fichier Excel.",
      SOUTENANCE + ' import importer Excel fichier', 'soutenances_importer', (), 'bi-upload', _matieres),
 
+    ('Compte', "Guide d'utilisation", "Le guide PDF de votre compte, pas à pas, avec des captures d'écran.",
+     'guide aide manuel tutoriel formation documentation pdf mode emploi', 'guide_ouvrir', (), 'bi-book', _guide),
+    ('Administration', "Guides d'utilisation (dépôt)", "Déposer le guide PDF de chaque type de compte et ses nouveautés.",
+     'guide guides dépôt déposer manuel pdf nouveautés version', 'guides_gestion', (), 'bi-journal-arrow-up',
+     _superuser),
     ('Compte', 'Mon compte', "Votre profil, votre photo et votre mot de passe.",
      'compte profil photo mot de passe changer modifier', 'mon_compte', (), 'bi-person-gear', _connecte),
     ('Administration', 'Personnel', "Comptes du personnel : services, chefs, droits d'accès.",

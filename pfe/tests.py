@@ -4279,3 +4279,43 @@ class GpedTests(TestCase):
             self.assertEqual((r.status_code, r['Content-Type'], r.content[:4]), (200, 'application/pdf', b'%PDF'),
                              onglet)
             self.assertIn(f'statistiques_{onglet if onglet in ONGLETS else "croise"}', r['Content-Disposition'])
+
+    def test_guides_d_utilisation(self):
+        """Dépôt par le super utilisateur, guide du compte après la connexion, bandeau « Nouveautés » jusqu'à l'ouverture."""
+        from .models import GuideUtilisation, LectureGuide
+        self._prive()
+        pdf = lambda nom: SimpleUploadedFile(nom, b'%PDF-1.4 guide')            # noqa: E731
+        self.connecter('scol')
+        self.assertEqual(self.client.get(reverse('guides_gestion')).status_code, 403)   # super utilisateur seulement
+        self.assertNotContains(self.client.get(reverse('tableau_de_bord')), "Guide d'utilisation ·")   # rien déposé
+        self.assertRedirects(self.client.get(reverse('guide_ouvrir')), reverse('tableau_de_bord'))
+        User.objects.create_superuser('admin_g', password='x')
+        self.connecter('admin_g')
+        r = self.client.post(reverse('guides_gestion'), {'public': 'scolarite', 'fichier': SimpleUploadedFile('g.txt', b'x')})
+        self.assertContains(r, 'doit être un fichier PDF')
+        self.client.post(reverse('guides_gestion'), {'public': 'scolarite', 'fichier': pdf('g.pdf'),
+                                                     'nouveautes': 'Impression des listes en PDF'})
+        self.client.post(reverse('guides_gestion'), {'public': 'directeur', 'fichier': pdf('d.pdf')})
+        self.assertEqual(GuideUtilisation.objects.count(), 2)
+        # Scolarité : carte du tableau de bord, nouveautés, bandeau sur les autres pages jusqu'à l'ouverture
+        self.connecter('scol')
+        r = self.client.get(reverse('tableau_de_bord'))
+        self.assertContains(r, "Guide d'utilisation · Scolarité")
+        self.assertContains(r, 'Impression des listes en PDF')
+        self.assertContains(self.client.get(reverse('etudiants_liste')), "Votre guide d'utilisation a été mis à jour")
+        r = self.client.get(reverse('guide_ouvrir'))
+        self.assertEqual((r.status_code, r['Content-Type']), (200, 'application/pdf'))
+        self.assertEqual(b''.join(r.streaming_content)[:4], b'%PDF')
+        self.assertTrue(LectureGuide.objects.filter(utilisateur__username='scol').exists())
+        self.assertNotContains(self.client.get(reverse('etudiants_liste')), "Votre guide d'utilisation a été mis à jour")
+        # Nouvelle version : le bandeau revient
+        self.connecter('admin_g')
+        self.client.post(reverse('guides_gestion'), {'public': 'scolarite', 'fichier': pdf('g2.pdf'), 'nouveautes': 'V2'})
+        self.connecter('scol')
+        self.assertContains(self.client.get(reverse('etudiants_liste')), 'V2')
+        # Chaque compte voit SON guide ; un autre service sans guide n'a rien
+        self.connecter('info')
+        self.assertContains(self.client.get(reverse('tableau_de_bord')), "Guide d'utilisation · Directeur de programme")
+        self.connecter('dep')
+        self.assertRedirects(self.client.get(reverse('guide_ouvrir')), reverse('tableau_de_bord'))
+        self.assertNotContains(self.client.get(reverse('tableau_de_bord')), reverse('guide_ouvrir'))

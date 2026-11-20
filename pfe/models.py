@@ -38,7 +38,7 @@ class Service(models.Model):
 #PERSONNEL
 class Personnel(models.Model):
     CIVILITE_CHOICES = [('M.', 'M.'), ('Mme', 'Mme'), ('Dr', 'Dr'), ('Pr', 'Pr')]
-    # Devant le nom du signataire sur les documents (« M. Lanciné 2 CONDE »)
+    # Devant le nom du signataire sur les documents (« Dre Mariame CAMARA »)
     civilite = models.CharField(max_length=5, choices=CIVILITE_CHOICES, blank=True, default='', verbose_name="Civilité")
     prenom = models.CharField(max_length=100, verbose_name="Prénom")
     nom = models.CharField(max_length=50, verbose_name="Nom")
@@ -59,7 +59,7 @@ class Personnel(models.Model):
 
     @property
     def nom_signature(self):
-        """Nom imprimé sous la signature : civilité, prénom, NOM (« M. Lanciné 2 CONDE »)."""
+        """Nom imprimé sous la signature : civilité, prénom, NOM (« Dre Mariame CAMARA »)."""
         return ' '.join(x for x in (self.civilite, self.prenom.strip(), self.nom.strip().upper()) if x)
 
 #SESSION
@@ -1139,3 +1139,40 @@ class ReglageAffichage(models.Model):
         anciens = list(releves.filter(pk__lte=self.dernier_releve).values_list('pk', flat=True)[:self.nb_releves])
         return list(releves.filter(models.Q(pk__gt=self.dernier_releve) | models.Q(pk__in=anciens)))
 
+
+
+class GuideUtilisation(models.Model):
+    """
+    Guide d'utilisation (PDF) d'un type de compte, déposé par le super utilisateur dans le stockage privé (jamais
+    public ni dans Git : les captures montrent des étudiants). Chaque dépôt est une nouvelle version, avec ses
+    nouveautés ; c'est la plus récente qui s'ouvre. Voir pfe/guides.py.
+    """
+    SCOLARITE, CHEF_DEPARTEMENT, DIRECTEUR, DGE = 'scolarite', 'chef_departement', 'directeur', 'dge'
+    PUBLICS = [(SCOLARITE, 'Scolarité'), (CHEF_DEPARTEMENT, 'Chef de département'),
+               (DIRECTEUR, 'Directeur de programme'), (DGE, 'Direction Générale des Études')]
+    public = models.CharField('Comptes concernés', max_length=20, choices=PUBLICS)
+    fichier = models.FileField('Guide (PDF)', upload_to='guides/%Y', storage=stockage_prive)
+    nouveautes = models.TextField('Nouveautés de cette version', blank=True,
+                                  help_text="Affichées aux utilisateurs tant qu'ils n'ont pas ouvert cette version.")
+    taille = models.PositiveIntegerField('Taille (octets)', default=0)
+    date = models.DateTimeField('Déposé le', auto_now_add=True)
+    depose_par = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+                                   verbose_name='Déposé par')
+
+    class Meta:
+        verbose_name = "Guide d'utilisation"
+        verbose_name_plural = "Guides d'utilisation"
+        ordering = ['public', '-date', '-id']
+
+    def __str__(self):
+        return f"Guide {self.get_public_display()} du {self.date:%d/%m/%Y}"
+
+
+class LectureGuide(models.Model):
+    """Ouverture d'une version d'un guide par un utilisateur : le bandeau « Nouveautés » disparaît alors."""
+    utilisateur = models.ForeignKey(User, on_delete=models.CASCADE, related_name='lectures_guides')
+    guide = models.ForeignKey(GuideUtilisation, on_delete=models.CASCADE, related_name='lectures')
+    date = models.DateTimeField('Ouvert le', auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['utilisateur', 'guide'], name='lecture_guide_unique')]

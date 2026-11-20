@@ -1,0 +1,61 @@
+{% extends 'pfe/base.html' %}
+{% load humanize %}
+{% block titre %}Guides d'utilisation{% endblock %}
+{% block titre_page %}Guides d'utilisation{% endblock %}
+{% block sous_titre %}<div class="sous-titre">Un guide PDF par type de compte · il s'ouvre depuis le tableau de bord et le menu de chaque utilisateur · rangé dans le stockage privé, jamais public</div>{% endblock %}
+{% block contenu %}
+<div class="row g-3">
+  <div class="col-xl-5">
+    <div class="card carte-gped">
+      <div class="card-body">
+        <div class="entete-carte">
+          <span class="icone-carte"><i class="bi bi-upload"></i></span>
+          <div><h3>Déposer une nouvelle version</h3><p>Le PDF remplace le guide affiché ; l'ancienne version reste dans l'historique</p></div>
+        </div>
+        {% if erreur %}<div class="alert alert-danger py-2 small"><i class="bi bi-x-octagon"></i> {{ erreur }}</div>{% endif %}
+        <form method="post" enctype="multipart/form-data" class="d-grid gap-3">
+          {% csrf_token %}
+          <div>
+            <label class="form-label small mb-1" for="g-public">Comptes concernés</label>
+            <select id="g-public" name="public" class="form-select" required>
+              <option value="">Choisir…</option>
+              {% for code, libelle in choix %}<option value="{{ code }}" {% if public_choisi == code %}selected{% endif %}>{{ libelle }}</option>{% endfor %}
+            </select>
+          </div>
+          <div>
+            <label class="form-label small mb-1" for="g-fichier">Guide (PDF, 10 Mo au plus)</label>
+            <input id="g-fichier" type="file" name="fichier" accept=".pdf,application/pdf" class="form-control" required>
+          </div>
+          <div>
+            <label class="form-label small mb-1" for="g-nouveautes">Nouveautés de cette version</label>
+            <textarea id="g-nouveautes" name="nouveautes" rows="5" class="form-control" placeholder="Ex. Impression des listes en PDF avec l'en-tête de l'IST (chapitre 9).">{{ nouveautes }}</textarea>
+            <div class="small text-secondary mt-1">Affichées en bandeau aux utilisateurs concernés tant qu'ils n'ont pas ouvert cette version. Une ligne par nouveauté.</div>
+          </div>
+          <button class="btn btn-primary"><i class="bi bi-upload"></i> Déposer le guide</button>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div class="col-xl-7">
+    <div class="card carte-gped liste">
+      <div class="table-responsive">
+        <table class="table table-etudiants mb-0">
+          <thead><tr><th>Comptes</th><th>Version en ligne</th><th class="text-end">Ouvert par</th><th class="text-end"></th></tr></thead>
+          <tbody>
+          {% for p in publics %}
+            <tr style="cursor:default">
+              <td><b style="color:var(--encre);font-weight:600">{{ p.libelle }}</b></td>
+              <td>{% if p.courant %}Déposé le {{ p.courant.date|date:"d/m/Y à H:i" }}<div class="small text-secondary">{{ p.courant.taille|filesizeformat }}{% if p.courant.depose_par %} · {{ p.courant.depose_par.get_full_name|default:p.courant.depose_par.username }}{% endif %}{% if p.anciennes %} · {{ p.anciennes|length }} ancienne{{ p.anciennes|length|pluralize }} version{{ p.anciennes|length|pluralize }}{% endif %}</div>
+                {% if p.courant.nouveautes %}<div class="small mt-1" style="white-space:pre-line">{{ p.courant.nouveautes }}</div>{% endif %}
+                {% else %}<span class="pill pill-attention">Aucun guide</span>{% endif %}</td>
+              <td class="text-end">{% if p.courant %}{{ p.lectures|intcomma }} utilisateur{{ p.lectures|pluralize }}{% else %}—{% endif %}</td>
+              <td class="text-end">{% if p.courant %}<a class="btn btn-sm btn-light" href="{% url 'guide_version' p.courant.pk %}" target="_blank" rel="noopener" title="Voir ce guide"><i class="bi bi-file-earmark-pdf"></i></a>{% endif %}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -46,6 +46,7 @@
     <ul class="dropdown-menu dropdown-menu-end">
       <li class="px-2 py-1 small text-secondary d-md-none">{{ profil.libelle }}</li>
       <li><a class="dropdown-item" href="{% url 'mon_compte' %}"><i class="bi bi-person-gear"></i> Mon compte</a></li>
+      {% if guide %}<li><a class="dropdown-item" href="{% url 'guide_ouvrir' %}" target="_blank" rel="noopener"><i class="bi bi-book"></i> Guide d'utilisation (PDF){% if guide_nouveau %} <span class="pill pill-attention ms-1">Nouveau</span>{% endif %}</a></li>{% endif %}
       <li><hr class="dropdown-divider"></li>
       <li>
         <form method="post" action="{% url 'logout' %}">{% csrf_token %}
@@ -178,6 +179,8 @@
       {% endif %}
       <!-- 4. Mon compte -->
       <a class="nav-link {% if actif == 'compte' %}active{% endif %}" href="{% url 'mon_compte' %}"><i class="bi bi-person-gear"></i> Mon compte</a>
+      {% if guide %}<a class="nav-link" href="{% url 'guide_ouvrir' %}" target="_blank" rel="noopener"><i class="bi bi-book"></i> Guide d'utilisation{% if guide_nouveau %} <span class="compteur">Nouveau</span>{% endif %}</a>{% endif %}
+      {% if user.is_superuser %}<a class="nav-link {% if actif == 'guides' %}active{% endif %}" href="{% url 'guides_gestion' %}"><i class="bi bi-journal-arrow-up"></i> Guides (dépôt)</a>{% endif %}
       {% if user.is_staff %}
         <a class="btn btn-or-plein" href="{% url 'admin:index' %}"><i class="bi bi-sliders"></i> Administration</a>
       {% endif %}
@@ -194,6 +197,13 @@
         </div>
         <div class="ms-auto d-flex gap-2 flex-wrap">{% block actions %}{% endblock %}</div>
       </div>
+      {% if guide_nouveau and actif != 'tableau' %}
+        <div class="alert alert-warning d-flex flex-wrap align-items-center gap-2 py-2">
+          <i class="bi bi-book"></i>
+          <div class="me-auto"><strong>Votre guide d'utilisation a été mis à jour</strong> le {{ guide.date|date:"d/m/Y" }}{% if guide.nouveautes %} : {{ guide.nouveautes|linebreaksbr|truncatechars_html:220 }}{% endif %}</div>
+          <a class="btn btn-sm btn-or-plein" href="{% url 'guide_ouvrir' %}" target="_blank" rel="noopener" onclick="setTimeout(function(){ location.reload(); }, 1500)"><i class="bi bi-file-earmark-pdf"></i> Ouvrir le guide</a>
+        </div>
+      {% endif %}
       {% for m in messages %}
         <div class="alert alert-{% if m.tags == 'error' %}danger{% else %}{{ m.tags }}{% endif %} alert-dismissible fade show">
           {{ m }}<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fermer"></button>

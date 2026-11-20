@@ -36,6 +36,10 @@ def gped(request):
         if profil.est_scolarite:
             from .views_demandes import nb_demandes_en_attente
             contexte['nb_demandes'] = nb_demandes_en_attente()
+        # Guide d'utilisation du compte (PDF) : lien du menu et bandeau « Nouveautés » tant qu'il n'est pas ouvert
+        from .guides import etat_pour
+        etat = etat_pour(request.user, profil)
+        contexte['guide'], contexte['guide_nouveau'] = etat['guide'], etat['nouveau']
         # Recherche des fonctionnalités du bandeau : seulement celles que cet utilisateur peut ouvrir
         from .fonctionnalites import fonctionnalites
         contexte['fonctionnalites'] = fonctionnalites(profil, request.user)

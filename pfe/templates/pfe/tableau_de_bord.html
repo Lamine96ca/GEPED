@@ -25,6 +25,21 @@
   </div>
 </div>
 
+<!-- Guide d'utilisation : juste après la connexion -->
+{% if guide %}
+<div class="card carte-gped mb-3 {% if guide_nouveau %}border-warning{% endif %}" style="{% if guide_nouveau %}border-width:2px{% endif %}">
+  <div class="card-body d-flex flex-wrap align-items-center gap-3">
+    <span class="tuile {% if guide_nouveau %}tuile-orange{% else %}tuile-bleu{% endif %}"><i class="bi bi-book"></i></span>
+    <div class="me-auto" style="min-width:0">
+      <div class="fw-semibold" style="color:var(--encre)">Guide d'utilisation · {{ guide.get_public_display }}{% if guide_nouveau %} <span class="pill pill-attention ms-1">Nouvelle version</span>{% endif %}</div>
+      <div class="small text-secondary">Version du {{ guide.date|date:"d/m/Y" }} · tout ce que vous pouvez faire dans gePed, pas à pas, avec des captures d'écran.</div>
+      {% if guide_nouveau and guide.nouveautes %}<div class="small mt-2"><strong>Nouveautés :</strong><div style="white-space:pre-line">{{ guide.nouveautes }}</div></div>{% endif %}
+    </div>
+    <a class="btn {% if guide_nouveau %}btn-or-plein{% else %}btn-primary{% endif %}" href="{% url 'guide_ouvrir' %}" target="_blank" rel="noopener" {% if guide_nouveau %}onclick="setTimeout(function(){ location.reload(); }, 1500)"{% endif %}><i class="bi bi-file-earmark-pdf"></i> Ouvrir le guide (PDF)</a>
+  </div>
+</div>
+{% endif %}
+
 <!-- Chiffres clés -->
 <div class="row g-3 mb-3">
   <div class="col-6 col-xl-3">
