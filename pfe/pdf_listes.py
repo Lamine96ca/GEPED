@@ -15,7 +15,7 @@ from django.utils import timezone
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle
-from reportlab.platypus import KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import CondPageBreak, KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 from reportlab.pdfgen import canvas as rl_canvas
 from xml.sax.saxutils import escape
 
@@ -184,18 +184,19 @@ def pdf_sections(titre, filtres, sections, utilisateur=None, signataire=None, pa
     if total:
         contenu.append(Paragraph(escape(total), _total))
     contenu.append(Spacer(1, 8))
+    # Les tableaux s'enchaînent sans saut de page forcé : le premier commence TOUJOURS sur la première page, sous
+    # l'en-tête, et continue sur les pages suivantes (en-têtes de colonnes répétés). Seule précaution : le titre
+    # d'une section suivante n'est jamais laissé seul en bas d'une page (CondPageBreak).
     for k, sec in enumerate(sections):
-        tete = []
+        if k and (sec['titre'] or sec['note']):
+            contenu.append(CondPageBreak(90))
         if sec['titre']:
-            tete += [Spacer(1, 6 if k else 0), Paragraph(escape(sec['titre']), _sous_titre), Spacer(1, 3)]
+            contenu += [Spacer(1, 6 if k else 0), Paragraph(escape(sec['titre']), _sous_titre), Spacer(1, 3)]
         if sec['note']:
-            tete += [Paragraph(escape(sec['note']), _note), Spacer(1, 3)]
-        tete += sec['avant']
+            contenu += [Paragraph(escape(sec['note']), _note), Spacer(1, 3)]
+        contenu += sec['avant']
         if sec['colonnes']:
-            tableau = _tableau(sec['colonnes'], sec['lignes'], utile, taille, sec['vide'], sec['pied'])
-            contenu += [KeepTogether(tete + [tableau])] if len(sec['lignes']) <= 25 else tete + [tableau]
-        else:
-            contenu += tete
+            contenu.append(_tableau(sec['colonnes'], sec['lignes'], utile, taille, sec['vide'], sec['pied']))
         contenu.append(Spacer(1, 8))
     contenu.append(_bloc_signature(signataire, utile))
 
