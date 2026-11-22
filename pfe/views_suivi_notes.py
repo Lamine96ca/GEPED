@@ -19,7 +19,7 @@ from django.views.decorators.http import require_POST
 
 from .models import AutorisationNotes, ImportNotes, Licence, Note, NoteHistorique, Service, Session, stockage_prive
 from .notes import avec_promotion, filtrer_promotion
-from .roles import chef_scolarite_requis, get_profil, scolarite_requise, suivi_notes_requis
+from .roles import chef_scolarite_requis, get_profil, scolarite_requise, suivi_notes_requis, autorisations_lecture_requise
 from .views_notes import promotions_de
 
 LIBELLES = [('controle', 'Contrôle'), ('tp', 'TP'), ('examen', 'Examen'), ('moyenne', 'Moyenne'),
@@ -151,7 +151,7 @@ def notes_imports(request):
 # ------------------------------------------------------------------ autorisations
 
 @login_required
-@scolarite_requise
+@autorisations_lecture_requise
 def notes_autorisations(request):
     """Autorisations de modification des notes (semestres délibérés, années écoulées) pour les programmes."""
     from django.utils import timezone

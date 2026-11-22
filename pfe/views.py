@@ -30,7 +30,7 @@ from .importer import OBLIGATOIRES, importer_etudiants, modele_import_xlsx
 from .models import (Attestation, Etudiant, Inscription, Licence, Promotion, Promotion_Licence_Session, Semestre,
                      Service, Session)
 from .photos import compresser, enregistrer_photo, retirer_photo, url_photo
-from .roles import (acces_requis, attestations_requise, attestations_visibles, etudiants_geres, etudiants_requise,
+from .roles import (acces_requis, matieres_lecture_requise, attestations_requise, attestations_visibles, etudiants_geres, etudiants_requise,
                     gestion_matieres_requise, get_profil, inscriptions_gerees, inscriptions_visibles, matieres_visibles,
                     programmes_du_profil, scolarite_requise)
 
@@ -764,7 +764,7 @@ TRIS_MATIERES = {
 
 
 @login_required
-@acces_requis
+@matieres_lecture_requise
 def matieres_liste(request):
     """Scolarité et autres services : toutes les matières ; chef de programme : les siennes."""
     profil = get_profil(request)

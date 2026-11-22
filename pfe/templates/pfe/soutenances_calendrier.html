@@ -33,10 +33,10 @@
           </div>
           {% for c in p.conflits %}<div class="small text-danger fw-semibold mt-1"><i class="bi bi-exclamation-triangle"></i> {{ c }}</div>{% endfor %}
         </div>
-        {% if profil.gere_matieres %}<div class="text-nowrap">
+        <div class="text-nowrap">
           <a class="btn btn-icone" href="{% url 'projet_pv' p.pk %}" target="_blank" rel="noopener" title="PV de soutenance (PDF)"><i class="bi bi-file-earmark-pdf"></i></a>
-          <a class="btn btn-icone" href="{% url 'projet_modifier' p.pk %}" title="Modifier"><i class="bi bi-pencil"></i></a>
-        </div>{% endif %}
+          {% if profil.gere_matieres %}<a class="btn btn-icone" href="{% url 'projet_modifier' p.pk %}" title="Modifier"><i class="bi bi-pencil"></i></a>{% endif %}
+        </div>
       </div>
     {% endfor %}
   {% empty %}

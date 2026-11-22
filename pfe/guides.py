@@ -20,7 +20,7 @@ def public_du_profil(profil):
         return GuideUtilisation.CHEF_DEPARTEMENT
     if profil.role == 'programme':
         return GuideUtilisation.DIRECTEUR
-    if profil.est_dge:
+    if profil.est_direction:                    # Direction Générale et Direction Générale des Études
         return GuideUtilisation.DGE
     return ''
 

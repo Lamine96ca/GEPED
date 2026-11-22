@@ -33,7 +33,7 @@ def _conges_geres(request):
 def _conges_visibles(request):
     """Liste : ceux que l'on gère ; la Direction Générale des Études voit tous les congés (sans les modifier)."""
     profil = get_profil(request)
-    if profil.est_dge and not profil.est_scolarite:
+    if profil.est_direction and not profil.est_scolarite:
         return CongeAcademique.objects.all()
     return _conges_geres(request)
 

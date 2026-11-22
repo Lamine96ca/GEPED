@@ -39,6 +39,18 @@ def _soutenances(profil, user):      # @soutenances_lecture_requise : + autres s
     return profil.voit_soutenances
 
 
+def _demandes(profil, user):         # @demandes_lecture_requise : + Direction (lecture)
+    return profil.consulte_demandes
+
+
+def _matieres_lecture(profil, user):  # @matieres_lecture_requise : tout le personnel sauf la Direction
+    return profil.voit_matieres
+
+
+def _autorisations(profil, user):    # @autorisations_lecture_requise : scolarité + Direction (lecture)
+    return profil.voit_autorisations
+
+
 def _lit_notes(profil, user):        # @lecture_notes_requise : + Direction Générale des Études
     return profil.lit_notes
 
@@ -101,7 +113,7 @@ CATALOGUE = [
     ('Étudiants', 'Demandes en ligne',
      "Inscriptions et réinscriptions déposées dans l'espace étudiant : valider, refuser, imprimer la fiche.",
      "espace étudiant en ligne demande valider refuser fiche d'inscription imprimer dossier pièces",
-     'demandes_liste', (), 'bi-inbox', _etudiants),
+     'demandes_liste', (), 'bi-inbox', _demandes),
     ('Étudiants', 'Ouvrir ou fermer les inscriptions en ligne',
      "Ouvrir ou fermer les inscriptions et les réinscriptions de l'espace étudiant pour la session.",
      'ouvrir fermer ouverture espace étudiant en ligne dépôts', 'demandes_liste', (), 'bi-toggle-on', _scolarite),
@@ -133,7 +145,7 @@ CATALOGUE = [
      'bi-file-earmark-spreadsheet', _etudiants),
 
     ('Pédagogie', 'Matières', "Matières par programme, niveau et semestre, avec leurs crédits.",
-     'matière matières cours module UE unité crédits programme', 'matieres_liste', (), 'bi-journal-bookmark', _acces),
+     'matière matières cours module UE unité crédits programme', 'matieres_liste', (), 'bi-journal-bookmark', _matieres_lecture),
     ('Pédagogie', 'Ajouter une matière', "Créer une matière d'un programme, d'un niveau et d'un semestre.",
      'matière cours module créer ajouter nouvelle', 'matiere_creer', (), 'bi-journal-plus', _matieres),
     ('Pédagogie', 'Importer des matières', "Importer les matières d'un fichier Excel.",
@@ -167,13 +179,13 @@ CATALOGUE = [
     ('Notes', 'Autorisations de modification',
      "Rouvrir aux programmes, pour une période, les notes d'un niveau délibéré ou d'une année écoulée.",
      NOTES + ' autorisation autoriser rouvrir ouvrir délibéré période date début fin programme niveau',
-     'notes_autorisations', (), 'bi-unlock', _scolarite),
+     'notes_autorisations', (), 'bi-unlock', _autorisations),
     ('Soutenances', 'Liste des soutenances', "Soutenances enregistrées : jury, date, note.",
      SOUTENANCE + ' liste', 'soutenances', (), 'bi-mortarboard', _soutenances),
     ('Soutenances', 'Ajouter une soutenance', "Enregistrer une soutenance : étudiant, jury, date et salle.",
      SOUTENANCE + ' ajouter créer nouvelle', 'soutenance_creer', (), 'bi-plus-circle', _matieres),
     ('Soutenances', 'Projets de soutenance', "Sujets et encadreurs des projets de fin d'études.",
-     SOUTENANCE + ' sujet encadreur thème', 'projets_liste', (), 'bi-lightbulb', _matieres),
+     SOUTENANCE + ' sujet encadreur thème', 'projets_liste', (), 'bi-lightbulb', _soutenances),
     ('Soutenances', 'Ajouter un projet de soutenance', "Enregistrer un sujet de projet et son encadreur.",
      SOUTENANCE + ' sujet encadreur thème ajouter créer', 'projet_creer', (), 'bi-plus-circle', _matieres),
     ('Soutenances', 'Notes de soutenance', "Saisir les notes de soutenance.",

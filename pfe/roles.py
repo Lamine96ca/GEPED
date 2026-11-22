@@ -13,9 +13,13 @@ Rôles gePed et périmètre de visibilité des étudiants.
                 Gère les matières, les notes et les soutenances de son ou ses programmes.
 - Département : personnel (non chef) d'un département : consulte les étudiants et les matières des
                 programmes du département.
-- Service     : personnel d'un autre service (Direction générale, Direction Générale des Études…) :
-                consulte les étudiants et les matières de tout l'établissement ; la Direction Générale
-                des Études lit aussi les notes, leur historique et les congés, sans rien modifier.
+- Service     : personnel d'un autre service : consulte les étudiants et les matières de tout l'établissement.
+- Direction   : Direction Générale et Direction Générale des Études (des services) : consultent tout
+                l'établissement (étudiants, statistiques, demandes en ligne, congés, notes, résultats,
+                validations, délibérations, historique des notes, fichiers importés, autorisations,
+                soutenances) sans rien modifier : le middleware LectureSeuleMiddleware refuse toute
+                modification. Restent fermés : relevés et attestations (scolarité), la partie Matières, et
+                les activités du super utilisateur (personnel, guides, administration).
 
 Périmètre : la scolarité et les services voient tout ; le chef de département, le directeur de programme
 et le personnel d'un département ne voient que leurs programmes (`programme_ids`).
@@ -93,13 +97,13 @@ class Profil:
     @property
     def voit_validations(self):
         """Page « Validation des semestres » : le chef de département (il valide) et le super utilisateur."""
-        return self.est_chef_departement or self.superuser
+        return self.est_chef_departement or self.superuser or self.est_direction
 
     @property
     def voit_deliberation(self):
-        """Cadre « Délibération » des résultats : la scolarité (le chef de la scolarité délibère) et la DGE, pas les
-        départements ni les programmes (eux présentent les résultats au jury dans l'espace de délibération)."""
-        return self.est_scolarite or self.est_dge
+        """Cadre « Délibération » des résultats : la scolarité (le chef de la scolarité délibère) et la Direction, pas
+        les départements ni les programmes (eux présentent les résultats au jury dans l'espace de délibération)."""
+        return self.est_scolarite or self.est_direction
 
     @property
     def telecharge_fiches(self):
@@ -138,6 +142,8 @@ class Profil:
 
     @property
     def libelle(self):
+        if self.lecture_seule:                      # « Service » ne dit rien : on nomme la direction
+            return 'Direction Générale' if self.est_dg and not self.est_dge else 'Direction Générale des Études'
         return LIBELLES[self.role]
 
     @property
@@ -163,6 +169,36 @@ class Profil:
         return any(est_service_dge(s) for s in self.tous_services)
 
     @property
+    def est_dg(self):
+        """Direction Générale : mêmes droits de consultation que la Direction Générale des Études."""
+        return any(est_service_dg(s) for s in self.tous_services)
+
+    @property
+    def est_direction(self):
+        """Direction Générale ou Direction Générale des Études : consulte tout l'établissement."""
+        return self.est_dge or self.est_dg
+
+    @property
+    def lecture_seule(self):
+        """Compte de la Direction (sans autre rôle) : voit tout, ne modifie rien (voir LectureSeuleMiddleware)."""
+        return self.est_direction and self.role == SERVICE and not self.superuser
+
+    @property
+    def consulte_demandes(self):
+        """Demandes en ligne : ceux qui les gèrent, et la Direction (lecture). Relevés et attestations : scolarité."""
+        return self.gere_etudiants or self.est_direction
+
+    @property
+    def voit_matieres(self):
+        """Partie « Matières » : tout le personnel, sauf la Direction (elle suit les notes, pas les matières)."""
+        return self.a_acces and not self.lecture_seule
+
+    @property
+    def voit_autorisations(self):
+        """Autorisations de modification des notes : la scolarité (les accorde) et la Direction (lecture)."""
+        return self.est_scolarite or self.est_direction
+
+    @property
     def voit_soutenances(self):
         """Liste et calendrier des soutenances : la scolarité et les services voient tout (lecture seule pour les
         services) ; chef de département, directeur de programme et personnel de département, leurs programmes."""
@@ -171,17 +207,17 @@ class Profil:
     @property
     def lit_notes(self):
         """Notes et résultats : scolarité, chefs de département, directeurs, Direction Générale des Études (lecture)."""
-        return self.gere_matieres or self.est_dge
+        return self.gere_matieres or self.est_direction
 
     @property
     def voit_suivi_notes(self):
-        """Historique des notes et fichiers importés : scolarité, admin et Direction Générale des Études."""
-        return self.est_scolarite or self.est_dge
+        """Historique des notes et fichiers importés : scolarité, admin et Direction."""
+        return self.est_scolarite or self.est_direction
 
     @property
     def voit_conges(self):
-        """Liste des congés académiques : ceux qui gèrent les étudiants, et la Direction Générale des Études."""
-        return self.gere_etudiants or self.est_dge
+        """Liste des congés académiques : ceux qui gèrent les étudiants, et la Direction."""
+        return self.gere_etudiants or self.est_direction
 
     @property
     def structure(self):
@@ -214,6 +250,14 @@ def est_service_dge(service):
     if service.programme:
         return False
     noms = {_sans_accents(n) for n in getattr(settings, 'GPED_DGE_NOMS', ['Direction Générale des Études'])}
+    return _sans_accents(service.nom) in noms
+
+
+def est_service_dg(service):
+    """Direction Générale : reconnue par son nom (GPED_DIRECTION_GENERALE_NOMS), sans casse ni accents."""
+    if service.programme:
+        return False
+    noms = {_sans_accents(n) for n in getattr(settings, 'GPED_DIRECTION_GENERALE_NOMS', ['Direction Générale'])}
     return _sans_accents(service.nom) in noms
 
 
@@ -303,17 +347,20 @@ def _exige(propriete, message):
 
 
 lecture_notes_requise = _exige('lit_notes', "Notes : réservé à la scolarité, aux chefs de département, aux "
-                                            "directeurs de programme et à la Direction Générale des Études.")
+                                            "directeurs de programme et à la Direction.")
+demandes_lecture_requise = _exige('consulte_demandes', "Demandes en ligne : réservé à la scolarité, aux directeurs "
+                                                       "de Master et à la Direction.")
+matieres_lecture_requise = _exige('voit_matieres', "Matières : réservé à la scolarité, aux départements et aux "
+                                                   "programmes.")
+autorisations_lecture_requise = _exige('voit_autorisations', "Réservé à la scolarité et à la Direction.")
 chef_departement_requis = _exige('est_chef_departement', "Réservé au chef de département.")
 validations_requises = _exige('voit_validations', "Validation des semestres : réservé aux chefs de département et "
                                                   "au super utilisateur.")
 soutenances_lecture_requise = _exige('voit_soutenances', "Soutenances : réservé au personnel de l'établissement.")
 fiches_requises = _exige('telecharge_fiches', "Fiche de notes de l'enseignant : réservé aux chefs de département et "
                                               "aux directeurs de programme.")
-suivi_notes_requis = _exige('voit_suivi_notes', "Réservé à la scolarité, à l'administrateur et à la Direction "
-                                                "Générale des Études.")
-lecture_conges_requise = _exige('voit_conges', "Congés académiques : réservé à la scolarité et à la Direction "
-                                               "Générale des Études.")
+suivi_notes_requis = _exige('voit_suivi_notes', "Réservé à la scolarité, à l'administrateur et à la Direction.")
+lecture_conges_requise = _exige('voit_conges', "Congés académiques : réservé à la scolarité et à la Direction.")
 chef_scolarite_requis = _exige('est_chef_scolarite', "Réservé au chef de la scolarité et à l'administrateur.")
 
 

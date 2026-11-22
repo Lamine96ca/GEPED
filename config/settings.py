@@ -109,6 +109,8 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    # Direction (Générale, des Études) : consultation seule, toute modification est refusée
+    'pfe.lecture_seule.LectureSeuleMiddleware',
 ]
 
 ROOT_URLCONF = 'config.urls'
@@ -308,6 +310,8 @@ GPED_SCOLARITE_NOMS = ['Service Scolarité']
 # Direction Générale des Études (reconnue par son nom, sans casse ni accents) : consultation seule
 # de la liste des étudiants, des notes de tous les programmes, des statistiques et des congés
 GPED_DGE_NOMS = ['Direction Générale des Études']
+# Direction Générale : mêmes droits de consultation (tout voir, rien modifier)
+GPED_DIRECTION_GENERALE_NOMS = ['Direction Générale']
 
 # Attestations : informations imprimées dans le cadre (communes à tous les types)
 GPED_ATTESTATION = {

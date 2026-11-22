@@ -2990,9 +2990,9 @@ class GpedTests(TestCase):
         self.assertNotContains(r, reverse('notes_saisie', args=[algo.pk]))
         self.assertEqual(self.client.get(reverse('notes_resultats'), {
             'session': self.session.pk, 'programme': self.info.pk, 'semestre': s1.pk}).status_code, 200)
-        for url in (reverse('notes_saisie', args=[algo.pk]), reverse('notes_importer'), reverse('notes_matieres'),
-                    reverse('notes_autorisations')):
+        for url in (reverse('notes_saisie', args=[algo.pk]), reverse('notes_importer'), reverse('notes_matieres')):
             self.assertEqual(self.client.get(url).status_code, 403, url)
+        self.assertEqual(self.client.get(reverse('notes_autorisations')).status_code, 200)      # consultation seule
         self.assertEqual(self.client.post(reverse('notes_deliberer'), {
             'session': self.session.pk, 'programme': self.info.pk, 'semestre': s1.pk}).status_code, 403)
         self.assertContains(self.client.get(reverse('notes_historique')), 'Erreur de report')
@@ -4470,3 +4470,75 @@ class ConnexionDeuxEtapesTests(TestCase):
     def test_administration_django_passe_par_la_connexion_gped(self):
         r = self.client.get('/django-admin/login/?next=/django-admin/')
         self.assertRedirects(r, reverse('login') + '?next=%2Fdjango-admin%2F', fetch_redirect_response=False)
+
+
+class EspaceDirectionTests(TestCase):
+    """Directeur général et Directeur des études : voient tout l'établissement, ne modifient rien ; les activités du
+    super utilisateur leur restent fermées."""
+    setUpTestData_base = GpedTests.__dict__['setUpTestData']
+    connecter = GpedTests.connecter
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.setUpTestData_base.__func__(cls)
+        for k, (login, nom) in enumerate([('dg', 'Direction Générale'), ('dge', 'Direction Générale Des Etudes')]):
+            svc = Service.objects.create(nom=nom, code='0000')
+            u = User.objects.create_user(login, password='x')
+            p = Personnel.objects.create(utilisateur=u, prenom=login, nom='D', telephone=f'7{k}', email=f'{login}@t.local',
+                                         fonc='Directeur', chef=True)
+            p.service.add(svc)
+
+    def test_profil_direction(self):
+        from .roles import _calculer_profil
+        for login in ('dg', 'dge'):
+            p = _calculer_profil(User.objects.get(username=login))
+            self.assertTrue(p.est_direction and p.lecture_seule, login)
+            self.assertTrue(p.lit_notes and p.voit_conges and p.consulte_demandes and p.voit_validations, login)
+            self.assertFalse(p.gere_etudiants or p.gere_matieres or p.est_scolarite or p.gere_attestations, login)
+            self.assertFalse(p.voit_matieres, login)
+        self.assertFalse(_calculer_profil(User.objects.get(username='dep')).est_direction)
+
+    def test_voit_tout(self):
+        pages = ['tableau_de_bord', 'etudiants_liste', 'preinscriptions_liste', 'demandes_liste', 'conges_liste',
+                 'statistiques', 'notes_liste', 'notes_resultats',
+                 'notes_deliberation', 'notes_validations', 'notes_historique', 'notes_imports', 'notes_autorisations',
+                 'soutenances', 'projets_liste', 'soutenances_calendrier', 'mon_compte']
+        for login in ('dg', 'dge'):
+            self.connecter(login)
+            for nom in pages:
+                self.assertEqual(self.client.get(reverse(nom)).status_code, 200, (login, nom))
+            # Tous les étudiants de l'établissement (Informatique et Génie civil), toutes les demandes, etc.
+            from .roles import _calculer_profil, inscriptions_visibles
+            profil = _calculer_profil(User.objects.get(username=login))
+            self.assertEqual(inscriptions_visibles(profil).count(), Inscription.objects.count(), login)
+            # Relevés, attestations (scolarité) et partie Matières : ni page ni entrée de menu
+            for nom in ('releves', 'attestations', 'matieres_liste'):
+                self.assertEqual(self.client.get(reverse(nom)).status_code, 403, (login, nom))
+            menu = self.client.get(reverse('tableau_de_bord')).content.decode().split('gped-nav', 1)[1]
+            menu = menu.split('</nav>', 1)[0]
+            for nom in ('releves', 'attestations', 'matieres_liste'):
+                self.assertNotIn(f'href="{reverse(nom)}"', menu, (login, nom))
+
+    def test_ne_modifie_rien(self):
+        self.connecter('dge')
+        # Pages de modification et activités du super utilisateur : fermées
+        for nom in ('inscription_creer', 'importer', 'matiere_creer', 'matieres_importer', 'notes_matieres',
+                    'notes_importer', 'soutenance_creer', 'projet_creer', 'soutenances_importer', 'personnel_liste',
+                    'guides_gestion'):
+            self.assertIn(self.client.get(reverse(nom)).status_code, (302, 403), nom)
+        self.assertNotEqual(self.client.get('/django-admin/').status_code, 200)
+        # Toute modification est refusée, même sur une page qu'il peut voir
+        session = Session.objects.get(annee='2025-2026')
+        r = self.client.post(reverse('demandes_liste'), {'ouverture': 'inscriptions_ouvertes', 'valeur': '1'})
+        self.assertEqual(r.status_code, 403)
+        session.refresh_from_db()
+        self.assertFalse(getattr(session, 'inscriptions_ouvertes', False))
+        self.assertEqual(self.client.post(reverse('releve_creer'), {'type': 'E'}).status_code, 403)
+        self.assertEqual(self.client.post(reverse('notes_valider'), {}).status_code, 403)
+        # Ni bouton d'ajout dans les pages consultées
+        self.assertNotContains(self.client.get(reverse('projets_liste')), reverse('projet_creer'))
+        # Son propre compte reste modifiable (mot de passe, e-mail)
+        r = self.client.post(reverse('mon_compte'), {'coordonnees': '1', 'email': 'dge@t.local', 'telephone': '71'})
+        self.assertNotEqual(r.status_code, 403)
+        # La déconnexion reste possible
+        self.assertEqual(self.client.post(reverse('logout')).status_code, 302)

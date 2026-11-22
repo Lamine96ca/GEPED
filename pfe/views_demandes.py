@@ -23,12 +23,12 @@ from . import espace_etudiant as espace
 from .attestations import _nom_departement
 from .models import DemandeEtudiant, Etudiant, Inscription, Matiere, Note, Resultat, Session
 from .photos import url_photo
-from .roles import etudiants_requise, get_profil
+from .roles import etudiants_requise, get_profil, demandes_lecture_requise
 
 def demandes_gerees(profil):
     """Toutes les demandes (scolarité), sinon celles des étudiants des Masters dirigés."""
     qs = DemandeEtudiant.objects.all()
-    if profil.est_scolarite:
+    if profil.est_scolarite or profil.lecture_seule:          # la Direction consulte tout (sans rien modifier)
         return qs
     masters = profil.masters_diriges
     if not masters:
@@ -52,7 +52,7 @@ SEUIL_ROUGE = 5
 
 
 @login_required
-@etudiants_requise
+@demandes_lecture_requise
 def demandes_liste(request):
     session = espace.session_cible()
     if request.method == 'POST':
@@ -133,7 +133,7 @@ def notes_empilees(etudiant):
 
 
 @login_required
-@etudiants_requise
+@demandes_lecture_requise
 def demande_detail(request, pk):
     demande = get_object_or_404(demandes_gerees(get_profil(request)).select_related(
         'etudiant', 'session', 'licence', 'derniere_inscription__licence', 'derniere_inscription__filiere',
@@ -264,7 +264,7 @@ def inscription_de_la_fiche(demande):
 
 
 @login_required
-@etudiants_requise
+@demandes_lecture_requise
 def demande_fiche_pdf(request, pk):
     """Fiche d'inscription / de réinscription de la demande, à imprimer directement."""
     from .fiche_inscription import reponse_fiche
@@ -279,7 +279,7 @@ def demande_fiche_pdf(request, pk):
 
 
 @login_required
-@etudiants_requise
+@demandes_lecture_requise
 def demande_photo(request, pk):
     """Nouvelle photo proposée par l'étudiant (en attente)."""
     from .models import stockage_prive
@@ -292,7 +292,7 @@ def demande_photo(request, pk):
 
 
 @login_required
-@etudiants_requise
+@demandes_lecture_requise
 def demande_signature(request, pk):
     """Signature de l'étudiant (image privée), pour la fiche de la demande."""
     from .models import stockage_prive

@@ -95,7 +95,7 @@
             <li><i class="bi bi-calendar-range"></i><div><div class="lib">Période</div><div class="val">Du {{ conge.date_debut|date:"d/m/Y" }}{% if conge.date_fin %} au {{ conge.date_fin|date:"d/m/Y" }}{% endif %}</div></div></li>
             <li><i class="bi bi-person-check"></i><div><div class="lib">Enregistré le</div><div class="val">{{ conge.date_creation|date:"d/m/Y" }}{% if conge.accorde_par %} · {{ conge.accorde_par.get_full_name|default:conge.accorde_par.username }}{% endif %}</div></div></li>
           </ul>
-          {% if conge.justificatif and gere or conge.justificatif and profil.est_dge %}
+          {% if conge.justificatif and gere or conge.justificatif and profil.est_direction %}
             <a class="btn btn-sm btn-light" href="{% url 'conge_justificatif' conge.pk %}" target="_blank" rel="noopener"><i class="bi bi-file-earmark-pdf"></i> Justificatif ({{ conge.pages }} page{{ conge.pages|pluralize }}, {{ conge.taille|filesizeformat }})</a>
           {% endif %}
           {% if peut_gerer_conges %}

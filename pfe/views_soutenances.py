@@ -261,7 +261,7 @@ STATUTS_PROJET = ProjetSoutenance.STATUTS
 
 
 @login_required
-@gestion_matieres_requise
+@soutenances_lecture_requise
 def projets_liste(request):
     profil = get_profil(request)
     f, contexte = _filtres(request, profil)
@@ -343,7 +343,7 @@ def projet_supprimer(request, pk):
 
 
 @login_required
-@gestion_matieres_requise
+@soutenances_lecture_requise
 def projet_pv(request, pk):
     from .pdf_soutenances import pdf_pv
     p = get_object_or_404(projets_visibles(get_profil(request)), pk=pk)

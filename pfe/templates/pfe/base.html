@@ -95,7 +95,7 @@
           {% if profil.est_scolarite %}
             <a class="nav-link {% if actif == 'importer' %}active{% endif %}" href="{% url 'importer' %}">Importer une liste</a>
           {% endif %}
-          {% if profil.gere_etudiants %}
+          {% if profil.consulte_demandes %}
             <a class="nav-link {% if actif == 'demandes' %}active{% endif %}" href="{% url 'demandes_liste' %}">Demandes en ligne{% if nb_demandes and profil.est_scolarite %}<span class="compteur" title="Demandes en attente">{{ nb_demandes }}</span>{% endif %}</a>
           {% endif %}
           {% if profil.voit_conges %}
@@ -113,7 +113,9 @@
         <a class="nav-link {% if actif == 'releves' %}active{% endif %}" href="{% url 'releves' %}"><i class="bi bi-file-earmark-spreadsheet"></i> Relevés de notes</a>
       {% endif %}
       <!-- 3. Matières -->
+      {% if profil.voit_matieres %}
       <a class="nav-link {% if actif == 'matieres' %}active{% endif %}" href="{% url 'matieres_liste' %}"><i class="bi bi-journal-bookmark"></i> Matières</a>
+      {% endif %}
 
       <!-- Notes : scolarité et chefs de programme ; Direction Générale des Études en consultation -->
       {% if profil.lit_notes %}
@@ -143,7 +145,7 @@
               <a class="nav-link {% if actif == 'notes_historique' %}active{% endif %}" href="{% url 'notes_historique' %}">Historique des notes</a>
               <a class="nav-link {% if actif == 'notes_imports' %}active{% endif %}" href="{% url 'notes_imports' %}">Fichiers importés</a>
             {% endif %}
-            {% if profil.est_scolarite %}
+            {% if profil.voit_autorisations %}
               <a class="nav-link {% if actif == 'notes_autorisations' %}active{% endif %}" href="{% url 'notes_autorisations' %}">Autorisations</a>
             {% endif %}
           </div>
@@ -166,8 +168,8 @@
           </button>
           <div class="collapse sous-menu {{ sout_ouvert }}" id="sous-menu-soutenances">
             <a class="nav-link {% if actif == 'sout_liste' %}active{% endif %}" href="{% url 'soutenances' %}">Liste des soutenances</a>
-            {% if profil.gere_matieres %}
             <a class="nav-link {% if actif == 'sout_projets' %}active{% endif %}" href="{% url 'projets_liste' %}">Projets de soutenance</a>
+            {% if profil.gere_matieres %}
             <a class="nav-link {% if actif == 'sout_notes' %}active{% endif %}" href="{% url 'soutenances_notes' %}">Saisie des notes</a>
             {% endif %}
             <a class="nav-link {% if actif == 'sout_calendrier' %}active{% endif %}" href="{% url 'soutenances_calendrier' %}">Calendrier</a>
