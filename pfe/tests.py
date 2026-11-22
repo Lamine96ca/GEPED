@@ -2992,7 +2992,7 @@ class GpedTests(TestCase):
             'session': self.session.pk, 'programme': self.info.pk, 'semestre': s1.pk}).status_code, 200)
         for url in (reverse('notes_saisie', args=[algo.pk]), reverse('notes_importer'), reverse('notes_matieres')):
             self.assertEqual(self.client.get(url).status_code, 403, url)
-        self.assertEqual(self.client.get(reverse('notes_autorisations')).status_code, 200)      # consultation seule
+        self.assertEqual(self.client.get(reverse('notes_autorisations')).status_code, 403)      # scolarité seulement
         self.assertEqual(self.client.post(reverse('notes_deliberer'), {
             'session': self.session.pk, 'programme': self.info.pk, 'semestre': s1.pk}).status_code, 403)
         self.assertContains(self.client.get(reverse('notes_historique')), 'Erreur de report')
@@ -4501,7 +4501,7 @@ class EspaceDirectionTests(TestCase):
     def test_voit_tout(self):
         pages = ['tableau_de_bord', 'etudiants_liste', 'preinscriptions_liste', 'demandes_liste', 'conges_liste',
                  'statistiques', 'notes_liste', 'notes_resultats',
-                 'notes_deliberation', 'notes_validations', 'notes_historique', 'notes_imports', 'notes_autorisations',
+                 'notes_deliberation', 'notes_validations', 'notes_historique', 'notes_imports',
                  'soutenances', 'projets_liste', 'soutenances_calendrier', 'mon_compte']
         for login in ('dg', 'dge'):
             self.connecter(login)
@@ -4676,3 +4676,88 @@ class EnseignantsTests(TestCase):
         self.assertEqual(_calculer_profil(e.utilisateur).role, AUCUN)
         self.client.force_login(e.utilisateur)
         self.assertEqual(self.client.get(reverse('espace_enseignant')).status_code, 403)
+
+
+class SallesBatimentsTests(TestCase):
+    """Salles et bâtiments : gérés par la Direction des Études sur une même page, import Excel / CSV, exports."""
+    setUpTestData = EnseignantsTests.__dict__['setUpTestData']
+    setUpTestData_base = GpedTests.__dict__['setUpTestData']
+    connecter = GpedTests.connecter
+
+    def test_gestion_par_la_direction_des_etudes(self):
+        from .models import Batiment, Salle
+        self.connecter('dge')
+        self.assertEqual(self.client.get(reverse('salles')).status_code, 200)
+        r = self.client.post(reverse('batiment_enregistrer'), {'nom': '  Bâtiment   A ', 'code': 'ba'})
+        self.assertRedirects(r, reverse('salles'))
+        a = Batiment.objects.get()
+        self.assertEqual((a.nom, a.code), ('Bâtiment A', 'BA'))
+        r = self.client.post(reverse('salle_enregistrer'), {'batiment': a.pk, 'nom': 'Salle 12', 'type': 'cours',
+                                                            'capacite': 45, 'disponible': 'on'})
+        self.assertRedirects(r, reverse('salles'))
+        s = Salle.objects.get()
+        # Même nom dans le même bâtiment : refusé, la fenêtre se rouvre avec l'erreur
+        r = self.client.post(reverse('salle_enregistrer'), {'batiment': a.pk, 'nom': 'salle 12', 'type': 'cours',
+                                                            'capacite': 30})
+        self.assertContains(r, 'a déjà une salle de ce nom')
+        self.assertEqual(r.context['ouvrir'], 'salle-nouvelle')
+        r = self.client.post(reverse('salle_enregistrer', args=[s.pk]), {'batiment': a.pk, 'nom': 'Salle 12',
+                                                                        'type': 'amphi', 'capacite': 120})
+        s.refresh_from_db()
+        self.assertEqual((s.type, s.capacite, s.disponible), ('amphi', 120, False))
+        r = self.client.get(reverse('salles'))
+        self.assertContains(r, 'Salle 12')
+        self.assertContains(r, '1 salle')
+        # Un bâtiment qui a des salles ne se supprime pas
+        self.client.post(reverse('batiment_supprimer', args=[a.pk]))
+        self.assertTrue(Batiment.objects.exists())
+        self.client.post(reverse('salle_supprimer', args=[s.pk]))
+        self.client.post(reverse('batiment_supprimer', args=[a.pk]))
+        self.assertFalse(Batiment.objects.exists() or Salle.objects.exists())
+
+    def test_import_et_exports(self):
+        from .models import Batiment, Salle
+        self.connecter('dge')
+        lignes = [['Bâtiment', 'Salle', 'Capacité', 'Type', 'Équipements', 'Disponible'],
+                  ['Bâtiment A', 'Salle 1', 40, 'Salle de cours', 'Vidéoprojecteur', 'oui'],
+                  ['Bâtiment A', 'Amphi 1', 200, 'amphi', '', ''],
+                  ['Bâtiment B', 'Labo chimie', '30', 'TP', '', 'non'],
+                  ['Bâtiment B', 'Labo chimie', 30, '', '', ''],              # répétée
+                  ['Bâtiment B', 'Salle 9', 'beaucoup', '', '', '']]           # capacité invalide
+        r = self.client.post(reverse('salles_importer'), {'fichier': fichier_xlsx(lignes), 'simulation': 'on'})
+        rapport = r.context['rapport']
+        self.assertEqual((rapport.creees, rapport.nb_erreurs, rapport.batiments_crees), (3, 2, ['Bâtiment A', 'Bâtiment B']))
+        self.assertFalse(Salle.objects.exists() or Batiment.objects.exists())      # simulation : rien d'enregistré
+        r = self.client.post(reverse('salles_importer'), {'fichier': fichier_xlsx(lignes)})
+        self.assertEqual(r.context['rapport'].creees, 3)
+        self.assertEqual({(s.batiment.nom, s.nom, s.capacite, s.type, s.disponible) for s in Salle.objects.all()},
+                         {('Bâtiment A', 'Salle 1', 40, 'cours', True), ('Bâtiment A', 'Amphi 1', 200, 'amphi', True),
+                          ('Bâtiment B', 'Labo chimie', 30, 'labo', False)})
+        # CSV : mise à jour d'une salle existante
+        csv_ = SimpleUploadedFile('salles.csv', 'batiment;salle;capacite\nBâtiment A;Salle 1;55\n'.encode('utf-8'))
+        r = self.client.post(reverse('salles_importer'), {'fichier': csv_})
+        self.assertEqual(r.context['rapport'].mises_a_jour, 1)
+        self.assertEqual(Salle.objects.get(nom='Salle 1').capacite, 55)
+        # Filtres et exports
+        r = self.client.get(reverse('salles'), {'capacite': 50})
+        self.assertEqual({s.nom for s in r.context['salles']}, {'Salle 1', 'Amphi 1'})
+        for params, type_ in (({'export': 'xlsx'}, 'spreadsheetml'), ({'export': 'csv'}, 'text/csv'),
+                              ({'imprimer': 'pdf'}, 'application/pdf')):
+            r = self.client.get(reverse('salles'), params)
+            self.assertEqual(r.status_code, 200, params)
+            self.assertIn(type_, r['Content-Type'], params)
+        self.assertEqual(self.client.get(reverse('salles_modele')).status_code, 200)
+
+    def test_droits(self):
+        from .models import Batiment
+        for login in ('dg', 'scol'):                                  # consultation
+            self.connecter(login)
+            r = self.client.get(reverse('salles'))
+            self.assertEqual(r.status_code, 200, login)
+            self.assertNotContains(r, 'data-salle-nouvelle')
+            self.assertEqual(self.client.post(reverse('batiment_enregistrer'), {'nom': 'X'}).status_code, 403, login)
+            self.assertEqual(self.client.get(reverse('salles_importer')).status_code, 403, login)
+        for login in ('info', 'dep'):                                 # pas d'accès
+            self.connecter(login)
+            self.assertEqual(self.client.get(reverse('salles')).status_code, 403, login)
+        self.assertFalse(Batiment.objects.exists())

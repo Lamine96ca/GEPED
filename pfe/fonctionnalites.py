@@ -59,6 +59,14 @@ def _gere_enseignants(profil, user):   # @enseignants_gestion_requise : Directio
     return profil.gere_enseignants
 
 
+def _voit_salles(profil, user):        # @salles_lecture_requise
+    return profil.voit_salles
+
+
+def _gere_salles(profil, user):        # @salles_gestion_requise : Direction des Études, super utilisateur
+    return profil.gere_salles
+
+
 def _enseignant(profil, user):         # @espace_enseignant_requis
     return profil.est_enseignant
 
@@ -200,6 +208,11 @@ CATALOGUE = [
      'enseignant_creer', (), 'bi-person-plus', _gere_enseignants),
     ('Enseignants', 'Espace enseignant', "Votre espace enseignant.", 'espace enseignant mon espace emploi du temps',
      'espace_enseignant', (), 'bi-person-video3', _enseignant),
+    ('Salles', 'Salles et bâtiments', "Salles de cours, amphithéâtres, laboratoires : capacité, type, bâtiment.",
+     'salle salles bâtiment batiment amphi amphithéâtre laboratoire capacité places classe local',
+     'salles', (), 'bi-door-open', _voit_salles),
+    ('Salles', 'Importer des salles', "Importer la liste des salles depuis un fichier Excel ou CSV.",
+     'salle salles importer import Excel CSV fichier bâtiment', 'salles_importer', (), 'bi-upload', _gere_salles),
     ('Soutenances', 'Liste des soutenances', "Soutenances enregistrées : jury, date, note.",
      SOUTENANCE + ' liste', 'soutenances', (), 'bi-mortarboard', _soutenances),
     ('Soutenances', 'Ajouter une soutenance', "Enregistrer une soutenance : étudiant, jury, date et salle.",

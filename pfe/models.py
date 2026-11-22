@@ -1214,3 +1214,40 @@ class Enseignant(models.Model):
 
     def __str__(self):
         return ' '.join(x for x in (self.civilite, self.prenom, self.nom.upper()) if x)
+
+
+class Batiment(models.Model):
+    """Bâtiment de l'établissement : il regroupe des salles (page « Salles et bâtiments »)."""
+    nom = models.CharField(max_length=100, unique=True, verbose_name="Nom")
+    code = models.CharField(max_length=20, blank=True, default='', verbose_name="Code court",
+                            help_text="Ex. BA : affiché dans l'emploi du temps à côté du nom de la salle.")
+    description = models.CharField(max_length=200, blank=True, default='', verbose_name="Description / emplacement")
+
+    class Meta:
+        ordering = ['nom']
+
+    def __str__(self):
+        return self.nom
+
+
+class Salle(models.Model):
+    """Salle de cours, d'un bâtiment, avec sa capacité d'accueil (places). Désactivée : plus proposée."""
+    COURS, AMPHI, LABO, INFO, ATELIER = 'cours', 'amphi', 'labo', 'informatique', 'atelier'
+    TYPES = [(COURS, 'Salle de cours'), (AMPHI, 'Amphithéâtre'), (LABO, 'Laboratoire (TP)'),
+             (INFO, 'Salle informatique'), (ATELIER, 'Atelier')]
+
+    batiment = models.ForeignKey(Batiment, on_delete=models.PROTECT, related_name='salles', verbose_name="Bâtiment")
+    nom = models.CharField(max_length=60, verbose_name="Salle", help_text="Ex. Salle 12, Amphi 1, Labo de chimie.")
+    capacite = models.PositiveIntegerField(verbose_name="Capacité (places)")
+    type = models.CharField(max_length=15, choices=TYPES, default=COURS, verbose_name="Type")
+    equipements = models.CharField(max_length=200, blank=True, default='', verbose_name="Équipements",
+                                   help_text="Ex. vidéoprojecteur, climatisation, tableau numérique.")
+    disponible = models.BooleanField(default=True, verbose_name="Disponible",
+                                     help_text="Décoché (travaux, fermeture…) : la salle n'est plus proposée.")
+
+    class Meta:
+        ordering = ['batiment__nom', 'nom']
+        constraints = [models.UniqueConstraint(fields=['batiment', 'nom'], name='salle_unique_par_batiment')]
+
+    def __str__(self):
+        return f"{self.nom} ({self.batiment.code or self.batiment.nom})"

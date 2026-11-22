@@ -187,6 +187,9 @@
       {% if profil.voit_enseignants %}
         <a class="nav-link {% if actif == 'enseignants' %}active{% endif %}" href="{% url 'enseignants_liste' %}"><i class="bi bi-person-video3"></i> Enseignants</a>
       {% endif %}
+      {% if profil.voit_salles %}
+        <a class="nav-link {% if actif == 'salles' %}active{% endif %}" href="{% url 'salles' %}"><i class="bi bi-door-open"></i> Salles et bâtiments</a>
+      {% endif %}
       {% endif %}{# fin des pages du personnel (a_acces) #}
       <!-- Personnel : administrateurs -->
       {% if profil.gere_etudiants and user.is_superuser %}
@@ -194,7 +197,6 @@
       {% endif %}
       <!-- 4. Mon compte -->
       <a class="nav-link {% if actif == 'compte' %}active{% endif %}" href="{% url 'mon_compte' %}"><i class="bi bi-person-gear"></i> Mon compte</a>
-      {% if guide %}<a class="nav-link" href="{% url 'guide_ouvrir' %}" target="_blank" rel="noopener"><i class="bi bi-book"></i> Guide d'utilisation{% if guide_nouveau %} <span class="compteur">Nouveau</span>{% endif %}</a>{% endif %}
       {% if user.is_superuser %}<a class="nav-link {% if actif == 'guides' %}active{% endif %}" href="{% url 'guides_gestion' %}"><i class="bi bi-journal-arrow-up"></i> Guides (dépôt)</a>{% endif %}
       {% if user.is_staff %}
         <a class="btn btn-or-plein" href="{% url 'admin:index' %}"><i class="bi bi-sliders"></i> Administration</a>

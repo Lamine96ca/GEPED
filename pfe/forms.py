@@ -478,6 +478,62 @@ class EnseignantForm(BootstrapMixin, forms.ModelForm):
         return enseignant
 
 
+# ------------------------------------------------------------------ salles et bâtiments
+
+class BatimentForm(BootstrapMixin, forms.ModelForm):
+    class Meta:
+        from .models import Batiment
+        model = Batiment
+        fields = ['nom', 'code', 'description']
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['nom'].widget.attrs['placeholder'] = 'Ex. Bâtiment A'
+        self.fields['code'].widget.attrs['placeholder'] = 'Ex. BA'
+        self.fields['description'].widget.attrs['placeholder'] = 'Ex. Près de l’entrée principale'
+
+    def clean_nom(self):
+        from .models import Batiment
+        nom = ' '.join(self.cleaned_data['nom'].split())
+        if Batiment.objects.filter(nom__iexact=nom).exclude(pk=self.instance.pk).exists():
+            raise forms.ValidationError("Un bâtiment porte déjà ce nom.")
+        return nom
+
+    def clean_code(self):
+        return ' '.join(self.cleaned_data['code'].split()).upper()
+
+
+class SalleForm(BootstrapMixin, forms.ModelForm):
+    class Meta:
+        from .models import Salle
+        model = Salle
+        fields = ['batiment', 'nom', 'type', 'capacite', 'equipements', 'disponible']
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        f = self.fields
+        f['nom'].widget.attrs['placeholder'] = 'Ex. Salle 12'
+        f['capacite'].widget.attrs.update({'placeholder': 'Ex. 45', 'min': 1, 'max': 5000})
+        f['equipements'].widget.attrs['placeholder'] = 'Ex. vidéoprojecteur, climatisation'
+
+    def clean_nom(self):
+        return ' '.join(self.cleaned_data['nom'].split())
+
+    def clean_capacite(self):
+        n = self.cleaned_data['capacite']
+        if not 1 <= n <= 5000:
+            raise forms.ValidationError("Entre 1 et 5000 places.")
+        return n
+
+    def clean(self):
+        from .models import Salle
+        d = super().clean()
+        if d.get('batiment') and d.get('nom') and Salle.objects.filter(
+                batiment=d['batiment'], nom__iexact=d['nom']).exclude(pk=self.instance.pk).exists():
+            self.add_error('nom', f"Le bâtiment « {d['batiment']} » a déjà une salle de ce nom.")
+        return d
+
+
 # ------------------------------------------------------------------ mot de passe oublié
 
 

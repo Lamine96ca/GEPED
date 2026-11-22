@@ -171,6 +171,16 @@ class Profil:
         return self.superuser or self.est_dge
 
     @property
+    def gere_salles(self):
+        """Salles et bâtiments (ajout, modification, import) : la Direction Générale des Études et le super utilisateur."""
+        return self.superuser or self.est_dge
+
+    @property
+    def voit_salles(self):
+        """Salles et bâtiments en consultation : la Direction Générale et la scolarité."""
+        return self.gere_salles or self.est_direction or self.est_scolarite
+
+    @property
     def voit_enseignants(self):
         """Liste des enseignants : la DGE (gestion), la Direction Générale et la scolarité (tous), le chef de
         département et le directeur de programme (ceux de leur département)."""
@@ -218,8 +228,8 @@ class Profil:
 
     @property
     def voit_autorisations(self):
-        """Autorisations de modification des notes : la scolarité (les accorde) et la Direction (lecture)."""
-        return self.est_scolarite or self.est_direction
+        """Autorisations de modification des notes : la scolarité seulement (comme avant l'espace Direction)."""
+        return self.est_scolarite
 
     @property
     def voit_soutenances(self):
@@ -418,6 +428,10 @@ enseignants_lecture_requise = _exige('voit_enseignants', "Enseignants : réserv�
                                                           "Direction Générale, à la scolarité et aux départements.")
 enseignants_gestion_requise = _exige('gere_enseignants', "Gestion des enseignants : réservée à la Direction "
                                                          "Générale des Études.")
+salles_lecture_requise = _exige('voit_salles', "Salles et bâtiments : réservé à la Direction des Études, à la "
+                                                 "Direction Générale et à la scolarité.")
+salles_gestion_requise = _exige('gere_salles', "Gestion des salles et des bâtiments : réservée à la Direction "
+                                               "Générale des Études.")
 espace_enseignant_requis = _exige('est_enseignant', "Espace réservé aux enseignants.")
 soutenances_lecture_requise = _exige('voit_soutenances', "Soutenances : réservé au personnel de l'établissement.")
 fiches_requises = _exige('telecharge_fiches', "Fiche de notes de l'enseignant : réservé aux chefs de département et "

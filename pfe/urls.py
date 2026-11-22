@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import (views, views_conges, views_demandes, views_enseignants, views_guides, views_notes, views_personnel, views_releves,
+from . import (views, views_conges, views_demandes, views_enseignants, views_guides, views_salles, views_notes, views_personnel, views_releves,
                views_soutenances,
                views_suivi_notes)
 
@@ -84,6 +84,16 @@ urlpatterns = [
     path('enseignants/<int:pk>/', views_enseignants.enseignant_modifier, name='enseignant_modifier'),
     path('enseignants/<int:pk>/compte/', views_enseignants.enseignant_action, name='enseignant_action'),
     path('enseignant/', views_enseignants.espace_enseignant, name='espace_enseignant'),
+    # Salles et bâtiments (Direction des Études), sur une même page
+    path('salles/', views_salles.salles, name='salles'),
+    path('salles/ajouter/', views_salles.salle_enregistrer, name='salle_enregistrer'),
+    path('salles/<int:pk>/', views_salles.salle_enregistrer, name='salle_enregistrer'),
+    path('salles/<int:pk>/supprimer/', views_salles.salle_supprimer, name='salle_supprimer'),
+    path('salles/batiments/ajouter/', views_salles.batiment_enregistrer, name='batiment_enregistrer'),
+    path('salles/batiments/<int:pk>/', views_salles.batiment_enregistrer, name='batiment_enregistrer'),
+    path('salles/batiments/<int:pk>/supprimer/', views_salles.batiment_supprimer, name='batiment_supprimer'),
+    path('salles/importer/', views_salles.salles_importer, name='salles_importer'),
+    path('salles/importer/modele/', views_salles.salles_modele, name='salles_modele'),
     path('guide/', views_guides.guide_ouvrir, name='guide_ouvrir'),
     path('scolarite/guides/', views_guides.guides_gestion, name='guides_gestion'),
     path('scolarite/guides/<int:pk>/', views_guides.guide_version, name='guide_version'),

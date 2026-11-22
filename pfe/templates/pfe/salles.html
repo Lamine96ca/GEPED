@@ -1,0 +1,215 @@
+{% extends 'pfe/base.html' %}
+{% block titre %}Salles et bâtiments{% endblock %}
+{% block titre_page %}Salles et bâtiments{% endblock %}
+{% block sous_titre %}<div class="sous-titre">{{ batiments|length }} bâtiment{{ batiments|length|pluralize }} · {{ salles|length }} salle{{ salles|length|pluralize }} affichée{{ salles|length|pluralize }} · {{ nb_places }} places disponibles{% if not profil.gere_salles %} · consultation{% endif %}</div>{% endblock %}
+{% block actions %}
+  <div class="btn-group">
+    <button type="button" class="btn btn-light dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-download"></i> <span class="d-none d-sm-inline">Exporter</span></button>
+    <ul class="dropdown-menu dropdown-menu-end">
+      <li><a class="dropdown-item" href="?{{ params }}{% if params %}&amp;{% endif %}export=xlsx"><i class="bi bi-file-earmark-excel"></i> Excel</a></li>
+      <li><a class="dropdown-item" href="?{{ params }}{% if params %}&amp;{% endif %}export=csv"><i class="bi bi-filetype-csv"></i> CSV</a></li>
+      <li><a class="dropdown-item" href="?{{ params }}{% if params %}&amp;{% endif %}imprimer=pdf" target="_blank" rel="noopener"><i class="bi bi-printer"></i> PDF (imprimer)</a></li>
+    </ul>
+  </div>
+  {% if profil.gere_salles %}
+    <a href="{% url 'salles_importer' %}" class="btn btn-or"><i class="bi bi-upload"></i> <span class="d-none d-sm-inline">Importer</span></a>
+    <button type="button" class="btn btn-primary" data-salle-nouvelle><i class="bi bi-plus-lg"></i> <span class="d-none d-sm-inline">Nouvelle salle</span></button>
+  {% endif %}
+{% endblock %}
+{% block contenu %}
+<style>
+  .carte-batiment { display: block; text-decoration: none; color: inherit; border: 1px solid var(--bordure, #e5e7eb); border-radius: .75rem; padding: .7rem .9rem; background: #fff; }
+  .carte-batiment:hover { background: #fafbfc; }
+  .carte-batiment.actif { outline: 2px solid var(--or, #f5b700); background: #fffbeb; }
+  .carte-batiment .nom { font-weight: 600; color: var(--encre, #1f2d3d); }
+  .carte-batiment .chiffres { font-size: .8rem; color: #6b7280; }
+</style>
+<div class="row g-3">
+  <!-- Bâtiments -->
+  <div class="col-xl-4">
+    <div class="card carte-gped">
+      <div class="card-body">
+        <div class="entete-carte flex-wrap">
+          <span class="icone-carte"><i class="bi bi-building"></i></span>
+          <div class="me-auto"><h3>Bâtiments</h3><p>Cliquez sur un bâtiment pour voir ses salles</p></div>
+          {% if profil.gere_salles %}<button type="button" class="btn btn-sm btn-light" data-batiment-nouveau><i class="bi bi-plus-lg"></i> Bâtiment</button>{% endif %}
+        </div>
+        <div class="d-flex flex-column gap-2">
+          <a href="?" class="carte-batiment {% if not filtres.batiment %}actif{% endif %}">
+            <div class="nom"><i class="bi bi-buildings"></i> Tous les bâtiments</div>
+          </a>
+          {% for b in batiments %}
+            <div class="d-flex align-items-stretch gap-1">
+              <a href="?batiment={{ b.pk }}" class="carte-batiment flex-grow-1 {% if filtres.batiment == b.pk %}actif{% endif %}">
+                <div class="nom">{{ b.nom }}{% if b.code %} <span class="pill">{{ b.code }}</span>{% endif %}</div>
+                <div class="chiffres">{{ b.nb_salles }} salle{{ b.nb_salles|pluralize }} · {{ b.places|default:0 }} places{% if b.description %} · {{ b.description }}{% endif %}</div>
+              </a>
+              {% if profil.gere_salles %}
+                <div class="d-flex flex-column justify-content-center">
+                  <button type="button" class="btn btn-icone" title="Modifier le bâtiment" data-batiment-modifier
+                          data-url="{% url 'batiment_enregistrer' b.pk %}" data-nom="{{ b.nom }}" data-code="{{ b.code }}" data-description="{{ b.description }}"><i class="bi bi-pencil"></i></button>
+                  {% if not b.nb_salles %}
+                    <form method="post" action="{% url 'batiment_supprimer' b.pk %}" onsubmit="return confirm('Supprimer le bâtiment « {{ b.nom|escapejs }} » ?');">{% csrf_token %}
+                      <button class="btn btn-icone text-danger" title="Supprimer le bâtiment"><i class="bi bi-trash"></i></button></form>
+                  {% endif %}
+                </div>
+              {% endif %}
+            </div>
+          {% empty %}
+            <div class="etat-vide py-3"><i class="bi bi-building"></i>Aucun bâtiment.{% if profil.gere_salles %} Ajoutez-en un, ou importez vos salles : les bâtiments du fichier sont créés.{% endif %}</div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Salles -->
+  <div class="col-xl-8">
+    <div class="card carte-gped liste">
+      <form method="get" class="barre-filtres border-bottom" id="filtres-salles">
+        {% if filtres.batiment %}<input type="hidden" name="batiment" value="{{ filtres.batiment }}">{% endif %}
+        <div class="row g-2 align-items-end">
+          <div class="col-12 col-md-4">
+            <label class="form-label small text-secondary mb-1" for="f-q">Recherche</label>
+            <div class="champ-icone"><i class="bi bi-search"></i>
+              <input type="search" id="f-q" name="q" value="{{ filtres.q }}" class="form-control" placeholder="Salle, équipement">
+            </div>
+          </div>
+          <div class="col-6 col-md-3">
+            <label class="form-label small text-secondary mb-1" for="f-type">Type</label>
+            <select id="f-type" name="type" class="form-select">
+              <option value="">Tous</option>
+              {% for code, lib in types %}<option value="{{ code }}" {% if filtres.type == code %}selected{% endif %}>{{ lib }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="col-6 col-md-2">
+            <label class="form-label small text-secondary mb-1" for="f-capacite">Au moins</label>
+            <input type="number" id="f-capacite" name="capacite" min="1" value="{{ filtres.capacite|default:'' }}" class="form-control" placeholder="places">
+          </div>
+          <div class="col-12 col-md-3">
+            <label class="form-label small text-secondary mb-1" for="f-etat">Salles</label>
+            <select id="f-etat" name="etat" class="form-select">
+              {% for code, lib in etats %}<option value="{{ code }}" {% if filtres.etat == code %}selected{% endif %}>{{ lib }}</option>{% endfor %}
+            </select>
+          </div>
+        </div>
+      </form>
+      <div class="table-responsive">
+        <table class="table table-etudiants mb-0">
+          <thead><tr><th>Salle</th><th>Bâtiment</th><th>Type</th><th class="text-end">Places</th><th>Équipements</th><th>État</th>{% if profil.gere_salles %}<th class="text-end"></th>{% endif %}</tr></thead>
+          <tbody>
+          {% for s in salles %}
+            <tr style="cursor:default">
+              <td class="fw-semibold" style="color:var(--encre)">{{ s.nom }}</td>
+              <td>{{ s.batiment.nom }}</td>
+              <td>{{ s.get_type_display }}</td>
+              <td class="text-end fw-semibold">{{ s.capacite }}</td>
+              <td class="text-truncate" style="max-width:220px" title="{{ s.equipements }}">{{ s.equipements|default:"—" }}</td>
+              <td>{% if s.disponible %}<span class="pill pill-succes">Disponible</span>{% else %}<span class="pill pill-attention">Indisponible</span>{% endif %}</td>
+              {% if profil.gere_salles %}
+                <td class="text-end text-nowrap">
+                  <button type="button" class="btn btn-icone" title="Modifier" data-salle-modifier data-url="{% url 'salle_enregistrer' s.pk %}"
+                          data-batiment="{{ s.batiment_id }}" data-nom="{{ s.nom }}" data-type="{{ s.type }}" data-capacite="{{ s.capacite }}"
+                          data-equipements="{{ s.equipements }}" data-disponible="{{ s.disponible|yesno:'1,0' }}"><i class="bi bi-pencil"></i></button>
+                  <form method="post" action="{% url 'salle_supprimer' s.pk %}" class="d-inline" onsubmit="return confirm('Supprimer la salle « {{ s.nom|escapejs }} » ?');">{% csrf_token %}
+                    <input type="hidden" name="suivant" value="{{ request.get_full_path }}">
+                    <button class="btn btn-icone text-danger" title="Supprimer"><i class="bi bi-trash"></i></button></form>
+                </td>
+              {% endif %}
+            </tr>
+          {% empty %}
+            <tr><td colspan="7"><div class="etat-vide"><i class="bi bi-door-closed"></i>Aucune salle avec ces filtres.</div></td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if profil.gere_salles %}
+<!-- Fenêtre : bâtiment -->
+<div class="modal fade" id="modal-batiment" tabindex="-1" aria-labelledby="titre-batiment" aria-hidden="true">
+  <div class="modal-dialog"><div class="modal-content">
+    <form method="post" action="{% if form_batiment.instance.pk %}{% url 'batiment_enregistrer' form_batiment.instance.pk %}{% else %}{% url 'batiment_enregistrer' %}{% endif %}" data-url-nouveau="{% url 'batiment_enregistrer' %}" novalidate>
+      {% csrf_token %}<input type="hidden" name="suivant" value="{{ request.get_full_path }}">
+      <div class="modal-header"><h5 class="modal-title" id="titre-batiment">{% if form_batiment.instance.pk %}Modifier le bâtiment{% else %}Nouveau bâtiment{% endif %}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button></div>
+      <div class="modal-body"><div class="row g-3">
+        {% include 'pfe/_champ.html' with champ=form_batiment.nom col='col-md-8' %}
+        {% include 'pfe/_champ.html' with champ=form_batiment.code col='col-md-4' %}
+        {% include 'pfe/_champ.html' with champ=form_batiment.description col='col-12' %}
+      </div></div>
+      <div class="modal-footer"><button type="button" class="btn btn-light" data-bs-dismiss="modal">Annuler</button>
+        <button class="btn btn-primary"><i class="bi bi-check-lg"></i> Enregistrer</button></div>
+    </form>
+  </div></div>
+</div>
+
+<!-- Fenêtre : salle -->
+<div class="modal fade" id="modal-salle" tabindex="-1" aria-labelledby="titre-salle" aria-hidden="true">
+  <div class="modal-dialog modal-lg"><div class="modal-content">
+    <form method="post" action="{% if form_salle.instance.pk %}{% url 'salle_enregistrer' form_salle.instance.pk %}{% else %}{% url 'salle_enregistrer' %}{% endif %}" data-url-nouveau="{% url 'salle_enregistrer' %}" novalidate>
+      {% csrf_token %}<input type="hidden" name="suivant" value="{{ request.get_full_path }}">
+      <div class="modal-header"><h5 class="modal-title" id="titre-salle">{% if form_salle.instance.pk %}Modifier la salle{% else %}Nouvelle salle{% endif %}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button></div>
+      <div class="modal-body"><div class="row g-3">
+        {% include 'pfe/_champ.html' with champ=form_salle.batiment col='col-md-6' %}
+        {% include 'pfe/_champ.html' with champ=form_salle.nom col='col-md-6' %}
+        {% include 'pfe/_champ.html' with champ=form_salle.type col='col-md-6' %}
+        {% include 'pfe/_champ.html' with champ=form_salle.capacite col='col-md-6' %}
+        {% include 'pfe/_champ.html' with champ=form_salle.equipements col='col-12' %}
+        <div class="col-12"><label class="form-check">{{ form_salle.disponible }} <span class="form-check-label">{{ form_salle.disponible.label }}</span></label>
+          <div class="small text-secondary">{{ form_salle.disponible.help_text }}</div></div>
+        {% if not batiments %}<div class="col-12"><div class="alert alert-warning small py-2 mb-0"><i class="bi bi-exclamation-triangle"></i> Ajoutez d'abord un bâtiment.</div></div>{% endif %}
+      </div></div>
+      <div class="modal-footer"><button type="button" class="btn btn-light" data-bs-dismiss="modal">Annuler</button>
+        <button class="btn btn-primary"><i class="bi bi-check-lg"></i> Enregistrer</button></div>
+    </form>
+  </div></div>
+</div>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+  (function () {
+    var form = document.getElementById('filtres-salles');
+    form.querySelectorAll('select').forEach(function (s) { s.addEventListener('change', function () { form.submit(); }); });
+    {% if profil.gere_salles %}
+    var mb = document.getElementById('modal-batiment'), ms = document.getElementById('modal-salle');
+    function ouvrir(modal, url, titre, valeurs) {
+      var f = modal.querySelector('form');
+      f.action = url || f.dataset.urlNouveau;
+      modal.querySelector('.modal-title').textContent = titre;
+      f.querySelectorAll('.invalid-feedback').forEach(function (e) { e.remove(); });
+      Object.keys(valeurs).forEach(function (cle) {
+        var champ = f.querySelector('[name="' + cle + '"]');
+        if (!champ) return;
+        if (champ.type === 'checkbox') champ.checked = valeurs[cle] === '1'; else champ.value = valeurs[cle];
+      });
+      bootstrap.Modal.getOrCreateInstance(modal).show();
+    }
+    document.querySelectorAll('[data-batiment-nouveau]').forEach(function (b) {
+      b.addEventListener('click', function () { ouvrir(mb, '', 'Nouveau bâtiment', {nom: '', code: '', description: ''}); });
+    });
+    document.querySelectorAll('[data-batiment-modifier]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        ouvrir(mb, b.dataset.url, 'Modifier le bâtiment', {nom: b.dataset.nom, code: b.dataset.code, description: b.dataset.description});
+      });
+    });
+    document.querySelectorAll('[data-salle-nouvelle]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        ouvrir(ms, '', 'Nouvelle salle', {batiment: '{{ filtres.batiment|default:"" }}', nom: '', type: 'cours', capacite: '', equipements: '', disponible: '1'});
+      });
+    });
+    document.querySelectorAll('[data-salle-modifier]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var d = b.dataset;
+        ouvrir(ms, d.url, 'Modifier la salle', {batiment: d.batiment, nom: d.nom, type: d.type, capacite: d.capacite, equipements: d.equipements, disponible: d.disponible});
+      });
+    });
+    {% if ouvrir %}bootstrap.Modal.getOrCreateInstance(document.getElementById('{% if ouvrir|slice:":8" == "batiment" %}modal-batiment{% else %}modal-salle{% endif %}')).show();{% endif %}
+    {% endif %}
+  })();
+</script>
+{% endblock %}
