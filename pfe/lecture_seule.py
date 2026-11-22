@@ -1,7 +1,8 @@
 """
 Comptes en consultation seule (Direction Générale, Direction Générale des Études) : ils voient tout, mais aucune
 modification ne passe. Toute requête qui pourrait modifier (POST, PUT, PATCH, DELETE) est refusée, quelle que soit la
-page ; seules restent permises la déconnexion et la gestion de son propre compte (mot de passe, e-mail, photo).
+page ; seules restent permises la déconnexion, la gestion de son propre compte (mot de passe, e-mail, photo) et,
+pour la Direction Générale des Études, la gestion des enseignants.
 Les boutons de modification sont aussi masqués dans les pages, mais c'est ce middleware qui fait foi.
 """
 from django.core.exceptions import PermissionDenied
@@ -11,6 +12,8 @@ from .roles import get_profil
 
 METHODES_SURES = {'GET', 'HEAD', 'OPTIONS', 'TRACE'}
 PERMISES = {'logout', 'login', 'connexion_code', 'connexion_recommencer', 'mon_compte', 'mon_compte_photo'}
+# Seule exception à la consultation : la Direction Générale des Études gère les enseignants
+GESTION_ENSEIGNANTS = {'enseignant_creer', 'enseignant_modifier', 'enseignant_action'}
 
 
 class LectureSeuleMiddleware:
@@ -19,7 +22,9 @@ class LectureSeuleMiddleware:
 
     def __call__(self, request):
         if request.method not in METHODES_SURES and request.user.is_authenticated:
-            if get_profil(request).lecture_seule and _nom_url(request) not in PERMISES:
+            profil, nom = get_profil(request), _nom_url(request)
+            permise = nom in PERMISES or (nom in GESTION_ENSEIGNANTS and profil.gere_enseignants)
+            if profil.lecture_seule and not permise:
                 raise PermissionDenied("Compte en consultation : la Direction voit tout mais ne modifie rien.")
         return self.get_response(request)
 

@@ -60,6 +60,18 @@ def identifiant_propose(prenom, nom):
     return identifiant
 
 
+def synchroniser_email(user, email, sauf=None):
+    """Même adresse partout pour une personne : compte, fiche personnel et fiche enseignant (un seul e-mail)."""
+    from .models import Enseignant, Personnel
+    if user.email != email:
+        user.email = email
+        user.save(update_fields=['email'])
+    for fiche in (Personnel.objects.filter(utilisateur=user).first(), Enseignant.objects.filter(utilisateur=user).first()):
+        if fiche is not None and fiche is not sauf and fiche.email != email:
+            fiche.email = email
+            fiche.save(update_fields=['email'])
+
+
 def statut(user):
     """('actif' | 'invite' | 'desactive', libellé)."""
     if not user.is_active:

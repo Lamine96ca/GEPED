@@ -21,6 +21,8 @@ Rôles gePed et périmètre de visibilité des étudiants.
                 modification. Restent fermés : relevés et attestations (scolarité), la partie Matières, et
                 les activités du super utilisateur (personnel, guides, administration).
 
+- Enseignant  : fiche Enseignant rattachée au compte (pfe/models.py). Un membre du personnel qui enseigne garde son
+                rôle et a en plus l'espace enseignant ; un enseignant sans service n'ouvre QUE l'espace enseignant.
 Périmètre : la scolarité et les services voient tout ; le chef de département, le directeur de programme
 et le personnel d'un département ne voient que leurs programmes (`programme_ids`).
 """
@@ -38,6 +40,7 @@ CHEF_DEPARTEMENT = 'chef_departement'
 PROGRAMME = 'programme'
 DEPARTEMENT = 'departement'
 SERVICE = 'service'
+ENSEIGNANT = 'enseignant'
 AUCUN = 'aucun'
 
 LIBELLES = {
@@ -46,6 +49,7 @@ LIBELLES = {
     PROGRAMME: 'Directeur de programme',
     DEPARTEMENT: 'Département',
     SERVICE: 'Service',
+    ENSEIGNANT: 'Enseignant',
     AUCUN: 'Aucun accès',
 }
 
@@ -74,6 +78,7 @@ class Profil:
         # Programmes du périmètre (rôles limités) ; par défaut, les services programmes du rôle
         self.programmes = list(programmes if programmes is not None else [s for s in self.services if s.programme])
         self.departements = list(departements)       # départements du chef ou du personnel de département
+        self.enseignant = None                         # fiche Enseignant active du compte (voir _calculer_profil)
 
     @property
     def est_chef(self):
@@ -152,7 +157,25 @@ class Profil:
 
     @property
     def a_acces(self):
-        return self.role != AUCUN
+        """Pages du personnel : tout rôle de service (pas un compte seulement enseignant)."""
+        return self.role not in (AUCUN, ENSEIGNANT)
+
+    @property
+    def est_enseignant(self):
+        """Le compte a une fiche Enseignant active : il ouvre l'espace enseignant."""
+        return self.enseignant is not None
+
+    @property
+    def gere_enseignants(self):
+        """Ajouter, modifier, désactiver les enseignants : la Direction Générale des Études et le super utilisateur."""
+        return self.superuser or self.est_dge
+
+    @property
+    def voit_enseignants(self):
+        """Liste des enseignants : la DGE (gestion), la Direction Générale et la scolarité (tous), le chef de
+        département et le directeur de programme (ceux de leur département)."""
+        return (self.gere_enseignants or self.est_direction or self.est_scolarite
+                or self.role in (CHEF_DEPARTEMENT, PROGRAMME))
 
     @property
     def programme_ids(self):
@@ -262,6 +285,41 @@ def est_service_dg(service):
 
 
 def _calculer_profil(user):
+    profil = _profil_selon_services(user)
+    if user.is_authenticated:
+        enseignant = getattr(user, 'profil_enseignant', None)
+        if enseignant is not None and enseignant.actif:
+            profil.enseignant = enseignant
+            if profil.role == AUCUN:                   # seulement enseignant : l'espace enseignant, rien d'autre
+                profil.role = ENSEIGNANT
+    return profil
+
+
+def departements_etablissement():
+    """Départements de l'établissement : services auxquels des programmes sont rattachés, et programmes qui sont
+    leur propre département (sans département de rattachement)."""
+    rattaches = Service.objects.filter(programme=True, departement__isnull=False).values('departement_id')
+    return Service.objects.filter(Q(pk__in=rattaches) | Q(programme=True, departement__isnull=True)).order_by('nom')
+
+
+def departements_du_profil(profil):
+    """Départements d'un chef de département ou d'un directeur de programme (ceux de ses programmes)."""
+    return {p.departement_id or p.id for p in profil.programmes} | {d.id for d in profil.departements}
+
+
+def enseignants_visibles(profil):
+    """Enseignants que le profil voit : tous (DGE, Direction Générale, scolarité, super utilisateur), ceux de son
+    département (chef de département, directeur de programme), sinon aucun."""
+    from .models import Enseignant
+    qs = Enseignant.objects.select_related('departement', 'utilisateur')
+    if profil.gere_enseignants or profil.est_direction or profil.est_scolarite:
+        return qs
+    if profil.role in (CHEF_DEPARTEMENT, PROGRAMME):
+        return qs.filter(departement_id__in=departements_du_profil(profil))
+    return qs.none()
+
+
+def _profil_selon_services(user):
     if not user.is_authenticated:
         return Profil(AUCUN)
     personnel = getattr(user, 'profil_personnel', None)
@@ -356,6 +414,11 @@ autorisations_lecture_requise = _exige('voit_autorisations', "Réservé à la sc
 chef_departement_requis = _exige('est_chef_departement', "Réservé au chef de département.")
 validations_requises = _exige('voit_validations', "Validation des semestres : réservé aux chefs de département et "
                                                   "au super utilisateur.")
+enseignants_lecture_requise = _exige('voit_enseignants', "Enseignants : réservé à la Direction des Études, à la "
+                                                          "Direction Générale, à la scolarité et aux départements.")
+enseignants_gestion_requise = _exige('gere_enseignants', "Gestion des enseignants : réservée à la Direction "
+                                                         "Générale des Études.")
+espace_enseignant_requis = _exige('est_enseignant', "Espace réservé aux enseignants.")
 soutenances_lecture_requise = _exige('voit_soutenances', "Soutenances : réservé au personnel de l'établissement.")
 fiches_requises = _exige('telecharge_fiches', "Fiche de notes de l'enseignant : réservé aux chefs de département et "
                                               "aux directeurs de programme.")
@@ -365,10 +428,15 @@ chef_scolarite_requis = _exige('est_chef_scolarite', "Réservé au chef de la sc
 
 
 def acces_requis(vue):
-    """L'utilisateur doit avoir un rôle gePed (scolarité, département, programme ou autre service)."""
+    """L'utilisateur doit avoir un rôle gePed (scolarité, département, programme ou autre service). Un compte
+    seulement enseignant est conduit à son espace."""
     @wraps(vue)
     def wrapper(request, *args, **kwargs):
-        if not get_profil(request).a_acces:
+        profil = get_profil(request)
+        if profil.role == ENSEIGNANT:
+            from django.shortcuts import redirect
+            return redirect('espace_enseignant')
+        if not profil.a_acces:
             raise PermissionDenied("Votre compte n'est rattaché à aucun service.")
         return vue(request, *args, **kwargs)
     return wrapper

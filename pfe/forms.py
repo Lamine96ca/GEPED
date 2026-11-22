@@ -202,11 +202,7 @@ class CoordonneesForm(BootstrapMixin, forms.Form):
 
     def clean_email(self):
         email = self.cleaned_data['email'].strip().lower()
-        autres_personnels = Personnel.objects.filter(email__iexact=email)
-        autres_comptes = User.objects.filter(email__iexact=email).exclude(pk=self.user.pk)
-        if self.personnel:
-            autres_personnels = autres_personnels.exclude(pk=self.personnel.pk)
-        if autres_personnels.exists() or autres_comptes.exists():
+        if email_deja_pris(email, self.user):
             raise forms.ValidationError("Cette adresse e-mail est déjà utilisée par un autre compte.")
         return email
 
@@ -217,13 +213,12 @@ class CoordonneesForm(BootstrapMixin, forms.Form):
         return tel
 
     def save(self):
+        from .comptes import synchroniser_email
         email = self.cleaned_data['email']
-        self.user.email = email
-        self.user.save(update_fields=['email'])
+        synchroniser_email(self.user, email)
         if self.personnel:
-            self.personnel.email = email
             self.personnel.telephone = self.cleaned_data['telephone']
-            self.personnel.save(update_fields=['email', 'telephone'])
+            self.personnel.save(update_fields=['telephone'])
 
 
 class MotDePasseForm(BootstrapMixin, PasswordChangeForm):
@@ -293,11 +288,7 @@ class PersonnelForm(BootstrapMixin, forms.ModelForm):
 
     def clean_email(self):
         email = self.cleaned_data['email'].strip().lower()
-        autres = Personnel.objects.filter(email__iexact=email).exclude(pk=self.instance.pk)
-        comptes = User.objects.filter(email__iexact=email)
-        if self.instance.pk:
-            comptes = comptes.exclude(pk=self.instance.utilisateur_id)
-        if autres.exists() or comptes.exists():
+        if email_deja_pris(email, self.instance.utilisateur if self.instance.pk else None):
             raise forms.ValidationError("Cette adresse e-mail est déjà utilisée par un autre compte.")
         return email
 
@@ -351,9 +342,11 @@ class PersonnelForm(BootstrapMixin, forms.ModelForm):
         personnel = super().save(commit=False)
         d = self.cleaned_data
         if personnel.utilisateur_id:
+            from .comptes import synchroniser_email
             u = personnel.utilisateur
-            u.first_name, u.last_name, u.email = d['prenom'], d['nom'], d['email']
-            u.save(update_fields=['first_name', 'last_name', 'email'])
+            u.first_name, u.last_name = d['prenom'], d['nom']
+            u.save(update_fields=['first_name', 'last_name'])
+            synchroniser_email(u, d['email'], sauf=personnel)
         else:
             u = User(username=d.get('identifiant') or identifiant_propose(d['prenom'], d['nom']),
                      first_name=d['prenom'], last_name=d['nom'], email=d['email'], is_active=True)
@@ -363,6 +356,126 @@ class PersonnelForm(BootstrapMixin, forms.ModelForm):
         personnel.save()
         self.save_m2m()
         return personnel
+
+
+# ------------------------------------------------------------------ enseignants
+
+def email_deja_pris(email, user=None):
+    """Adresse déjà utilisée par un AUTRE compte (compte, fiche personnel ou fiche enseignant)."""
+    from .models import Enseignant
+    comptes = User.objects.filter(email__iexact=email)
+    personnels = Personnel.objects.filter(email__iexact=email)
+    enseignants = Enseignant.objects.filter(email__iexact=email)
+    if user is not None:
+        comptes = comptes.exclude(pk=user.pk)
+        personnels = personnels.exclude(utilisateur=user)
+        enseignants = enseignants.exclude(utilisateur=user)
+    return comptes.exists() or personnels.exists() or enseignants.exists()
+
+
+def compte_de_l_email(email):
+    """Compte existant qui porte cette adresse (e-mail du compte ou de la fiche personnel), ou None."""
+    u = User.objects.filter(email__iexact=email).first()
+    if u is None:
+        p = Personnel.objects.filter(email__iexact=email).select_related('utilisateur').first()
+        u = p.utilisateur if p else None
+    return u
+
+
+class EnseignantForm(BootstrapMixin, forms.ModelForm):
+    """
+    Fiche enseignant. À l'ajout, l'adresse e-mail est cherchée : si elle appartient déjà à un compte (un membre du
+    personnel qui enseigne), la fiche est rattachée à CE compte après confirmation (case « Rattacher ») ; sinon un
+    compte est créé, sans mot de passe, et l'e-mail d'activation n'est envoyé que si la case est cochée.
+    """
+    identifiant = forms.CharField(label='Identifiant de connexion', max_length=150, required=False,
+                                  help_text="Vide : proposé d'après le prénom et le nom (ex. mariame.camara).")
+    envoyer_invitation = forms.BooleanField(label="Envoyer l'e-mail d'activation du compte", required=False,
+                                            initial=False)
+    rattacher = forms.BooleanField(label="Rattacher la fiche enseignant à ce compte existant", required=False)
+
+    class Meta:
+        from .models import Enseignant
+        model = Enseignant
+        fields = ['civilite', 'prenom', 'nom', 'grade', 'statut', 'specialite', 'departement', 'email', 'telephone']
+        widgets = {'email': forms.EmailInput()}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from .roles import departements_etablissement
+        f = self.fields
+        f['departement'].queryset = departements_etablissement()
+        f['prenom'].widget.attrs['placeholder'] = 'Ex. Mariame'
+        f['nom'].widget.attrs['placeholder'] = 'Ex. CAMARA'
+        f['specialite'].widget.attrs['placeholder'] = 'Ex. Réseaux et télécommunications'
+        f['email'].widget.attrs['placeholder'] = 'nom@exemple.com'
+        f['telephone'].widget.attrs['placeholder'] = 'Ex. +224 620 00 00 00'
+        self.compte_existant = None
+        if self.instance.pk:
+            del f['identifiant'], f['envoyer_invitation'], f['rattacher']
+        else:
+            f['identifiant'].widget.attrs['placeholder'] = 'Ex. mariame.camara'
+
+    def clean_prenom(self):
+        return ' '.join(self.cleaned_data['prenom'].split()).title()
+
+    def clean_nom(self):
+        return ' '.join(self.cleaned_data['nom'].split()).upper()
+
+    def clean_telephone(self):
+        return ' '.join(self.cleaned_data['telephone'].split())
+
+    def clean_email(self):
+        from .models import Enseignant
+        email = self.cleaned_data['email'].strip().lower()
+        if self.instance.pk:
+            if email_deja_pris(email, self.instance.utilisateur):
+                raise forms.ValidationError("Cette adresse e-mail est déjà utilisée par un autre compte.")
+            return email
+        compte = compte_de_l_email(email)
+        if compte is not None:
+            if Enseignant.objects.filter(utilisateur=compte).exists():
+                raise forms.ValidationError("Cette personne est déjà enregistrée comme enseignant.")
+            self.compte_existant = compte
+        elif Enseignant.objects.filter(email__iexact=email).exists():
+            raise forms.ValidationError("Cette adresse e-mail est déjà utilisée par un autre enseignant.")
+        return email
+
+    def clean_identifiant(self):
+        identifiant = (self.cleaned_data.get('identifiant') or '').strip().lower()
+        if identifiant:
+            if not re.fullmatch(r'[a-z0-9._-]{3,150}', identifiant):
+                raise forms.ValidationError("Lettres sans accents, chiffres, points, tirets : 3 caractères au moins.")
+            if User.objects.filter(username__iexact=identifiant).exists():
+                raise forms.ValidationError(f"L'identifiant « {identifiant} » est déjà pris.")
+        return identifiant
+
+    def clean(self):
+        d = super().clean()
+        if self.compte_existant is not None and not d.get('rattacher'):
+            self.add_error('rattacher', "Cette adresse appartient déjà à un compte gePed : cochez la case pour lui "
+                                        "rattacher la fiche enseignant (un seul compte par personne).")
+        return d
+
+    def save(self, commit=True, cree_par=None):
+        from .comptes import identifiant_propose, synchroniser_email
+        enseignant = super().save(commit=False)
+        d = self.cleaned_data
+        if enseignant.pk:
+            synchroniser_email(enseignant.utilisateur, d['email'])
+        elif self.compte_existant is not None:
+            enseignant.utilisateur = self.compte_existant
+            synchroniser_email(self.compte_existant, d['email'])
+        else:
+            u = User(username=d.get('identifiant') or identifiant_propose(d['prenom'], d['nom']),
+                     first_name=d['prenom'], last_name=d['nom'], email=d['email'], is_active=True)
+            u.set_unusable_password()               # le mot de passe sera choisi depuis l'e-mail d'activation
+            u.save()
+            enseignant.utilisateur = u
+        if cree_par is not None and not enseignant.pk:
+            enseignant.cree_par = cree_par
+        enseignant.save()
+        return enseignant
 
 
 # ------------------------------------------------------------------ mot de passe oublié

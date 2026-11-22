@@ -4542,3 +4542,137 @@ class EspaceDirectionTests(TestCase):
         self.assertNotEqual(r.status_code, 403)
         # La déconnexion reste possible
         self.assertEqual(self.client.post(reverse('logout')).status_code, 302)
+
+
+class EnseignantsTests(TestCase):
+    """Enseignants : gérés par la Direction des Études, un seul compte par personne, espace enseignant."""
+    setUpTestData_base = GpedTests.__dict__['setUpTestData']
+    connecter = GpedTests.connecter
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.setUpTestData_base.__func__(cls)
+        for k, (login, nom) in enumerate([('dg', 'Direction Générale'), ('dge', 'Direction Générale Des Etudes')]):
+            svc = Service.objects.create(nom=nom, code='0000')
+            u = User.objects.create_user(login, password='x')
+            p = Personnel.objects.create(utilisateur=u, prenom=login, nom='D', telephone=f'7{k}',
+                                         email=f'{login}@t.local', fonc='Directeur', chef=True)
+            p.service.add(svc)
+
+    def fiche(self, **extra):
+        return {'civilite': 'Dr', 'prenom': 'aïssatou', 'nom': 'barry', 'grade': 'docteur', 'statut': 'vacataire',
+                'specialite': 'Réseaux', 'departement': self.info.pk, 'email': 'Aissatou.Barry@exemple.org',
+                'telephone': '620 11 22 33', **extra}
+
+    def test_enseignant_seul_sans_email_puis_lien(self):
+        from django.core import mail
+        from .models import Enseignant
+        from .roles import ENSEIGNANT, _calculer_profil
+        self.connecter('dge')
+        r = self.client.post(reverse('enseignant_creer'), self.fiche())
+        self.assertRedirects(r, reverse('enseignants_liste'))
+        e = Enseignant.objects.get()
+        u = e.utilisateur
+        self.assertEqual((e.prenom, e.nom, e.email, u.email, u.username), ('Aïssatou', 'BARRY', 'aissatou.barry@exemple.org',
+                                                                          'aissatou.barry@exemple.org', 'aissatou.barry'))
+        self.assertFalse(u.has_usable_password())
+        self.assertEqual(len(mail.outbox), 0)                     # case décochée par défaut : aucun e-mail
+        r = self.client.get(reverse('enseignant_modifier', args=[e.pk]))       # fiche : compte « À activer »
+        self.assertContains(r, "Envoyer le lien d'activation")
+        self.assertContains(r, 'À activer')
+        r = self.client.post(reverse('enseignant_modifier', args=[e.pk]), self.fiche(statut='permanent'))
+        self.assertRedirects(r, reverse('enseignants_liste'))
+        e.refresh_from_db()
+        self.assertEqual(e.statut, 'permanent')
+        self.assertEqual(_calculer_profil(u).role, ENSEIGNANT)
+        # Le lien d'activation s'envoie ensuite, depuis la liste
+        self.client.post(reverse('enseignant_action', args=[e.pk]), {'action': 'invitation'})
+        self.assertEqual((len(mail.outbox), mail.outbox[0].to), (1, ['aissatou.barry@exemple.org']))
+        self.assertIn('/compte/activer/', mail.outbox[0].body)
+        # L'enseignant seul n'ouvre que son espace
+        self.client.force_login(u)
+        self.assertRedirects(self.client.get(reverse('tableau_de_bord')), reverse('espace_enseignant'))
+        r = self.client.get(reverse('espace_enseignant'))
+        self.assertContains(r, 'Espace enseignant')
+        self.assertNotContains(r, reverse('etudiants_liste'))
+        self.assertRedirects(self.client.get(reverse('etudiants_liste')), reverse('espace_enseignant'))
+        for nom in ('notes_liste', 'enseignants_liste', 'soutenances'):
+            self.assertEqual(self.client.get(reverse(nom)).status_code, 403, nom)
+        self.assertEqual(self.client.get(reverse('mon_compte')).status_code, 200)
+
+    def test_avec_envoi_coche(self):
+        from django.core import mail
+        self.connecter('dge')
+        self.client.post(reverse('enseignant_creer'), self.fiche(envoyer_invitation='on'))
+        self.assertEqual(len(mail.outbox), 1)
+
+    def test_un_seul_compte_par_personne(self):
+        from .models import Enseignant
+        from .roles import _calculer_profil
+        self.connecter('dge')
+        nb_comptes = User.objects.count()
+        r = self.client.post(reverse('enseignant_creer'), self.fiche(email='INFO@t.local'))   # e-mail du compte « info »
+        self.assertContains(r, 'Cette adresse appartient déjà à un compte gePed')
+        self.assertFalse(Enseignant.objects.exists())
+        r = self.client.post(reverse('enseignant_creer'), self.fiche(email='info@t.local', rattacher='on'))
+        self.assertRedirects(r, reverse('enseignants_liste'))
+        info = User.objects.get(username='info')
+        self.assertEqual((Enseignant.objects.get().utilisateur, User.objects.count()), (info, nb_comptes))
+        p = _calculer_profil(info)
+        self.assertEqual((p.role, p.est_enseignant), ('programme', True))   # garde son rôle, gagne l'espace
+        self.connecter('info')
+        self.assertEqual(self.client.get(reverse('tableau_de_bord')).status_code, 200)
+        r = self.client.get(reverse('espace_enseignant'))
+        self.assertContains(r, 'Retour à mon espace')
+        # Déjà enseignant : refus d'une seconde fiche
+        self.connecter('dge')
+        r = self.client.post(reverse('enseignant_creer'), self.fiche(email='info@t.local', rattacher='on'))
+        self.assertContains(r, 'déjà enregistrée comme enseignant')
+        # L'e-mail reste le même partout (compte, personnel, enseignant)
+        self.connecter('info')
+        self.client.post(reverse('mon_compte'), {'coordonnees': '1', 'email': 'nouveau@t.local', 'telephone': '2'})
+        info.refresh_from_db()
+        self.assertEqual((info.email, info.profil_personnel.email, info.profil_enseignant.email),
+                         ('nouveau@t.local',) * 3)
+
+    def test_qui_voit_quoi(self):
+        from .models import Enseignant
+        for k, (login, dep) in enumerate([('ens_info', self.info), ('ens_gc', self.gc)]):
+            u = User.objects.create_user(login, password='x', email=f'{login}@t.local')
+            Enseignant.objects.create(utilisateur=u, prenom='P', nom=login.upper(), email=f'{login}@t.local',
+                                      departement=dep)
+        attendus = {'dge': {'ENS_INFO', 'ENS_GC'}, 'dg': {'ENS_INFO', 'ENS_GC'}, 'scol': {'ENS_INFO', 'ENS_GC'},
+                    'info': {'ENS_INFO'}}
+        for login, noms in attendus.items():
+            self.connecter(login)
+            r = self.client.get(reverse('enseignants_liste'))
+            self.assertEqual(r.status_code, 200, login)
+            self.assertEqual({e.nom for e in r.context['page']}, noms, login)
+            self.assertEqual(self.client.get(reverse('enseignants_liste') + '?export=xlsx').status_code, 200, login)
+        # Gestion : la Direction des Études seulement (et le super utilisateur)
+        for login in ('dg', 'scol', 'info'):
+            self.connecter(login)
+            self.assertEqual(self.client.get(reverse('enseignant_creer')).status_code, 403, login)
+            self.assertEqual(self.client.post(reverse('enseignant_creer'), self.fiche()).status_code, 403, login)
+            self.assertNotContains(self.client.get(reverse('enseignants_liste')), reverse('enseignant_creer'))
+        self.assertFalse(Enseignant.objects.filter(email='aissatou.barry@exemple.org').exists())
+        self.connecter('dep')                                    # autre service : pas de liste
+        self.assertEqual(self.client.get(reverse('enseignants_liste')).status_code, 403)
+        # La Direction des Études reste en consultation ailleurs, mais n'a pas la gestion du personnel
+        self.connecter('dge')
+        self.assertEqual(self.client.get(reverse('enseignant_creer')).status_code, 200)
+        self.assertEqual(self.client.get(reverse('personnel_liste')).status_code, 403)
+        self.assertEqual(self.client.post(reverse('demandes_liste'), {}).status_code, 403)
+
+    def test_desactiver(self):
+        from .models import Enseignant
+        from .roles import AUCUN, _calculer_profil
+        self.connecter('dge')
+        self.client.post(reverse('enseignant_creer'), self.fiche())
+        e = Enseignant.objects.get()
+        self.client.post(reverse('enseignant_action', args=[e.pk]), {'action': 'desactiver'})
+        e.refresh_from_db()
+        self.assertFalse(e.actif)
+        self.assertEqual(_calculer_profil(e.utilisateur).role, AUCUN)
+        self.client.force_login(e.utilisateur)
+        self.assertEqual(self.client.get(reverse('espace_enseignant')).status_code, 403)

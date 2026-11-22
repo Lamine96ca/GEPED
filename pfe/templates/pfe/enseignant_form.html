@@ -1,0 +1,94 @@
+{% extends 'pfe/base.html' %}
+{% block titre %}{{ titre }}{% endblock %}
+{% block titre_page %}<a href="{% url 'enseignants_liste' %}" class="text-decoration-none text-secondary me-1" title="Retour aux enseignants"><i class="bi bi-arrow-left"></i></a> {{ titre }}{% endblock %}
+{% block sous_titre %}<div class="sous-titre">{% if enseignant %}{{ enseignant.get_grade_display|default:"Enseignant" }} · {{ enseignant.departement.nom }}{% else %}Un seul compte par personne : un membre du personnel qui enseigne garde son compte{% endif %}</div>{% endblock %}
+{% block contenu %}
+<div class="row g-3">
+  <div class="col-xl-8">
+    <form method="post" novalidate>
+      {% csrf_token %}
+      {% if form.errors %}<div class="alert alert-danger py-2 d-flex gap-2 align-items-center"><i class="bi bi-exclamation-circle"></i> Veuillez corriger les champs signalés.</div>{% endif %}
+
+      {% if form.compte_existant %}
+        <div class="alert alert-info d-flex gap-2"><i class="bi bi-person-check mt-1"></i>
+          <div><strong>Cette adresse appartient déjà à un compte gePed</strong> : {{ form.compte_existant.get_full_name|default:form.compte_existant.username }} (identifiant <strong>{{ form.compte_existant.username }}</strong>{% if form.compte_existant.profil_personnel %}, {{ form.compte_existant.profil_personnel.fonc }}{% endif %}).
+            La fiche enseignant sera rattachée à ce compte : même identifiant, même mot de passe, même e-mail.
+            <label class="form-check mt-2 mb-0">{{ form.rattacher }} <span class="form-check-label fw-semibold">{{ form.rattacher.label }}</span></label>
+          </div>
+        </div>
+      {% endif %}
+
+      <div class="card carte-gped mb-3">
+        <div class="card-body">
+          <div class="entete-carte"><span class="icone-carte"><i class="bi bi-person-vcard"></i></span><div><h3>Identité et coordonnées</h3><p>L'e-mail sert à se connecter et reçoit le lien d'activation</p></div></div>
+          <div class="row g-3">
+            {% include 'pfe/_champ.html' with champ=form.civilite col='col-md-2' %}
+            {% include 'pfe/_champ.html' with champ=form.prenom col='col-md-5' %}
+            {% include 'pfe/_champ.html' with champ=form.nom col='col-md-5' %}
+            {% include 'pfe/_champ.html' with champ=form.email col='col-md-6' %}
+            {% include 'pfe/_champ.html' with champ=form.telephone col='col-md-6' %}
+            {% if form.identifiant %}
+              {% include 'pfe/_champ.html' with champ=form.identifiant col='col-md-6' %}
+              <div class="col-md-6 d-flex align-items-end"><div class="small text-secondary">{{ form.identifiant.help_text }} Ignoré si la personne a déjà un compte.</div></div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      <div class="card carte-gped mb-3">
+        <div class="card-body">
+          <div class="entete-carte"><span class="icone-carte"><i class="bi bi-mortarboard"></i></span><div><h3>Enseignement</h3><p>Grade, statut, spécialité et département d'affectation</p></div></div>
+          <div class="row g-3">
+            {% include 'pfe/_champ.html' with champ=form.grade col='col-md-4' %}
+            {% include 'pfe/_champ.html' with champ=form.statut col='col-md-3' %}
+            {% include 'pfe/_champ.html' with champ=form.departement col='col-md-5' %}
+            {% include 'pfe/_champ.html' with champ=form.specialite col='col-md-12' %}
+          </div>
+        </div>
+      </div>
+
+      <div class="d-flex flex-wrap gap-2 align-items-center">
+        {% if form.envoyer_invitation %}
+          <label class="form-check me-3">{{ form.envoyer_invitation }} <span class="form-check-label">{{ form.envoyer_invitation.label }}</span></label>
+        {% endif %}
+        <button class="btn btn-primary"><i class="bi bi-check-lg"></i> {% if enseignant %}Enregistrer{% else %}Enregistrer l'enseignant{% endif %}</button>
+        <a href="{% url 'enseignants_liste' %}" class="btn btn-light">Annuler</a>
+      </div>
+      {% if not enseignant %}<div class="small text-secondary mt-2"><i class="bi bi-info-circle"></i> Sans la case cochée, aucun e-mail n'est envoyé : le lien d'activation pourra être envoyé plus tard depuis la liste.</div>{% endif %}
+    </form>
+  </div>
+
+  {% if enseignant %}
+    <div class="col-xl-4">
+      <div class="card carte-gped">
+        <div class="card-body">
+          <div class="entete-carte"><span class="icone-carte"><i class="bi bi-key"></i></span><div><h3>Compte</h3><p>Identifiant : <strong>{{ enseignant.utilisateur.username }}</strong></p></div></div>
+          <ul class="infos-compte">
+            <li><i class="bi bi-shield-check"></i><div><div class="lib">Compte</div><div class="val"><span class="pill {% if enseignant.compte == 'actif' %}pill-succes{% elif enseignant.compte == 'invite' %}pill-attention{% endif %}">{% if enseignant.compte == 'invite' %}À activer{% else %}{{ enseignant.compte_libelle }}{% endif %}</span></div></div></li>
+            <li><i class="bi bi-person-video3"></i><div><div class="lib">Espace enseignant</div><div class="val">{% if enseignant.actif %}Accès ouvert{% else %}<span class="pill pill-attention">Désactivé</span>{% endif %}</div></div></li>
+            <li><i class="bi bi-person-gear"></i><div><div class="lib">Rôle</div><div class="val">{{ role }}{% if enseignant.personnel %} · aussi {{ enseignant.personnel.fonc }}{% endif %}</div></div></li>
+            <li><i class="bi bi-clock-history"></i><div><div class="lib">Dernière connexion</div><div class="val">{{ enseignant.utilisateur.last_login|date:"d/m/Y à H:i"|default:"Jamais" }}</div></div></li>
+          </ul>
+          <div class="d-grid gap-2 mt-3">
+            {% if enseignant.actif and enseignant.compte == 'invite' %}
+              <form method="post" action="{% url 'enseignant_action' enseignant.pk %}">{% csrf_token %}<input type="hidden" name="action" value="invitation"><input type="hidden" name="suivant" value="{{ request.path }}">
+                <button class="btn btn-or w-100"><i class="bi bi-envelope-arrow-up"></i> Envoyer le lien d'activation</button></form>
+            {% elif enseignant.actif and enseignant.compte == 'actif' %}
+              <form method="post" action="{% url 'enseignant_action' enseignant.pk %}">{% csrf_token %}<input type="hidden" name="action" value="reinitialiser"><input type="hidden" name="suivant" value="{{ request.path }}">
+                <button class="btn btn-light w-100"><i class="bi bi-arrow-counterclockwise"></i> Envoyer un lien de nouveau mot de passe</button></form>
+            {% endif %}
+            {% if enseignant.actif %}
+              <form method="post" action="{% url 'enseignant_action' enseignant.pk %}" onsubmit="return confirm('Retirer à {{ enseignant.prenom|escapejs }} {{ enseignant.nom|escapejs }} l’accès à l’espace enseignant ?');">{% csrf_token %}<input type="hidden" name="action" value="desactiver"><input type="hidden" name="suivant" value="{{ request.path }}">
+                <button class="btn btn-danger-doux w-100"><i class="bi bi-person-slash"></i> Désactiver l'enseignant</button></form>
+            {% else %}
+              <form method="post" action="{% url 'enseignant_action' enseignant.pk %}">{% csrf_token %}<input type="hidden" name="action" value="reactiver"><input type="hidden" name="suivant" value="{{ request.path }}">
+                <button class="btn btn-primary w-100"><i class="bi bi-person-check"></i> Réactiver l'enseignant</button></form>
+            {% endif %}
+          </div>
+          <div class="small text-secondary mt-3"><i class="bi bi-envelope"></i> Les e-mails partent à {{ enseignant.email }}. Le lien d'activation est valable 7 jours.{% if enseignant.personnel %} Désactiver l'enseignant ne touche pas à son compte du personnel.{% endif %}</div>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

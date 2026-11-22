@@ -51,6 +51,18 @@ def _autorisations(profil, user):    # @autorisations_lecture_requise : scolarit
     return profil.voit_autorisations
 
 
+def _voit_enseignants(profil, user):   # @enseignants_lecture_requise
+    return profil.voit_enseignants
+
+
+def _gere_enseignants(profil, user):   # @enseignants_gestion_requise : Direction des Études, super utilisateur
+    return profil.gere_enseignants
+
+
+def _enseignant(profil, user):         # @espace_enseignant_requis
+    return profil.est_enseignant
+
+
 def _lit_notes(profil, user):        # @lecture_notes_requise : + Direction Générale des Études
     return profil.lit_notes
 
@@ -180,6 +192,14 @@ CATALOGUE = [
      "Rouvrir aux programmes, pour une période, les notes d'un niveau délibéré ou d'une année écoulée.",
      NOTES + ' autorisation autoriser rouvrir ouvrir délibéré période date début fin programme niveau',
      'notes_autorisations', (), 'bi-unlock', _autorisations),
+    ('Enseignants', 'Enseignants', "Liste des enseignants par département : grade, statut, spécialité, contact.",
+     'enseignant enseignants professeur professeurs vacataire permanent département corps enseignant liste',
+     'enseignants_liste', (), 'bi-person-video3', _voit_enseignants),
+    ('Enseignants', 'Ajouter un enseignant', "Enregistrer un enseignant et son compte (ou le rattacher au compte "
+     "existant d'un membre du personnel).", 'enseignant ajouter nouveau enregistrer compte',
+     'enseignant_creer', (), 'bi-person-plus', _gere_enseignants),
+    ('Enseignants', 'Espace enseignant', "Votre espace enseignant.", 'espace enseignant mon espace emploi du temps',
+     'espace_enseignant', (), 'bi-person-video3', _enseignant),
     ('Soutenances', 'Liste des soutenances', "Soutenances enregistrées : jury, date, note.",
      SOUTENANCE + ' liste', 'soutenances', (), 'bi-mortarboard', _soutenances),
     ('Soutenances', 'Ajouter une soutenance', "Enregistrer une soutenance : étudiant, jury, date et salle.",

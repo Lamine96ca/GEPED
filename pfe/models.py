@@ -1176,3 +1176,41 @@ class LectureGuide(models.Model):
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=['utilisateur', 'guide'], name='lecture_guide_unique')]
+
+
+class Enseignant(models.Model):
+    """
+    Enseignant de l'établissement, affecté à un département. UN SEUL COMPTE PAR PERSONNE : un membre du personnel
+    qui enseigne (chef de département, directeur de programme…) garde son compte, auquel on rattache cette fiche ;
+    un enseignant qui n'est pas du personnel a un compte sans service, qui n'ouvre que l'espace enseignant.
+    Gérés par la Direction Générale des Études (pfe/views_enseignants.py).
+    """
+    PERMANENT, VACATAIRE = 'permanent', 'vacataire'
+    STATUTS = [(PERMANENT, 'Permanent'), (VACATAIRE, 'Vacataire')]
+    GRADES = [('professeur', 'Professeur'), ('maitre_conferences', 'Maître de conférences'),
+              ('maitre_assistant', 'Maître-assistant'), ('assistant', 'Assistant'), ('docteur', 'Docteur'),
+              ('ingenieur', 'Ingénieur'), ('master', 'Titulaire d’un master'), ('autre', 'Autre')]
+
+    utilisateur = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profil_enseignant')
+    civilite = models.CharField(max_length=5, choices=Personnel.CIVILITE_CHOICES, blank=True, default='',
+                                verbose_name="Civilité")
+    prenom = models.CharField(max_length=100, verbose_name="Prénom")
+    nom = models.CharField(max_length=50, verbose_name="Nom")
+    telephone = models.CharField(max_length=25, blank=True, default='', verbose_name="Téléphone")
+    email = models.CharField(max_length=150, unique=True, verbose_name="E-mail")
+    grade = models.CharField(max_length=20, choices=GRADES, blank=True, default='', verbose_name="Grade")
+    statut = models.CharField(max_length=10, choices=STATUTS, default=PERMANENT, verbose_name="Statut")
+    specialite = models.CharField(max_length=150, blank=True, default='', verbose_name="Spécialité")
+    departement = models.ForeignKey(Service, on_delete=models.PROTECT, related_name='enseignants',
+                                    verbose_name="Département")
+    actif = models.BooleanField(default=True, verbose_name="Actif",
+                                help_text="Décoché : plus d'accès à l'espace enseignant (le compte du personnel reste).")
+    date_creation = models.DateTimeField(auto_now_add=True, verbose_name="Enregistré le")
+    cree_par = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+                                 verbose_name="Enregistré par")
+
+    class Meta:
+        ordering = ['nom', 'prenom']
+
+    def __str__(self):
+        return ' '.join(x for x in (self.civilite, self.prenom, self.nom.upper()) if x)

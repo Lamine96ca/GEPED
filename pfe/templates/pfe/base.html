@@ -70,6 +70,10 @@
       {% endwith %}
     </div>
     <nav class="nav flex-column gped-nav">
+      {% if profil.est_enseignant %}
+        <a class="nav-link {% if actif == 'espace_enseignant' %}active{% endif %}" href="{% url 'espace_enseignant' %}"><i class="bi bi-person-video3"></i> Espace enseignant</a>
+      {% endif %}
+      {% if profil.a_acces %}
       <a class="nav-link {% if actif == 'tableau' %}active{% endif %}" href="{% url 'tableau_de_bord' %}"><i class="bi bi-grid-1x2"></i> Tableau de bord</a>
 
       <!-- 1. Étudiants : sous-menu, ouvert quand on est sur l'une de ses pages -->
@@ -179,6 +183,11 @@
           </div>
         </div>
       {% endif %}
+      <!-- Enseignants : Direction des Études (gestion) ; Direction Générale, scolarité, départements (lecture) -->
+      {% if profil.voit_enseignants %}
+        <a class="nav-link {% if actif == 'enseignants' %}active{% endif %}" href="{% url 'enseignants_liste' %}"><i class="bi bi-person-video3"></i> Enseignants</a>
+      {% endif %}
+      {% endif %}{# fin des pages du personnel (a_acces) #}
       <!-- Personnel : administrateurs -->
       {% if profil.gere_etudiants and user.is_superuser %}
         <a class="nav-link {% if actif == 'personnel' %}active{% endif %}" href="{% url 'personnel_liste' %}"><i class="bi bi-person-badge"></i> Personnel</a>

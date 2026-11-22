@@ -1,0 +1,100 @@
+{% extends 'pfe/base.html' %}
+{% block titre %}Enseignants{% endblock %}
+{% block titre_page %}Enseignants{% endblock %}
+{% block sous_titre %}<div class="sous-titre">{{ nb_total }} enseignant{{ nb_total|pluralize }} actif{{ nb_total|pluralize }} · chacun affecté à un département{% if not profil.gere_enseignants %} · consultation{% endif %}</div>{% endblock %}
+{% block actions %}
+  <a href="?{{ params }}{% if params %}&amp;{% endif %}imprimer=pdf" target="_blank" rel="noopener" class="btn btn-light" title="Imprimer la liste (PDF, avec l'en-tête de l'IST)"><i class="bi bi-printer"></i> <span class="d-none d-sm-inline">Imprimer</span></a>
+  <a href="?{{ params }}{% if params %}&amp;{% endif %}export=xlsx" class="btn btn-light"><i class="bi bi-file-earmark-excel"></i> <span class="d-none d-sm-inline">Exporter</span></a>
+  {% if profil.gere_enseignants %}
+    <a href="{% url 'enseignant_creer' %}" class="btn btn-primary"><i class="bi bi-person-plus"></i> <span class="d-none d-sm-inline">Nouvel enseignant</span></a>
+  {% endif %}
+{% endblock %}
+{% block contenu %}
+<div class="card carte-gped liste">
+  <form method="get" class="barre-filtres border-bottom" id="filtres-enseignants">
+    <div class="row g-2 align-items-end">
+      <div class="col-12 col-lg-4">
+        <label class="form-label small text-secondary mb-1" for="f-q">Recherche</label>
+        <div class="champ-icone"><i class="bi bi-search"></i>
+          <input type="search" id="f-q" name="q" value="{{ filtres.q }}" class="form-control" placeholder="Nom, e-mail, téléphone, spécialité">
+        </div>
+      </div>
+      <div class="col-12 col-md-6 col-lg-4">
+        <label class="form-label small text-secondary mb-1" for="f-departement">Département</label>
+        <select id="f-departement" name="departement" class="form-select">
+          <option value="">{% if departements|length == 1 %}{{ departements.0.nom }}{% else %}Tous{% endif %}</option>
+          {% if departements|length > 1 %}{% for d in departements %}<option value="{{ d.pk }}" {% if filtres.departement == d.pk %}selected{% endif %}>{{ d.nom }}</option>{% endfor %}{% endif %}
+        </select>
+      </div>
+      <div class="col-6 col-md-3 col-lg-2">
+        <label class="form-label small text-secondary mb-1" for="f-statut">Statut</label>
+        <select id="f-statut" name="statut" class="form-select">
+          <option value="">Tous</option>
+          {% for code, lib in statuts %}<option value="{{ code }}" {% if filtres.statut == code %}selected{% endif %}>{{ lib }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-md-3 col-lg-2">
+        <label class="form-label small text-secondary mb-1" for="f-etat">Afficher</label>
+        <select id="f-etat" name="etat" class="form-select">
+          {% for code, lib in etats %}<option value="{{ code }}" {% if filtres.etat == code %}selected{% endif %}>{{ lib }}</option>{% endfor %}
+        </select>
+      </div>
+    </div>
+  </form>
+  <div class="px-4 pt-3 small text-secondary"><i class="bi bi-person-video3 text-primary"></i> {{ page.paginator.count }} enseignant{{ page.paginator.count|pluralize }} avec ces filtres</div>
+  <div class="table-responsive mt-2">
+    <table class="table table-etudiants mb-0">
+      <thead><tr><th>Enseignant</th><th>Grade</th><th>Statut</th><th>Département</th><th>Spécialité</th><th>Contact</th>{% if profil.gere_enseignants %}<th>Compte</th><th class="text-end"></th>{% endif %}</tr></thead>
+      <tbody>
+      {% for e in page %}
+        <tr style="cursor:default">
+          <td style="min-width:190px">
+            {% if profil.gere_enseignants %}<a href="{% url 'enseignant_modifier' e.pk %}" style="color:var(--encre);font-weight:600">{{ e.nom }} {{ e.prenom }}</a>{% else %}<b style="color:var(--encre);font-weight:600">{{ e.nom }} {{ e.prenom }}</b>{% endif %}
+            {% if e.civilite %}<span class="small text-secondary">· {{ e.civilite }}</span>{% endif %}
+            {% if e.personnel %}<div><span class="pill pill-accent" title="Même compte que sa fiche du personnel">Aussi : {{ e.personnel.fonc|truncatechars:34 }}</span></div>{% endif %}
+            {% if not e.actif %}<div><span class="pill pill-attention">Désactivé</span></div>{% endif %}
+          </td>
+          <td>{{ e.get_grade_display|default:"—" }}</td>
+          <td><span class="pill {% if e.statut == 'permanent' %}pill-succes{% endif %}">{{ e.get_statut_display }}</span></td>
+          <td class="text-truncate" style="max-width:200px" title="{{ e.departement.nom }}">{{ e.departement.nom }}</td>
+          <td class="text-truncate" style="max-width:180px" title="{{ e.specialite }}">{{ e.specialite|default:"—" }}</td>
+          <td class="small">{{ e.telephone|default:"" }}<div class="text-secondary">{{ e.email }}</div></td>
+          {% if profil.gere_enseignants %}
+            <td><span class="pill {% if e.compte == 'actif' %}pill-succes{% elif e.compte == 'invite' %}pill-attention{% endif %}">{% if e.compte == 'invite' %}À activer{% else %}{{ e.compte_libelle }}{% endif %}</span>
+              <div class="small text-secondary">{{ e.utilisateur.username }}</div></td>
+            <td class="text-end text-nowrap">
+              {% if e.compte == 'invite' and e.actif %}
+                <form method="post" action="{% url 'enseignant_action' e.pk %}" class="d-inline">{% csrf_token %}<input type="hidden" name="action" value="invitation"><input type="hidden" name="suivant" value="{{ request.get_full_path }}">
+                  <button class="btn btn-icone" title="Envoyer le lien d'activation du compte"><i class="bi bi-envelope-arrow-up"></i></button></form>
+              {% endif %}
+              <a class="btn btn-icone" href="{% url 'enseignant_modifier' e.pk %}" title="Modifier"><i class="bi bi-pencil"></i></a>
+            </td>
+          {% endif %}
+        </tr>
+      {% empty %}
+        <tr><td colspan="8"><div class="etat-vide"><i class="bi bi-person-video3"></i>Aucun enseignant avec ces filtres.
+          {% if profil.gere_enseignants %}<div class="mt-2"><a href="{% url 'enseignant_creer' %}">Enregistrer un enseignant</a>.</div>{% endif %}</div></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if page.has_other_pages %}
+    <div class="pied-tableau d-flex justify-content-between align-items-center">
+      <span class="small text-secondary">{{ page.start_index }}–{{ page.end_index }} sur {{ page.paginator.count }}</span>
+      <ul class="pagination pagination-sm mb-0">
+        {% if page.has_previous %}<li class="page-item"><a class="page-link" href="?{{ params }}&page={{ page.previous_page_number }}"><i class="bi bi-chevron-left"></i></a></li>{% endif %}
+        <li class="page-item active"><span class="page-link">{{ page.number }} / {{ page.paginator.num_pages }}</span></li>
+        {% if page.has_next %}<li class="page-item"><a class="page-link" href="?{{ params }}&page={{ page.next_page_number }}"><i class="bi bi-chevron-right"></i></a></li>{% endif %}
+      </ul>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  (function () {
+    var form = document.getElementById('filtres-enseignants');
+    form.querySelectorAll('select').forEach(function (s) { s.addEventListener('change', function () { form.submit(); }); });
+  })();
+</script>
+{% endblock %}
