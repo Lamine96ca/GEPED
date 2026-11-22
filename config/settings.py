@@ -237,6 +237,10 @@ DATA_UPLOAD_MAX_NUMBER_FIELDS = 20000
 # Authentification : identifiant, ou adresse e-mail (pfe/auth.py)
 AUTHENTICATION_BACKENDS = ['django.contrib.auth.backends.ModelBackend', 'pfe.auth.EmailBackend']
 LOGIN_URL = 'login'
+# Connexion en deux étapes : code à 6 chiffres envoyé par e-mail après le mot de passe (pfe/views_connexion.py).
+# GPED_DOUBLE_FACTEUR=0 dans le .env : interrupteur d'urgence (par exemple si les e-mails ne partent plus).
+GPED_DOUBLE_FACTEUR = os.environ.get('GPED_DOUBLE_FACTEUR', '1') != '0'
+GPED_CODE_CONNEXION_MINUTES = int(os.environ.get('GPED_CODE_CONNEXION_MINUTES', '10'))
 LOGIN_REDIRECT_URL = 'tableau_de_bord'
 LOGOUT_REDIRECT_URL = 'login'
 

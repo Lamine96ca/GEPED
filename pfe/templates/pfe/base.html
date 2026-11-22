@@ -150,9 +150,9 @@
         </div>
       {% endif %}
 
-      {% if profil.gere_matieres %}
+      {% if profil.voit_soutenances %}
 
-        <!-- Soutenances : scolarité et chefs de programme -->
+        <!-- Soutenances : scolarité et chefs de programme (gestion) ; autres services et départements (lecture) -->
         {% if actif == 'sout_liste' or actif == 'sout_projets' or actif == 'sout_notes' or actif == 'sout_calendrier' or actif == 'sout_importer' %}
           {% firstof 'show' as sout_ouvert %}
         {% else %}
@@ -166,10 +166,14 @@
           </button>
           <div class="collapse sous-menu {{ sout_ouvert }}" id="sous-menu-soutenances">
             <a class="nav-link {% if actif == 'sout_liste' %}active{% endif %}" href="{% url 'soutenances' %}">Liste des soutenances</a>
+            {% if profil.gere_matieres %}
             <a class="nav-link {% if actif == 'sout_projets' %}active{% endif %}" href="{% url 'projets_liste' %}">Projets de soutenance</a>
             <a class="nav-link {% if actif == 'sout_notes' %}active{% endif %}" href="{% url 'soutenances_notes' %}">Saisie des notes</a>
+            {% endif %}
             <a class="nav-link {% if actif == 'sout_calendrier' %}active{% endif %}" href="{% url 'soutenances_calendrier' %}">Calendrier</a>
+            {% if profil.gere_matieres %}
             <a class="nav-link {% if actif == 'sout_importer' %}active{% endif %}" href="{% url 'soutenances_importer' %}">Importer</a>
+            {% endif %}
           </div>
         </div>
       {% endif %}

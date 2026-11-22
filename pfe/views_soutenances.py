@@ -1,7 +1,8 @@
 """
 Menu Soutenances : liste des soutenances, projets de soutenance, saisie des notes (avec
 verrouillage), calendrier, import. Règles : voir pfe/soutenances.py.
-Droits : scolarité (tout) et chefs de programme (leurs programmes).
+Droits : scolarité (tout) et chefs de programme (leurs programmes). Liste et calendrier en lecture : les autres
+services voient tout, le personnel de département ses programmes.
 """
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -20,7 +21,7 @@ from .import_matieres import ImportRefuse
 from .import_soutenances import OBLIGATOIRES, importer_soutenances, modele_soutenances_xlsx
 from .models import Etudiant, Inscription, ProjetSoutenance, Promotion, Resultat, Session, Soutenance
 from .notes import en_note, recalculer, regles
-from .roles import gestion_matieres_requise, get_profil, programmes_du_profil
+from .roles import gestion_matieres_requise, get_profil, programmes_du_profil, soutenances_lecture_requise
 from .soutenances import (CHAMPS_NOTE, conflits, deverrouiller, enregistrer_notes, filtrer, notes_de,
                           peut_modifier_note, projets_visibles, recherche_projets, recherche_soutenances,
                           soutenances_visibles, verrouiller)
@@ -108,7 +109,7 @@ def _soutenances_filtrees(profil, f):
 
 
 @login_required
-@gestion_matieres_requise
+@soutenances_lecture_requise
 def soutenances_liste(request):
     profil = get_profil(request)
     f, contexte = _filtres(request, profil)
@@ -443,7 +444,7 @@ def soutenances_notes(request):
 # ------------------------------------------------------------------ calendrier
 
 @login_required
-@gestion_matieres_requise
+@soutenances_lecture_requise
 def soutenances_calendrier(request):
     profil = get_profil(request)
     f, contexte = _filtres(request, profil, session_par_defaut=True)

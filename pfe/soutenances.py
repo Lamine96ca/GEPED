@@ -17,6 +17,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from .models import ProjetSoutenance, Soutenance, SoutenanceHistorique, stockage_prive
+from .roles import SCOLARITE, SERVICE
 
 CHAMPS_NOTE = ('note', 'note_session')
 # Cycles où l'on soutient : un autre cycle est accepté, avec un simple avertissement
@@ -29,14 +30,22 @@ def avertissement_cycle(cycle):
     return ''
 
 
+def _selon_droits(profil, qs):
+    """Scolarité et autres services : tout ; département et programme : leurs programmes ; sinon rien."""
+    if profil.role in (SCOLARITE, SERVICE):
+        return qs
+    if profil.a_perimetre:
+        return qs.filter(filiere_id__in=profil.programme_ids)
+    return qs.none()
+
+
 def soutenances_visibles(profil):
-    qs = Soutenance.objects.select_related('etudiant', 'filiere', 'session', 'promotion', 'projet')
-    return qs if profil.est_scolarite else qs.filter(filiere_id__in=profil.programme_ids)
+    return _selon_droits(profil, Soutenance.objects.select_related('etudiant', 'filiere', 'session', 'promotion',
+                                                                   'projet'))
 
 
 def projets_visibles(profil):
-    qs = ProjetSoutenance.objects.select_related('filiere', 'session', 'promotion')
-    return qs if profil.est_scolarite else qs.filter(filiere_id__in=profil.programme_ids)
+    return _selon_droits(profil, ProjetSoutenance.objects.select_related('filiere', 'session', 'promotion'))
 
 
 def peut_modifier_note(profil, soutenance):

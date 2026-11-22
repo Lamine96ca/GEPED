@@ -1,0 +1,53 @@
+{% extends 'pfe/page_publique.html' %}
+{% block titre %}Code de connexion{% endblock %}
+
+{% block panneau %}
+  <h2>Une étape de plus pour <span>protéger</span> votre compte.</h2>
+  <p class="chapeau">Votre mot de passe est correct. Pour finir, confirmez qu'il s'agit bien de vous.</p>
+  <div class="indications">
+    <div class="indication">
+      <i class="bi bi-envelope-check"></i>
+      <div><strong>Un code vient de vous être envoyé</strong><span>Six chiffres, sur l'adresse e-mail de votre compte gePed.</span></div>
+    </div>
+    <div class="indication">
+      <i class="bi bi-hourglass-split"></i>
+      <div><strong>Valable {{ minutes }} minutes</strong><span>Au-delà, reconnectez-vous pour en recevoir un nouveau.</span></div>
+    </div>
+    <div class="indication">
+      <i class="bi bi-shield-lock"></i>
+      <div><strong>Ne le communiquez à personne</strong><span>La scolarité ne vous demandera jamais ce code.</span></div>
+    </div>
+  </div>
+{% endblock %}
+
+{% block carte %}
+  <div class="surtitre">Vérification</div>
+  <h1>Code de connexion</h1>
+  <p class="intro">Saisissez le code à 6 chiffres envoyé à <strong>{{ email_masque }}</strong>.</p>
+  {% include 'pfe/_messages_publics.html' %}
+  {% if erreur %}
+    <div class="alert alert-danger py-2 d-flex gap-2 align-items-center"><i class="bi bi-exclamation-circle"></i> {{ erreur }}</div>
+  {% endif %}
+  <form method="post">{% csrf_token %}
+    <div class="mb-4">
+      <label class="form-label" for="id_code">Code reçu par e-mail</label>
+      <div class="champ-icone">
+        <i class="bi bi-123"></i>
+        <input class="form-control" id="id_code" name="code" required autofocus autocomplete="one-time-code"
+               inputmode="numeric" pattern="[0-9 ]{6,7}" maxlength="7" placeholder="Ex. 482913"
+               style="letter-spacing:.3em;font-size:1.15rem;font-weight:600">
+      </div>
+    </div>
+    <button class="btn btn-primary w-100">Valider et me connecter <i class="bi bi-arrow-right"></i></button>
+  </form>
+  <div class="d-flex justify-content-between align-items-center mt-3 small">
+    {% if renvoi_possible %}
+      <form method="post" class="m-0">{% csrf_token %}
+        <button name="renvoyer" value="1" class="btn btn-link p-0 small lien-or">Renvoyer le code</button>
+      </form>
+    {% else %}<span></span>{% endif %}
+    <a href="{% url 'connexion_recommencer' %}" class="text-secondary">Changer de compte</a>
+  </div>
+  <p class="small text-secondary mt-3 mb-0">Pas d'e-mail ? Regardez dans les courriers indésirables (spam). Si votre
+    adresse e-mail a changé, contactez la scolarité.</p>
+{% endblock %}

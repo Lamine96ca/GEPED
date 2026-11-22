@@ -6,8 +6,10 @@
 {% block actions %}
   <a href="?{{ params }}{% if params %}&amp;{% endif %}imprimer=pdf" target="_blank" rel="noopener" class="btn btn-light" title="Imprimer la liste (PDF, avec l'en-tête de l'IST)"><i class="bi bi-printer"></i> <span class="d-none d-sm-inline">Imprimer</span></a>
   <a href="?{{ params }}{% if params %}&{% endif %}export=xlsx" class="btn btn-light"><i class="bi bi-file-earmark-excel"></i> <span class="d-none d-sm-inline">Exporter</span></a>
+  {% if profil.gere_matieres %}
   <a href="{% url 'soutenances_importer' %}" class="btn btn-or"><i class="bi bi-upload"></i> <span class="d-none d-sm-inline">Importer</span></a>
   <a href="{% url 'soutenance_creer' %}" class="btn btn-primary"><i class="bi bi-plus-lg"></i> <span class="d-none d-sm-inline">Nouvelle soutenance</span></a>
+  {% endif %}
 {% endblock %}
 {% block contenu %}
 <div class="card carte-gped liste">
@@ -24,7 +26,7 @@
           <td class="text-truncate" style="max-width:170px" title="{{ s.filiere }}">{{ s.filiere }}</td>
           <td>{{ s.session.annee }}</td>
           <td style="white-space:normal;min-width:200px;max-width:300px">
-            {% if s.projet %}<a href="{% url 'projet_modifier' s.projet.pk %}" class="fw-semibold">{{ s.projet.intitule }}</a>
+            {% if s.projet %}{% if profil.gere_matieres %}<a href="{% url 'projet_modifier' s.projet.pk %}" class="fw-semibold">{{ s.projet.intitule }}</a>{% else %}<span class="fw-semibold">{{ s.projet.intitule }}</span>{% endif %}
               {% if s.projet.theme %}<div class="small text-secondary text-truncate" style="max-width:280px" title="{{ s.projet.theme }}">{{ s.projet.theme }}</div>{% endif %}
             {% else %}<span class="text-secondary">— Sans projet —</span>{% endif %}
           </td>
@@ -39,8 +41,10 @@
             {% if profil.est_scolarite and s.validee and s.etudiant.matricule %}
               <a class="btn btn-icone" href="{% url 'attestations_type' 'soutenance' %}?matricule={{ s.etudiant.matricule|urlencode }}&cycle={{ s.cycle|urlencode }}" title="Attestation de soutenance"><i class="bi bi-award"></i></a>
             {% endif %}
+            {% if profil.gere_matieres %}
             <a class="btn btn-icone" href="{% url 'soutenance_modifier' s.pk %}?suivant={{ request.get_full_path|urlencode }}" title="Compléter / modifier"><i class="bi bi-pencil"></i></a>
-            {% if profil.est_scolarite or not s.verrouillee %}
+            {% endif %}
+            {% if profil.gere_matieres and profil.est_scolarite or profil.gere_matieres and not s.verrouillee %}
               <form method="post" action="{% url 'soutenance_supprimer' s.pk %}" class="d-inline" onsubmit="return confirm('Supprimer la soutenance de {{ s.etudiant.prenom|escapejs }} {{ s.etudiant.nom|escapejs }} ?');">
                 {% csrf_token %}<input type="hidden" name="suivant" value="{{ request.get_full_path }}">
                 <button class="btn btn-icone text-danger" title="Supprimer"><i class="bi bi-trash"></i></button>
@@ -50,7 +54,7 @@
         </tr>
       {% empty %}
         <tr><td colspan="10"><div class="etat-vide"><i class="bi bi-mortarboard"></i>Aucune soutenance avec ces filtres.
-          <div class="mt-2"><a href="{% url 'soutenance_creer' %}">Ajouter une soutenance</a> ou <a href="{% url 'soutenances_importer' %}">importer les anciens étudiants</a>.</div></div></td></tr>
+          {% if profil.gere_matieres %}<div class="mt-2"><a href="{% url 'soutenance_creer' %}">Ajouter une soutenance</a> ou <a href="{% url 'soutenances_importer' %}">importer les anciens étudiants</a>.</div>{% endif %}</div></td></tr>
       {% endfor %}
       </tbody>
     </table>

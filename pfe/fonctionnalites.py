@@ -35,6 +35,10 @@ def _matieres(profil, user):         # @gestion_matieres_requise : scolarité, c
     return profil.gere_matieres
 
 
+def _soutenances(profil, user):      # @soutenances_lecture_requise : + autres services et départements (lecture)
+    return profil.voit_soutenances
+
+
 def _lit_notes(profil, user):        # @lecture_notes_requise : + Direction Générale des Études
     return profil.lit_notes
 
@@ -165,7 +169,7 @@ CATALOGUE = [
      NOTES + ' autorisation autoriser rouvrir ouvrir délibéré période date début fin programme niveau',
      'notes_autorisations', (), 'bi-unlock', _scolarite),
     ('Soutenances', 'Liste des soutenances', "Soutenances enregistrées : jury, date, note.",
-     SOUTENANCE + ' liste', 'soutenances', (), 'bi-mortarboard', _matieres),
+     SOUTENANCE + ' liste', 'soutenances', (), 'bi-mortarboard', _soutenances),
     ('Soutenances', 'Ajouter une soutenance', "Enregistrer une soutenance : étudiant, jury, date et salle.",
      SOUTENANCE + ' ajouter créer nouvelle', 'soutenance_creer', (), 'bi-plus-circle', _matieres),
     ('Soutenances', 'Projets de soutenance', "Sujets et encadreurs des projets de fin d'études.",
@@ -176,7 +180,7 @@ CATALOGUE = [
      SOUTENANCE + ' note notes saisie saisir', 'soutenances_notes', (), 'bi-pencil-square', _matieres),
     ('Soutenances', 'Calendrier des soutenances', "Planning des soutenances par date et par salle.",
      SOUTENANCE + ' calendrier planning date salle programme', 'soutenances_calendrier', (), 'bi-calendar3',
-     _matieres),
+     _soutenances),
     ('Soutenances', 'Importer des soutenances', "Importer des soutenances depuis un fichier Excel.",
      SOUTENANCE + ' import importer Excel fichier', 'soutenances_importer', (), 'bi-upload', _matieres),
 

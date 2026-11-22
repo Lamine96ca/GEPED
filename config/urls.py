@@ -4,9 +4,11 @@ from django.urls import include, path, re_path
 
 from pfe.forms import MotDePasseOublieForm, NouveauMotDePasseForm
 from pfe.views import media_protege
-from pfe import views_espace
+from pfe import views_connexion, views_espace
 
 urlpatterns = [
+    # La connexion de l'administration Django passe par celle de gePed (code par e-mail)
+    path('django-admin/login/', views_connexion.admin_vers_connexion),
     path('django-admin/', admin.site.urls),
     # Espace étudiant public (sans compte) : inscription et réinscription en ligne
     path('etudiant/', views_espace.espace_accueil, name='espace_accueil'),
@@ -19,8 +21,9 @@ urlpatterns = [
     path('etudiant/quitter/', views_espace.espace_quitter, name='espace_quitter'),
     path('etudiant/dossier/photo/', views_espace.espace_photo, name='espace_photo'),
     path('etudiant/dossier/signature/', views_espace.espace_signature, name='espace_signature'),
-    path('connexion/', auth_views.LoginView.as_view(template_name='pfe/connexion.html',
-                                                     redirect_authenticated_user=True), name='login'),
+    path('connexion/', views_connexion.Connexion.as_view(), name='login'),
+    path('connexion/code/', views_connexion.connexion_code, name='connexion_code'),
+    path('connexion/recommencer/', views_connexion.recommencer_connexion, name='connexion_recommencer'),
     path('deconnexion/', auth_views.LogoutView.as_view(), name='logout'),
 
     # Mot de passe oublié

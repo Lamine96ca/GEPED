@@ -3514,8 +3514,9 @@ class GpedTests(TestCase):
         Note.objects.create(etudiant=e0, matiere=algo, moyenne=7, moyenne_deposee=True)
         Note.objects.create(etudiant=e0, matiere=anglais, moyenne=7, moyenne_deposee=True)
         creer = reverse('soutenance_creer')
-        self.connecter('dep')                                         # autre service : pas d'accès
-        self.assertEqual(self.client.get(reverse('soutenances')).status_code, 403)
+        self.connecter('dep')                                         # autre service : lecture seule
+        self.assertEqual(self.client.get(reverse('soutenances')).status_code, 200)
+        self.assertEqual(self.client.get(creer).status_code, 403)
         self.connecter('info')
         r = self.client.post(creer, self._fiche('M2', filiere=self.gc.pk, note='8'))
         self.assertContains(r, 'Sélectionnez un choix valide')       # Génie civil : pas son programme
@@ -4319,3 +4320,153 @@ class GpedTests(TestCase):
         self.connecter('dep')
         self.assertRedirects(self.client.get(reverse('guide_ouvrir')), reverse('tableau_de_bord'))
         self.assertNotContains(self.client.get(reverse('tableau_de_bord')), reverse('guide_ouvrir'))
+
+
+class SoutenancesSelonDroitsTests(TestCase):
+    """Liste des soutenances : département et programme voient leurs programmes, la scolarité et les autres services
+    voient tout (lecture seule pour les services)."""
+    setUpTestData = GpedTests.__dict__['setUpTestData']
+    connecter = GpedTests.connecter
+
+    def test_liste_selon_le_perimetre(self):
+        from .models import Soutenance
+        for matricule in ('M0', 'M2'):                     # M0 : Informatique, M2 : Génie civil
+            e = Etudiant.objects.get(matricule=matricule)
+            Soutenance.objects.create(etudiant=e, cycle='Licence', filiere=Inscription.objects.get(etudiant=e).filiere,
+                                      session=self.session, promotion=self.p20)
+        attendus = {'info': ({'N0'}, {'N2'}), 'scol': ({'N0', 'N2'}, set()), 'dep': ({'N0', 'N2'}, set())}
+        for login, (vus, caches) in attendus.items():
+            self.connecter(login)
+            r = self.client.get(reverse('soutenances'))
+            self.assertEqual(r.status_code, 200, login)
+            noms = {s.etudiant.nom for s in r.context['liste']}
+            self.assertLessEqual(vus, noms, login)
+            self.assertFalse(caches & noms, login)
+            self.assertEqual(self.client.get(reverse('soutenances_calendrier')).status_code, 200, login)
+        # « dep » (autre service) : lecture seule, ni ajout ni modification
+        self.connecter('dep')
+        r = self.client.get(reverse('soutenances'))
+        self.assertNotContains(r, reverse('soutenance_creer'))
+        self.assertNotContains(r, 'bi-pencil')
+        self.assertEqual(self.client.get(reverse('soutenance_creer')).status_code, 403)
+        # Sans service : aucun accès
+        self.connecter('sans_service')
+        self.assertEqual(self.client.get(reverse('soutenances')).status_code, 403)
+
+
+class ConnexionDeuxEtapesTests(TestCase):
+    """Connexion : mot de passe, puis code à 6 chiffres envoyé par e-mail."""
+    MDP = 'Mdp-solide-2026'
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.agent = User.objects.create_user('agent', email='agent@exemple.org', password=cls.MDP)
+        User.objects.create_user('sans_mail', email='', password=cls.MDP)
+        User.objects.create_user('fictif', email='admin@gped.local', password=cls.MDP)
+
+    def etape1(self, login='agent', **extra):
+        return self.client.post(reverse('login'), {'username': login, 'password': self.MDP, **extra})
+
+    def code_recu(self, k=-1):
+        from django.core import mail
+        return re.search(r'\b(\d{6})\b', mail.outbox[k].body).group(1)
+
+    def connecte(self):
+        return '_auth_user_id' in self.client.session
+
+    def test_code_par_email_puis_connexion(self):
+        from django.core import mail
+        r = self.etape1()
+        self.assertRedirects(r, reverse('connexion_code'))
+        self.assertFalse(self.connecte())                                 # rien n'est ouvert avant le code
+        self.assertEqual((len(mail.outbox), mail.outbox[0].to), (1, ['agent@exemple.org']))
+        code = self.code_recu()
+        self.assertNotIn(code, str(dict(self.client.session)))            # jamais en clair dans la session
+        r = self.client.get(reverse('connexion_code'))
+        self.assertContains(r, 'a•••t@exemple.org')
+        faux = '111111' if code != '111111' else '222222'
+        r = self.client.post(reverse('connexion_code'), {'code': faux})
+        self.assertContains(r, 'Code incorrect. Il vous reste 4 essais.')
+        self.assertFalse(self.connecte())
+        r = self.client.post(reverse('connexion_code'), {'code': code[:3] + ' ' + code[3:]})
+        self.assertRedirects(r, reverse('tableau_de_bord'), fetch_redirect_response=False)
+        self.assertTrue(self.connecte())
+        self.assertNotIn('connexion_en_attente', self.client.session)
+
+    def test_page_demandee_gardee(self):
+        self.etape1(next=reverse('matieres_liste'))
+        r = self.client.post(reverse('connexion_code'), {'code': self.code_recu()})
+        self.assertRedirects(r, reverse('matieres_liste'), fetch_redirect_response=False)
+
+    def test_cinq_essais_puis_recommencer(self):
+        self.etape1()
+        code = self.code_recu()
+        faux = '111111' if code != '111111' else '222222'
+        for _ in range(4):
+            self.client.post(reverse('connexion_code'), {'code': faux})
+        r = self.client.post(reverse('connexion_code'), {'code': faux})
+        self.assertRedirects(r, reverse('login'))
+        r = self.client.post(reverse('connexion_code'), {'code': code})     # le bon code ne sert plus
+        self.assertRedirects(r, reverse('login'))
+        self.assertFalse(self.connecte())
+
+    def test_code_expire(self):
+        self.etape1()
+        s = self.client.session
+        attente = s['connexion_en_attente']
+        attente['expire'] = 0
+        s['connexion_en_attente'] = attente
+        s.save()
+        r = self.client.post(reverse('connexion_code'), {'code': self.code_recu()})
+        self.assertRedirects(r, reverse('login'))
+        self.assertFalse(self.connecte())
+
+    def test_renvoi_du_code(self):
+        from django.core import mail
+        self.etape1()
+        premier = self.code_recu()
+        r = self.client.post(reverse('connexion_code'), {'renvoyer': '1'})
+        self.assertContains(r, 'Patientez encore')                        # pas plus d'un code par minute
+        s = self.client.session
+        attente = s['connexion_en_attente']
+        attente['envoye'] = 0
+        s['connexion_en_attente'] = attente
+        s.save()
+        self.client.post(reverse('connexion_code'), {'renvoyer': '1'})
+        self.assertEqual(len(mail.outbox), 2)
+        second = self.code_recu()
+        if premier != second:                                            # l'ancien code ne vaut plus
+            r = self.client.post(reverse('connexion_code'), {'code': premier})
+            self.assertContains(r, 'Code incorrect')
+        self.client.post(reverse('connexion_code'), {'code': second})
+        self.assertTrue(self.connecte())
+
+    def test_sans_email_utilisable_connexion_directe(self):
+        from django.core import mail
+        for login in ('sans_mail', 'fictif'):
+            self.client.logout()
+            r = self.etape1(login)
+            self.assertRedirects(r, reverse('tableau_de_bord'), fetch_redirect_response=False)
+            self.assertTrue(self.connecte(), login)
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_interrupteur_d_urgence(self):
+        from django.test import override_settings
+        with override_settings(GPED_DOUBLE_FACTEUR=False):
+            r = self.etape1()
+        self.assertRedirects(r, reverse('tableau_de_bord'), fetch_redirect_response=False)
+        self.assertTrue(self.connecte())
+
+    def test_mauvais_mot_de_passe_et_echec_d_envoi(self):
+        from unittest import mock
+        r = self.client.post(reverse('login'), {'username': 'agent', 'password': 'faux'})
+        self.assertContains(r, 'Identifiant ou mot de passe incorrect')
+        with mock.patch('django.core.mail.EmailMultiAlternatives.send', side_effect=OSError('SMTP')):
+            r = self.etape1()
+        self.assertContains(r, "Le code de connexion n'a pas pu être envoyé")
+        self.assertFalse(self.connecte())
+        self.assertEqual(self.client.get(reverse('connexion_code')).status_code, 302)
+
+    def test_administration_django_passe_par_la_connexion_gped(self):
+        r = self.client.get('/django-admin/login/?next=/django-admin/')
+        self.assertRedirects(r, reverse('login') + '?next=%2Fdjango-admin%2F', fetch_redirect_response=False)

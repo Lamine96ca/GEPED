@@ -732,7 +732,7 @@ def notes_valider(request):
 # ------------------------------------------------------------------ espace de délibération (jury)
 
 STATUTS_JURY = [('', 'Tous les étudiants'), ('tout', 'Ont tout validé'), ('pas_tout', "N'ont pas tout validé"),
-                ('n', 'Ont validé exactement…')]
+                ('n', 'Ont validé exactement…'), ('credits', 'Ont obtenu exactement…')]
 
 
 def grille_deliberation(profil, f):
@@ -816,7 +816,8 @@ def _export_deliberation(matieres, lignes, titre):
     return reponse
 
 
-def _imprimer_deliberation(request, f, sessions, programmes, matieres, lignes, repartition, tous, statut, n_choisi):
+def _imprimer_deliberation(request, f, sessions, programmes, matieres, lignes, repartition, tous, statut, n_choisi,
+                           repartition_credits=(), cr_choisi=None):
     """Grille du jury (PDF paysage, signé par le chef du service) : notes colorées, bilan, répartition."""
     from .pdf_listes import cellule, fmt_note, imprimer_tableau, nom_complet
     filtres = _filtres_imprimes(f, sessions, programmes)
@@ -826,7 +827,8 @@ def _imprimer_deliberation(request, f, sessions, programmes, matieres, lignes, r
         filtres.append(('Semestres', "toute l'année"))
     choix = dict(STATUTS_JURY).get(statut)
     if statut:
-        filtres.append(('Étudiants', f"{choix} {n_choisi} matière(s)" if statut == 'n' else choix))
+        precision = {'n': f" {n_choisi} matière(s)", 'credits': f" {cr_choisi} crédit(s)"}.get(statut, '')
+        filtres.append(('Étudiants', choix + precision))
     nb = len(matieres)
     credits = sum(m.credit for m in matieres)
     rangs = []
@@ -842,7 +844,10 @@ def _imprimer_deliberation(request, f, sessions, programmes, matieres, lignes, r
                       cellule(fmt_note(l['moyenne']), align='c', gras=True), l['mention'] or ''])
     repart = ' · '.join(f"{'toutes' if r['n'] == nb else r['n']} validée{'s' if r['n'] != 1 else ''} : {r['effectif']}"
                         for r in repartition if r['effectif'])
+    repart_cr = ' · '.join(f"{r['credits']}/{credits} cr. : {r['effectif']}" for r in repartition_credits)
     total = f"{tous} étudiant{'s' if tous > 1 else ''} · {nb} matières, {credits} crédits · {repart}"
+    if repart_cr:
+        total += f" — Crédits validés : {repart_cr}"
     largeur_matiere = 42 if nb > 6 else 52
     colonnes = ([('N°', 18), ('Étudiant', 120), ('Promo', 34)]
                 + [(f"{m.nom[:24]} ({m.credit} cr.)", largeur_matiere) for m in matieres]
@@ -858,7 +863,8 @@ def notes_deliberation(request):
     """
     Espace de délibération (à projeter devant le jury) : grille étudiants × matières, filtres (programme,
     promotion, session, licence, semestre, matière, matricule ou INE), tri des étudiants qui ont tout validé,
-    pas tout validé, ou exactement N matières, et répartition par nombre de matières validées.
+    pas tout validé, exactement N matières ou exactement N crédits, et répartitions par nombre de matières
+    validées et par crédits validés.
     """
     profil = get_profil(request)
     g = request.GET
@@ -867,9 +873,10 @@ def notes_deliberation(request):
     cascade = _cascade(profil, f)                      # vide les choix qui n'existent plus sous ceux du dessus
     statut = g.get('statut') if g.get('statut') in {s for s, _ in STATUTS_JURY} else ''
     n_choisi = _entier(g.get('n'))
-    tri = g.get('tri') if g.get('tri') in ('nom', 'moyenne', 'validees') else 'nom'
+    cr_choisi = _entier(g.get('cr'))
+    tri = g.get('tri') if g.get('tri') in ('nom', 'moyenne', 'validees', 'credits') else 'nom'
     contexte = {'actif': 'notes_deliberation', **cascade, 'filtres': f, 'statuts': STATUTS_JURY, 'statut': statut,
-                'n_choisi': n_choisi, 'tri': tri, 'promotions': promotions_de(f) if f['licence'] else []}
+                'n_choisi': n_choisi, 'cr_choisi': cr_choisi, 'tri': tri, 'promotions': promotions_de(f) if f['licence'] else []}
     if f['session'] and f['programme'] and f['licence']:
         matieres, lignes = grille_deliberation(profil, f)
         nb = len(matieres)
@@ -877,16 +884,27 @@ def notes_deliberation(request):
         repartition = [{'n': k, 'effectif': sum(1 for l in lignes if l['nb_validees'] == k)} for k in range(nb, -1, -1)]
         for r in repartition:
             r['pourcent'] = round(100 * r['effectif'] / tous, 1) if tous else 0
+        # Répartition par crédits validés : seulement les totaux réellement obtenus, du plus haut au plus bas
+        credits_total = sum(m.credit for m in matieres)
+        repartition_credits = []
+        for cr in sorted({l['credits_valides'] for l in lignes}, reverse=True):
+            effectif = sum(1 for l in lignes if l['credits_valides'] == cr)
+            repartition_credits.append({'credits': cr, 'effectif': effectif,
+                                        'pourcent': round(100 * effectif / tous, 1) if tous else 0})
         if statut == 'tout':
             lignes = [l for l in lignes if nb and l['nb_validees'] == nb]
         elif statut == 'pas_tout':
             lignes = [l for l in lignes if l['nb_validees'] < nb]
         elif statut == 'n' and n_choisi is not None:
             lignes = [l for l in lignes if l['nb_validees'] == n_choisi]
+        elif statut == 'credits' and cr_choisi is not None:
+            lignes = [l for l in lignes if l['credits_valides'] == cr_choisi]
         if tri == 'moyenne':
             lignes.sort(key=lambda l: (l['moyenne'] is None, -(l['moyenne'] or 0)))
         elif tri == 'validees':
             lignes.sort(key=lambda l: (-l['nb_validees'], -(l['moyenne'] or 0)))
+        elif tri == 'credits':
+            lignes.sort(key=lambda l: (-l['credits_valides'], -(l['moyenne'] or 0)))
         programme = next((p for p in programmes if p.pk == f['programme']), None)
         semestre = Semestre.objects.filter(pk=f['semestre']).first() if f['semestre'] else None
         licence = Licence.objects.filter(pk=f['licence']).first()
@@ -897,14 +915,14 @@ def notes_deliberation(request):
             return _export_deliberation(matieres, lignes, f"Délibération · {titre}")
         if g.get('imprimer') == 'pdf':
             return _imprimer_deliberation(request, f, sessions, programmes, matieres, lignes, repartition, tous, statut,
-                                          n_choisi)
+                                          n_choisi, repartition_credits, cr_choisi)
         params = g.copy()
-        for cle in ('statut', 'n', 'export', 'tri'):
+        for cle in ('statut', 'n', 'cr', 'export', 'tri'):
             params.pop(cle, None)
         contexte.update({
             'matieres': matieres, 'lignes': lignes, 'nb_matieres': nb, 'nb_etudiants': tous,
             'repartition': repartition, 'titre_grille': titre, 'portee': portee, 'params_base': params.urlencode(),
-            'credits_total': sum(m.credit for m in matieres),
+            'credits_total': credits_total, 'repartition_credits': repartition_credits,
             'nb_tout': repartition[0]['effectif'] if nb else 0,
             'nb_pas_tout': tous - (repartition[0]['effectif'] if nb else 0),
             'seuil': regles()['seuil_validation'],

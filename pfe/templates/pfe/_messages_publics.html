@@ -1,0 +1,5 @@
+{% for m in messages %}
+  <div class="alert {% if m.tags == 'error' %}alert-danger{% elif m.tags == 'success' %}alert-success{% else %}alert-info{% endif %} py-2 d-flex gap-2 align-items-center">
+    <i class="bi {% if m.tags == 'error' %}bi-exclamation-circle{% elif m.tags == 'success' %}bi-check-circle{% else %}bi-info-circle{% endif %}"></i> {{ m }}
+  </div>
+{% endfor %}

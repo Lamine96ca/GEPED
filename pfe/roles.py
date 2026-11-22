@@ -163,6 +163,12 @@ class Profil:
         return any(est_service_dge(s) for s in self.tous_services)
 
     @property
+    def voit_soutenances(self):
+        """Liste et calendrier des soutenances : la scolarité et les services voient tout (lecture seule pour les
+        services) ; chef de département, directeur de programme et personnel de département, leurs programmes."""
+        return self.role in (SCOLARITE, SERVICE) or self.a_perimetre
+
+    @property
     def lit_notes(self):
         """Notes et résultats : scolarité, chefs de département, directeurs, Direction Générale des Études (lecture)."""
         return self.gere_matieres or self.est_dge
@@ -301,6 +307,7 @@ lecture_notes_requise = _exige('lit_notes', "Notes : réservé à la scolarité,
 chef_departement_requis = _exige('est_chef_departement', "Réservé au chef de département.")
 validations_requises = _exige('voit_validations', "Validation des semestres : réservé aux chefs de département et "
                                                   "au super utilisateur.")
+soutenances_lecture_requise = _exige('voit_soutenances', "Soutenances : réservé au personnel de l'établissement.")
 fiches_requises = _exige('telecharge_fiches', "Fiche de notes de l'enseignant : réservé aux chefs de département et "
                                               "aux directeurs de programme.")
 suivi_notes_requis = _exige('voit_suivi_notes', "Réservé à la scolarité, à l'administrateur et à la Direction "

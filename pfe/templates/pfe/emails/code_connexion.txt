@@ -1,0 +1,10 @@
+Bonjour {{ user.get_full_name|default:user.username }},
+
+Votre code de connexion à gePed est : {{ code }}
+
+Saisissez-le sur la page de connexion. Il est valable {{ minutes }} minutes et ne sert qu'une fois.
+
+Si vous n'êtes pas en train de vous connecter, ne communiquez ce code à personne et changez votre mot de passe :
+quelqu'un connaît peut-être votre mot de passe actuel.
+
+gePed · Institut Supérieur de Technologie de Mamou

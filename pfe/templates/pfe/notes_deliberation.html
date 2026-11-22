@@ -101,12 +101,17 @@
         <label class="form-label small text-secondary mb-1" for="j-n">N matières</label>
         <input id="j-n" type="number" name="n" min="0" max="{{ nb_matieres|default:60 }}" value="{% if n_choisi is not None %}{{ n_choisi }}{% endif %}" class="form-control">
       </div>
+      <div class="col-3 col-md-2 col-lg-1">
+        <label class="form-label small text-secondary mb-1" for="j-cr">N crédits</label>
+        <input id="j-cr" type="number" name="cr" min="0" max="{{ credits_total|default:600 }}" value="{% if cr_choisi is not None %}{{ cr_choisi }}{% endif %}" class="form-control">
+      </div>
       <div class="col-5 col-md-3 col-lg-2">
         <label class="form-label small text-secondary mb-1" for="j-tri">Trier par</label>
         <select id="j-tri" name="tri" class="form-select">
           <option value="nom" {% if tri == 'nom' %}selected{% endif %}>Nom</option>
           <option value="moyenne" {% if tri == 'moyenne' %}selected{% endif %}>Moyenne</option>
           <option value="validees" {% if tri == 'validees' %}selected{% endif %}>Matières validées</option>
+          <option value="credits" {% if tri == 'credits' %}selected{% endif %}>Crédits validés</option>
         </select>
       </div>
       <div class="col-4 col-md-3 col-lg-1 d-grid">
@@ -137,7 +142,9 @@
     </a>
   </div>
 
-  <div class="card carte-gped mb-3 jury-repartition-carte">
+  <div class="row g-3 mb-3 jury-repartition-carte">
+  <div class="col-xl-6">
+  <div class="card carte-gped h-100">
     <div class="card-body">
       <div class="entete-carte">
         <span class="icone-carte"><i class="bi bi-bar-chart-steps"></i></span>
@@ -155,13 +162,38 @@
       </div>
     </div>
   </div>
+  </div>
+  <!-- Répartition par crédits validés -->
+  <div class="col-xl-6">
+  <div class="card carte-gped h-100">
+    <div class="card-body">
+      <div class="entete-carte">
+        <span class="icone-carte"><i class="bi bi-award"></i></span>
+        <div><h3>Répartition par crédits validés</h3><p>Sur {{ credits_total }} crédits · cliquez sur une ligne pour n'afficher que ces étudiants</p></div>
+      </div>
+      <div class="jury-repartition">
+        {% for r in repartition_credits %}
+          <a href="?{{ params_base }}&amp;statut=credits&amp;cr={{ r.credits }}" class="{% if statut == 'credits' and cr_choisi == r.credits %}actif{% endif %}">
+            <span>{% if r.credits == credits_total %}<strong>Tous les crédits</strong> ({{ r.credits }}/{{ credits_total }}){% elif r.credits == 0 %}<strong>Aucun crédit</strong>{% else %}<strong>{{ r.credits }}</strong> crédit{{ r.credits|pluralize }} sur {{ credits_total }}{% endif %}</span>
+            <span class="jury-barre"><span class="{% if r.credits == credits_total %}tout{% elif r.credits == 0 %}aucune{% endif %}" style="width:{{ r.pourcent|stringformat:'s' }}%"></span></span>
+            <span class="text-end fw-semibold">{{ r.effectif }}</span>
+            <span class="text-end small text-secondary">{{ r.pourcent }} %</span>
+          </a>
+        {% empty %}
+          <div class="etat-vide py-3"><i class="bi bi-people"></i>Aucun étudiant.</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  </div>
+  </div>
 
   <!-- Grille du jury -->
   <div class="card carte-gped liste" id="carte-grille">
     <div class="card-header d-flex flex-wrap align-items-center gap-2">
       <div class="entete-carte mb-0 me-auto">
         <span class="icone-carte"><i class="bi bi-table"></i></span>
-        <div><h3>{{ lignes|length }} étudiant{{ lignes|length|pluralize }}{% if statut %} · {% for v, lib in statuts %}{% if v == statut %}{{ lib|lower }}{% endif %}{% endfor %}{% if statut == 'n' %} {{ n_choisi }} matière{{ n_choisi|pluralize }}{% endif %}{% endif %}</h3>
+        <div><h3>{{ lignes|length }} étudiant{{ lignes|length|pluralize }}{% if statut %} · {% for v, lib in statuts %}{% if v == statut %}{{ lib|lower }}{% endif %}{% endfor %}{% if statut == 'n' %} {{ n_choisi }} matière{{ n_choisi|pluralize }}{% elif statut == 'credits' %} {{ cr_choisi }} crédit{{ cr_choisi|pluralize }}{% endif %}{% endif %}</h3>
           <p>{{ titre_grille }} · <span style="color:#166534">vert : validée</span> · <span style="color:#991b1b">rouge : non validée</span> · S : validée en session (rattrapage)</p></div>
       </div>
     </div>
@@ -210,6 +242,8 @@
     // « N matières » rempli : choisit « Ont validé exactement… »
     var n = document.getElementById('j-n'), statut = document.getElementById('j-statut');
     n.addEventListener('input', function () { if (n.value !== '') statut.value = 'n'; });
+    var cr = document.getElementById('j-cr');
+    cr.addEventListener('input', function () { if (cr.value !== '') statut.value = 'credits'; });
     var bouton = document.getElementById('jury-plein-ecran');
     if (bouton) bouton.addEventListener('click', function () {
       var carte = document.getElementById('carte-grille');
