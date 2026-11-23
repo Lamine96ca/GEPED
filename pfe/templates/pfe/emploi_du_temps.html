@@ -4,7 +4,20 @@
 {% block titre_page %}Emploi du temps{% endblock %}
 {% block sous_titre %}<div class="sous-titre">{% if titre_grille %}{{ titre_grille }} · {% endif %}semaine type · lundi → samedi, 7 h → 22 h{% if donnees.modifiable %} · glissez une matière sur la grille, étirez un cours par le bas{% endif %}</div>{% endblock %}
 {% block actions %}
-  {% if seances is not None or groupes %}
+  {% if sel.mode == 'heures' and heures is not None %}
+    <div class="btn-group">
+      <button type="button" class="btn btn-light dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-download"></i> <span class="d-none d-sm-inline">Imprimer / exporter</span></button>
+      <ul class="dropdown-menu dropdown-menu-end">
+        <li><h6 class="dropdown-header">Détail : matières puis total</h6></li>
+        <li><a class="dropdown-item" href="?{{ request.GET.urlencode }}&amp;format=detail&amp;imprimer=pdf" target="_blank" rel="noopener"><i class="bi bi-printer"></i> Imprimer (PDF)</a></li>
+        <li><a class="dropdown-item" href="?{{ request.GET.urlencode }}&amp;format=detail&amp;export=xlsx"><i class="bi bi-file-earmark-excel"></i> Excel</a></li>
+        <li><hr class="dropdown-divider"></li>
+        <li><h6 class="dropdown-header">Résumé : enseignant et heures</h6></li>
+        <li><a class="dropdown-item" href="?{{ request.GET.urlencode }}&amp;format=resume&amp;imprimer=pdf" target="_blank" rel="noopener"><i class="bi bi-printer"></i> Imprimer (PDF)</a></li>
+        <li><a class="dropdown-item" href="?{{ request.GET.urlencode }}&amp;format=resume&amp;export=xlsx"><i class="bi bi-file-earmark-excel"></i> Excel</a></li>
+      </ul>
+    </div>
+  {% elif seances is not None or groupes %}
     <a href="?{{ request.GET.urlencode }}&amp;export=xlsx" class="btn btn-light"><i class="bi bi-file-earmark-excel"></i> <span class="d-none d-sm-inline">Excel</span></a>
     <a href="?{{ request.GET.urlencode }}&amp;imprimer=pdf" target="_blank" rel="noopener" class="btn btn-light"><i class="bi bi-printer"></i> <span class="d-none d-sm-inline">Imprimer</span></a>
   {% endif %}
@@ -15,7 +28,7 @@
   <form method="get" class="barre-filtres" id="filtres-edt">
     <div class="d-flex flex-wrap gap-2 mb-2">
       {% for code, lib in modes %}
-        <a class="btn btn-sm {% if sel.mode == code %}btn-primary{% else %}btn-light{% endif %}" href="?vue={{ code }}{% if sel.session %}&amp;session={{ sel.session.pk }}{% endif %}">{% if code == 'classe' %}<i class="bi bi-people"></i>{% elif code == 'departement' %}<i class="bi bi-diagram-3"></i>{% elif code == 'enseignant' %}<i class="bi bi-person-video3"></i>{% else %}<i class="bi bi-door-open"></i>{% endif %} {{ lib }}</a>
+        <a class="btn btn-sm {% if sel.mode == code %}btn-primary{% else %}btn-light{% endif %}" href="?vue={{ code }}{% if sel.session %}&amp;session={{ sel.session.pk }}{% endif %}">{% if code == 'classe' %}<i class="bi bi-people"></i>{% elif code == 'departement' %}<i class="bi bi-diagram-3"></i>{% elif code == 'heures' %}<i class="bi bi-hourglass-split"></i>{% elif code == 'enseignant' %}<i class="bi bi-person-video3"></i>{% else %}<i class="bi bi-door-open"></i>{% endif %} {{ lib }}</a>
       {% endfor %}
     </div>
     <input type="hidden" name="vue" value="{{ sel.mode }}">
@@ -49,6 +62,28 @@
             {% for s in sel.semestres %}<option value="{{ s.pk }}" {% if sel.semestre.pk == s.pk %}selected{% endif %}>{{ s.nom }}</option>{% endfor %}
           </select>
         </div>
+      {% elif sel.mode == 'heures' %}
+        <div class="col-12 col-md-4">
+          <label class="form-label small text-secondary mb-1" for="e-dep-h">Département des enseignants</label>
+          <select id="e-dep-h" name="departement" class="form-select" data-cascade>
+            <option value="">Tous les départements</option>
+            {% for d in sel.departements %}<option value="{{ d.pk }}" {% if sel.departement.pk == d.pk %}selected{% endif %}>{{ d.nom }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="col-6 col-md-3">
+          <label class="form-label small text-secondary mb-1" for="e-periode-h">Période</label>
+          <select id="e-periode-h" name="periode" class="form-select" data-cascade>
+            {% for code, lib in periodes %}<option value="{{ code }}" {% if sel.periode == code %}selected{% endif %}>{{ lib }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label small text-secondary mb-1" for="e-seuil">Nombre d'heures</label>
+          <div class="input-group">
+            <input type="number" id="e-seuil" name="seuil" min="0" max="168" step="0.5" class="form-control" placeholder="Ex. 16" value="{% if sel.seuil is not None %}{{ sel.seuil|floatformat:'-1' }}{% endif %}">
+            <span class="input-group-text">h</span>
+          </div>
+        </div>
+        <div class="col-12 col-md-auto d-grid"><button class="btn btn-primary"><i class="bi bi-calculator"></i> Calculer</button></div>
       {% elif sel.mode == 'departement' %}
         <div class="col-12 col-md-5">
           <label class="form-label small text-secondary mb-1" for="e-departement">Département</label>
@@ -90,7 +125,32 @@
   </form>
 </div>
 
-{% if sel.mode == 'departement' %}
+{% if sel.mode == 'heures' %}
+  <div class="alert alert-info small py-2 d-flex gap-2"><i class="bi bi-info-circle mt-1"></i><div>Heures <strong>par semaine</strong>, d'après la semaine type de l'emploi du temps. Un cours à plusieurs enseignants compte pour chacun.
+    {% if sel.seuil is not None %}Au-delà de <strong>{{ sel.seuil|floatformat:'-1' }} h</strong>, ce sont des heures supplémentaires : <strong>{{ nb_sup }}</strong> enseignant{{ nb_sup|pluralize }} concerné{{ nb_sup|pluralize }}{% if nb_sup %}, {{ total_sup_txt }} au total{% endif %}.{% else %}Saisissez un nombre d'heures pour repérer les heures supplémentaires.{% endif %}</div></div>
+  <div class="card carte-gped liste">
+    <div class="table-responsive">
+      <table class="table table-etudiants mb-0">
+        <thead><tr><th>Enseignant</th><th>Matières enseignées</th><th class="text-end">Heures / semaine</th><th class="text-end">Heures sup.</th></tr></thead>
+        <tbody>
+        {% for r in heures %}
+          <tr style="cursor:default">
+            <td style="min-width:200px"><b style="color:var(--encre)">{{ r.enseignant.nom }} {{ r.enseignant.prenom }}</b>{% if r.enseignant.civilite %} <span class="small text-secondary">· {{ r.enseignant.civilite }}</span>{% endif %}
+              <div class="small text-secondary">{{ r.enseignant.departement.nom }} · {{ r.enseignant.get_statut_display }}</div></td>
+            <td style="white-space:normal">
+              {% for l in r.lignes %}<div class="small"><strong>{{ l.matiere }}</strong> <span class="pill">{{ l.type }}</span> <span class="text-secondary">{{ l.classe }}</span> · {{ l.heures_txt }}</div>{% endfor %}
+            </td>
+            <td class="text-end fw-bold text-nowrap">{{ r.total_txt }}</td>
+            <td class="text-end text-nowrap">{% if r.sup %}<span class="pill pill-attention fw-bold">+ {{ r.sup_txt }}</span>{% else %}<span class="text-secondary">—</span>{% endif %}</td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="4"><div class="etat-vide"><i class="bi bi-hourglass"></i>Aucun enseignant avec des cours placés pour cette session et cette période.</div></td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% elif sel.mode == 'departement' %}
   {% if nb_conflits %}<div class="alert alert-danger py-2 small d-flex gap-2 align-items-center"><i class="bi bi-exclamation-triangle"></i> <span><strong>{{ nb_conflits }}</strong> cours en conflit (en rouge clair) dans ces emplois du temps.</span></div>{% endif %}
   {% for g in groupes %}
     <h2 class="h5 mt-3 mb-2" style="color:var(--encre)"><i class="bi bi-diagram-3"></i> {{ g.departement.nom }} <span class="small text-secondary fw-normal">· {{ g.classes|length }} classe{{ g.classes|length|pluralize }}</span></h2>

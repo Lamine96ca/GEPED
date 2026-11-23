@@ -4935,3 +4935,49 @@ class EmploisParDepartementTests(EmploisDuTempsTests):
         r = self.client.get(reverse('emploi_du_temps'), base)
         self.assertEqual([g['departement'] for g in r.context['groupes']], [self.info])
         self.assertEqual(nom_court(type('E', (), {'prenom': 'Alpha  Issa', 'nom': 'DIALLO'})), 'A.-I. DIALLO')
+
+
+class HeuresEnseignantsTests(EmploisDuTempsTests):
+    """Heures des enseignants d'après l'emploi du temps : total par semaine, heures supplémentaires au-delà du seuil."""
+    test_composer_avec_conflits_forcables = None
+    test_vues_exports_et_droits = None
+
+    def test_heures_et_heures_supplementaires(self):
+        import openpyxl
+        from .views_emplois import fmt_heures
+        e1, e2 = self.ens
+        self.connecter('dge')
+        self.poster(self.cours(self.algo, debut=480, fin=600, enseignants=[e1]))                     # 2 h
+        self.poster(self.cours(self.beton, jour=2, debut=480, fin=600, enseignants=[e1, e2]))        # 2 h chacun
+        self.poster(self.cours(self.maths, jour=3, debut=840, fin=1020, enseignants=[e1], type='TP'))  # 3 h
+        self.poster(self.cours(self.physique, jour=4, enseignants=[e1]))     # semestre pair : autre période
+        base = {'vue': 'heures', 'session': self.session.pk, 'periode': 'impair'}
+        r = self.client.get(reverse('emploi_du_temps'), {**base, 'seuil': '5'})
+        lignes = r.context['heures']
+        self.assertEqual([(l['enseignant'], l['total'], l['sup']) for l in lignes], [(e1, 7, 2), (e2, 2, 0)])
+        self.assertEqual([x['matiere'] for x in lignes[0]['lignes']], ['Algorithmique', 'Béton armé', 'Mathématiques'])
+        self.assertContains(r, '+ 2 h')
+        self.assertEqual(r.context['nb_sup'], 1)
+        self.assertEqual((fmt_heures(4.5), fmt_heures(6)), ('4 h 30', '6 h'))
+        # Sans seuil : pas d'heures supplémentaires ; filtre par département
+        r = self.client.get(reverse('emploi_du_temps'), base)
+        self.assertEqual([l['sup'] for l in r.context['heures']], [0, 0])
+        r = self.client.get(reverse('emploi_du_temps'), {**base, 'departement': self.gc.pk})
+        self.assertEqual([l['enseignant'] for l in r.context['heures']], [e2])
+        # Impression et export : détail (matières puis total) et résumé (total seulement)
+        for fmt in ('detail', 'resume'):
+            r = self.client.get(reverse('emploi_du_temps'), {**base, 'seuil': 5, 'format': fmt, 'imprimer': 'pdf'})
+            self.assertEqual(r['Content-Type'], 'application/pdf', fmt)
+            r = self.client.get(reverse('emploi_du_temps'), {**base, 'seuil': 5, 'format': fmt, 'export': 'xlsx'})
+            ws = openpyxl.load_workbook(io.BytesIO(r.content)).active
+            valeurs = [[c for c in ligne] for ligne in ws.iter_rows(min_row=3, values_only=True)]
+            if fmt == 'resume':
+                self.assertEqual([(v[1], v[5], v[6]) for v in valeurs], [('Prof ENS1', 7, 2), ('Prof ENS2', 2, None)])
+            else:
+                totaux = [(v[0], v[7], v[8]) for v in valeurs if str(v[0]).startswith('Total')]
+                self.assertEqual(totaux, [('Total Prof ENS1', 7, 2), ('Total Prof ENS2', 2, None)])
+                self.assertEqual(len(valeurs), 3 + 1 + 1 + 1)        # 3 matières + total, 1 matière + total
+        # Un directeur de programme : les enseignants de son département seulement
+        self.connecter('info')
+        r = self.client.get(reverse('emploi_du_temps'), base)
+        self.assertEqual([l['enseignant'] for l in r.context['heures']], [e1])

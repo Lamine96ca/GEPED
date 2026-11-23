@@ -7,6 +7,9 @@ Emplois du temps : grille de la semaine type (lundi → samedi, 7 h → 22 h, pa
 - Vue « département » : toutes les classes des programmes d'un département (ou de tous), une grille par classe,
   empilées ; un clic sur une grille ouvre la classe.
 - Vues « enseignant » et « salle » : consultation de la semaine d'un enseignant ou de l'occupation d'une salle.
+- « Heures des enseignants » : heures par semaine de chaque enseignant d'après l'emploi du temps ; au-delà du nombre
+  d'heures saisi, ce sont des heures supplémentaires. Impression et export en détail (matières puis total) ou en
+  résumé (total seulement).
 - Impression PDF et export Excel de la grille affichée.
 """
 import json
@@ -23,7 +26,9 @@ from .models import Enseignant, Licence, Matiere, Salle, Seance, Semestre, Sessi
 from .roles import (emplois_gestion_requise, emplois_lecture_requise, enseignants_visibles, get_profil,
                     matieres_visibles, programmes_du_profil)
 
-MODES = [('classe', 'Classe'), ('departement', 'Département'), ('enseignant', 'Enseignant'), ('salle', 'Salle')]
+MODES = [('classe', 'Classe'), ('departement', 'Département'), ('enseignant', 'Enseignant'), ('salle', 'Salle'),
+         ('heures', 'Heures des enseignants')]
+FORMATS = [('detail', 'Détail : matières puis total'), ('resume', 'Résumé : total seulement')]
 PERIODES = [('impair', 'Semestres impairs (1, 3, 5…)'), ('pair', 'Semestres pairs (2, 4, 6…)')]
 XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 
@@ -65,6 +70,16 @@ def _selection(request, profil):
                 sel['semestre'] = next((s for s in sel['semestres'] if s.pk == _entier(g.get('semestre'))), None)
                 if sel['semestre'] is None and len(sel['semestres']) == 1:
                     sel['semestre'] = sel['semestres'][0]
+    elif mode == 'heures':
+        from .roles import departements_etablissement
+        sel['departements'] = list(departements_etablissement())
+        sel['departement'] = next((d for d in sel['departements'] if d.pk == _entier(g.get('departement'))), None)
+        try:
+            seuil = float(str(g.get('seuil') or '').replace(',', '.'))
+            sel['seuil'] = seuil if 0 <= seuil <= 168 else None
+        except ValueError:
+            sel['seuil'] = None
+        sel['format'] = g.get('format') if g.get('format') in dict(FORMATS) else 'detail'
     elif mode == 'departement':
         sel['departements'] = _departements_du_profil(profil)
         sel['departement'] = next((d for d in sel['departements'] if d.pk == _entier(g.get('departement'))), None)
@@ -127,6 +142,11 @@ def emploi_du_temps(request):
         if sel['session'] is None:
             return render(request, 'pfe/emploi_du_temps.html', contexte)
         return _vue_departement(request, profil, sel, contexte)
+    if sel['mode'] == 'heures':
+        contexte['formats'] = FORMATS
+        if sel['session'] is None:
+            return render(request, 'pfe/emploi_du_temps.html', contexte)
+        return _vue_heures(request, profil, sel, contexte)
     if seances is None:
         return render(request, 'pfe/emploi_du_temps.html', contexte)
     analyses = emplois.avec_conflits(seances, sel['session'].pk)
@@ -426,3 +446,157 @@ def _vue_departement(request, profil, sel, contexte):
     contexte.update({'groupes': groupes, 'titre_grille': titre, 'nb_classes': len(toutes),
                      'nb_conflits': sum(c['nb_conflits'] for c in toutes)})
     return render(request, 'pfe/emploi_du_temps.html', contexte)
+
+
+# ------------------------------------------------------------------ heures des enseignants
+
+def fmt_heures(h):
+    """4.5 → « 4 h 30 » ; 6 → « 6 h »."""
+    minutes = round(h * 60)
+    return f"{minutes // 60} h {minutes % 60:02d}" if minutes % 60 else f"{minutes // 60} h"
+
+
+def heures_enseignants(profil, sel):
+    """Par enseignant (visible, actif) : ses cours de la semaine type (session, période), regroupés par matière,
+    classe et type, le total d'heures par semaine et les heures au-delà du seuil. Un cours à plusieurs
+    enseignants compte entièrement pour chacun (ils y sont tous)."""
+    parite = 1 if sel['periode'] == 'impair' else 0
+    enseignants = enseignants_visibles(profil).filter(actif=True).select_related('departement')
+    if sel['departement']:
+        enseignants = enseignants.filter(departement=sel['departement'])
+    enseignants = {e.pk: e for e in enseignants}
+    seances = (Seance.objects.filter(matiere__session=sel['session'], enseignants__in=list(enseignants))
+               .select_related('matiere__filiere', 'matiere__licence', 'matiere__semestre')
+               .prefetch_related('enseignants').distinct())
+    charges = {}
+    for s in seances:
+        if emplois.periode(s.matiere.semestre) not in (parite, None):
+            continue
+        duree = (s.fin - s.debut) / 60
+        for e in s.enseignants.all():
+            if e.pk not in enseignants:
+                continue
+            lignes = charges.setdefault(e.pk, {})
+            cle = (s.matiere_id, s.type)
+            if cle not in lignes:
+                lignes[cle] = {'matiere': s.matiere.nom, 'code': s.matiere.code or '', 'type': Seance.COURTS.get(s.type, s.type),
+                               'classe': emplois.libelle_classe(s.matiere), 'heures': 0, 'cours': 0}
+            lignes[cle]['heures'] += duree
+            lignes[cle]['cours'] += 1
+    resultat = []
+    for pk, lignes in charges.items():
+        e = enseignants[pk]
+        detail = sorted(lignes.values(), key=lambda l: (l['matiere'], l['classe'], l['type']))
+        for l in detail:
+            l['heures_txt'] = fmt_heures(l['heures'])
+        total = sum(l['heures'] for l in detail)
+        sup = max(0, total - sel['seuil']) if sel['seuil'] is not None else 0
+        resultat.append({'enseignant': e, 'lignes': detail, 'total': total, 'total_txt': fmt_heures(total),
+                         'sup': sup, 'sup_txt': fmt_heures(sup) if sup else ''})
+    resultat.sort(key=lambda r: (-r['total'], r['enseignant'].nom, r['enseignant'].prenom))
+    return resultat
+
+
+def _titre_heures(sel):
+    periode = 'semestres impairs' if sel['periode'] == 'impair' else 'semestres pairs'
+    return (f"{sel['departement'].nom if sel['departement'] else 'Tous les départements'} · "
+            f"{sel['session'].annee} ({periode})")
+
+
+def _vue_heures(request, profil, sel, contexte):
+    lignes = heures_enseignants(profil, sel)
+    fmt = request.GET.get('format') if request.GET.get('format') in dict(FORMATS) else sel['format']
+    if request.GET.get('imprimer') == 'pdf':
+        return _imprimer_heures(request, sel, lignes, fmt)
+    if request.GET.get('export') == 'xlsx':
+        return _export_heures(sel, lignes, fmt)
+    contexte.update({'heures': lignes, 'titre_grille': _titre_heures(sel),
+                     'nb_sup': sum(1 for r in lignes if r['sup']),
+                     'total_sup_txt': fmt_heures(sum(r['sup'] for r in lignes))})
+    return render(request, 'pfe/emploi_du_temps.html', contexte)
+
+
+def _nom_complet(e):
+    return ' '.join(x for x in (e.civilite, e.prenom, e.nom) if x)
+
+
+def _imprimer_heures(request, sel, lignes, fmt):
+    from reportlab.lib import colors
+    from .pdf_listes import cellule, imprimer_tableau
+    orange = colors.HexColor('#FDE68A')
+    filtres = [('Heures des enseignants', _titre_heures(sel)),
+               ('Au-delà de', fmt_heures(sel['seuil']) + ' par semaine' if sel['seuil'] is not None else None)]
+    nb_sup = sum(1 for r in lignes if r['sup'])
+    total = (f"{len(lignes)} enseignant{'s' if len(lignes) > 1 else ''} · heures par semaine (semaine type)"
+             + (f" · {nb_sup} avec des heures supplémentaires" if sel['seuil'] is not None else ''))
+    if fmt == 'resume':
+        colonnes = [('N°', 18), ('Enseignant', 150), ('Département', 140), ('Statut', 60), ('Heures / semaine', 60),
+                    ('Heures sup.', 60)]
+        rangs = [[cellule(k, align='c'), cellule(_nom_complet(r['enseignant']), r['enseignant'].get_grade_display()),
+                  r['enseignant'].departement.nom, r['enseignant'].get_statut_display(),
+                  cellule(r['total_txt'], align='c', gras=True),
+                  cellule(r['sup_txt'] or '—', align='c', gras=bool(r['sup']), fond=orange if r['sup'] else None)]
+                 for k, r in enumerate(lignes, start=1)]
+    else:
+        colonnes = [('Enseignant', 130), ('Matière', 140), ('Classe', 150), ('Type', 45), ('Séances / sem.', 42),
+                    ('Heures', 50), ('Heures sup.', 50)]
+        rangs = []
+        for r in lignes:
+            e = r['enseignant']
+            for k, l in enumerate(r['lignes']):
+                rangs.append([cellule(_nom_complet(e), e.departement.nom) if k == 0 else '',
+                              cellule(l['matiere'], l['code']), l['classe'], cellule(l['type'], align='c'),
+                              cellule(l['cours'], align='c'), cellule(l['heures_txt'], align='c'), ''])
+            fond = orange if r['sup'] else colors.HexColor('#E5EAF0')
+            rangs.append([cellule(f"Total {e.prenom} {e.nom}", gras=True, fond=fond), cellule('', fond=fond),
+                          cellule('', fond=fond), cellule('', fond=fond), cellule('', fond=fond),
+                          cellule(r['total_txt'], align='c', gras=True, fond=fond),
+                          cellule(r['sup_txt'] or '—', align='c', gras=True, fond=fond)])
+    return imprimer_tableau(request, 'heures_enseignants', 'HEURES DES ENSEIGNANTS', filtres, colonnes, rangs,
+                            paysage=fmt != 'resume', total=total, vide='Aucun enseignant avec des cours placés.')
+
+
+def _export_heures(sel, lignes, fmt):
+    import io
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = 'Heures' if fmt == 'resume' else 'Heures (détail)'
+    ws.append([f"Heures des enseignants · {_titre_heures(sel)}"
+               + (f" · au-delà de {fmt_heures(sel['seuil'])} par semaine" if sel['seuil'] is not None else '')])
+    ws['A1'].font = Font(bold=True, size=12)
+    bleu, orange, gris = (PatternFill('solid', fgColor='41627C'), PatternFill('solid', fgColor='FDE68A'),
+                          PatternFill('solid', fgColor='E5EAF0'))
+    if fmt == 'resume':
+        ws.append(['N°', 'Enseignant', 'Grade', 'Département', 'Statut', 'Heures / semaine', 'Heures sup.'])
+        for k, r in enumerate(lignes, start=1):
+            e = r['enseignant']
+            ws.append([k, _nom_complet(e), e.get_grade_display(), e.departement.nom, e.get_statut_display(),
+                       round(r['total'], 2), round(r['sup'], 2) if r['sup'] else None])
+            if r['sup']:
+                ws.cell(row=ws.max_row, column=7).fill = orange
+        largeurs = (5, 30, 22, 34, 12, 16, 12)
+    else:
+        ws.append(['Enseignant', 'Département', 'Matière', 'Code', 'Classe', 'Type', 'Séances / semaine', 'Heures / semaine',
+                   'Heures sup.'])
+        for r in lignes:
+            e = r['enseignant']
+            for k, l in enumerate(r['lignes']):
+                ws.append([_nom_complet(e) if k == 0 else '', e.departement.nom if k == 0 else '', l['matiere'],
+                           l['code'], l['classe'], l['type'], l['cours'], round(l['heures'], 2), None])
+            ws.append([f"Total {e.prenom} {e.nom}", '', '', '', '', '', '', round(r['total'], 2),
+                       round(r['sup'], 2) if r['sup'] else None])
+            for cell in ws[ws.max_row]:
+                cell.font, cell.fill = Font(bold=True), orange if r['sup'] else gris
+        largeurs = (28, 28, 30, 10, 40, 10, 17, 16, 12)
+    for cell in ws[2]:
+        cell.font, cell.fill = Font(bold=True, color='FFFFFF'), bleu
+    for k, w in enumerate(largeurs):
+        ws.column_dimensions[openpyxl.utils.get_column_letter(k + 1)].width = w
+    ws.freeze_panes = 'A3'
+    flux = io.BytesIO()
+    wb.save(flux)
+    reponse = HttpResponse(flux.getvalue(), content_type=XLSX)
+    reponse['Content-Disposition'] = 'attachment; filename="heures_enseignants.xlsx"'
+    return reponse
