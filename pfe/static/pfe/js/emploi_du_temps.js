@@ -61,8 +61,9 @@
     if (D.mode !== 'classe') b.appendChild(el('div', 'info', s.classe));
     b.appendChild(el('div', 'info', heure(s.debut) + '–' + heure(s.fin)));
     if (s.salle && D.mode !== 'salle') b.appendChild(el('div', 'info', 'Salle ' + s.salle.nom + ' (' + s.salle.batiment + ')'));
-    if (s.enseignants.length && D.mode !== 'enseignant') b.appendChild(el('div', 'info', s.enseignants.map(function (e) { return e.nom; }).join(', ')));
+    if (s.enseignants.length && D.mode !== 'enseignant') b.appendChild(el('div', 'info ens', s.enseignants.map(function (e) { return e.court || e.nom; }).join(', ')));
     var aide = s.nom + ' (' + D.types[s.type] + ')\n' + heure(s.debut) + '–' + heure(s.fin);
+    if (s.enseignants.length) aide += '\n' + s.enseignants.map(function (e) { return e.nom; }).join(', ');
     if (s.conflits.length) aide += '\n\nConflit' + (s.force ? ' (forcé)' : '') + ' :\n• ' + s.conflits.join('\n• ');
     b.title = aide;
     b.dataset.id = s.id;

@@ -4,6 +4,8 @@ Emplois du temps : grille de la semaine type (lundi → samedi, 7 h → 22 h, pa
 - Vue « classe » (programme, niveau, semestre d'une session) : la Direction Générale des Études y dépose les matières,
   déplace et étire les cours, choisit le type, la salle et les enseignants (plusieurs possibles). Les conflits sont
   signalés (rouge clair) ; on peut forcer.
+- Vue « département » : toutes les classes des programmes d'un département (ou de tous), une grille par classe,
+  empilées ; un clic sur une grille ouvre la classe.
 - Vues « enseignant » et « salle » : consultation de la semaine d'un enseignant ou de l'occupation d'une salle.
 - Impression PDF et export Excel de la grille affichée.
 """
@@ -21,7 +23,7 @@ from .models import Enseignant, Licence, Matiere, Salle, Seance, Semestre, Sessi
 from .roles import (emplois_gestion_requise, emplois_lecture_requise, enseignants_visibles, get_profil,
                     matieres_visibles, programmes_du_profil)
 
-MODES = [('classe', 'Classe'), ('enseignant', 'Enseignant'), ('salle', 'Salle')]
+MODES = [('classe', 'Classe'), ('departement', 'Département'), ('enseignant', 'Enseignant'), ('salle', 'Salle')]
 PERIODES = [('impair', 'Semestres impairs (1, 3, 5…)'), ('pair', 'Semestres pairs (2, 4, 6…)')]
 XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 
@@ -63,6 +65,11 @@ def _selection(request, profil):
                 sel['semestre'] = next((s for s in sel['semestres'] if s.pk == _entier(g.get('semestre'))), None)
                 if sel['semestre'] is None and len(sel['semestres']) == 1:
                     sel['semestre'] = sel['semestres'][0]
+    elif mode == 'departement':
+        sel['departements'] = _departements_du_profil(profil)
+        sel['departement'] = next((d for d in sel['departements'] if d.pk == _entier(g.get('departement'))), None)
+        if len(sel['departements']) == 1:
+            sel['departement'] = sel['departements'][0]
     elif mode == 'enseignant':
         sel['enseignants'] = list(enseignants_visibles(profil).filter(actif=True))
         sel['enseignant'] = next((e for e in sel['enseignants'] if e.pk == _entier(g.get('enseignant'))), None)
@@ -116,6 +123,10 @@ def emploi_du_temps(request):
     seances = _seances(profil, sel)
     contexte = {'sel': sel, 'modes': MODES, 'periodes': PERIODES, 'actif': 'emplois', 'creneaux': emplois.creneaux(),
                 'jours': Seance.JOURS, 'types': Seance.TYPES, 'seances': seances}
+    if sel['mode'] == 'departement':
+        if sel['session'] is None:
+            return render(request, 'pfe/emploi_du_temps.html', contexte)
+        return _vue_departement(request, profil, sel, contexte)
     if seances is None:
         return render(request, 'pfe/emploi_du_temps.html', contexte)
     analyses = emplois.avec_conflits(seances, sel['session'].pk)
@@ -228,17 +239,17 @@ def emploi_donnees(request):
 
 # ------------------------------------------------------------------ impression et export
 
-def _blocs(sel, analyses):
+def _blocs(mode, analyses):
     """Par jour, les blocs à dessiner : cours qui se chevauchent regroupés (texte de chacun, conflit éventuel)."""
     par_jour = {j: [] for j, _ in Seance.JOURS}
     for s, m in sorted(analyses, key=lambda x: (x[0].jour, x[0].debut)):
         lignes = [f"{s.matiere.nom} ({Seance.COURTS.get(s.type, s.type)})"]
-        if sel['mode'] != 'classe':
+        if mode not in ('classe', 'departement'):
             lignes.append(emplois.libelle_classe(s.matiere))
-        if s.salle_id and sel['mode'] != 'salle':
+        if s.salle_id and mode != 'salle':
             lignes.append(f"Salle {s.salle.nom} ({s.salle.batiment.code or s.salle.batiment.nom})")
-        if sel['mode'] != 'enseignant':
-            noms = ', '.join(f"{e.prenom[:1]}. {e.nom}" for e in s.enseignants.all())
+        if mode != 'enseignant':
+            noms = ', '.join(emplois.nom_court(e) for e in s.enseignants.all())
             if noms:
                 lignes.append(noms)
         lignes.append(f"{Seance.heure(s.debut)}–{Seance.heure(s.fin)}")
@@ -253,11 +264,11 @@ def _blocs(sel, analyses):
     return par_jour
 
 
-def _imprimer(request, sel, analyses):
+def _grille_pdf(mode, analyses):
+    from xml.sax.saxutils import escape
     from reportlab.lib import colors
     from reportlab.lib.styles import ParagraphStyle
     from reportlab.platypus import Paragraph, Table, TableStyle
-    from .pdf_listes import imprimer_sections, section
     creneaux = emplois.creneaux()
     jours = Seance.JOURS
     style = ParagraphStyle('cours', fontName='Helvetica', fontSize=6.3, leading=7.4)
@@ -268,32 +279,35 @@ def _imprimer(request, sel, analyses):
               ('FONTSIZE', (0, 0), (-1, -1), 6.5), ('VALIGN', (0, 0), (-1, -1), 'TOP'),
               ('ALIGN', (0, 0), (-1, 0), 'CENTER'), ('TEXTCOLOR', (0, 1), (0, -1), colors.HexColor('#64748b'))]
     for col, (jour, _) in enumerate(jours, start=1):
-        for b in _blocs(sel, analyses)[jour]:
+        for b in _blocs(mode, analyses)[jour]:
             r0 = 1 + (b['debut'] - Seance.DEBUT_JOURNEE) // Seance.PAS
             r1 = (b['fin'] - Seance.DEBUT_JOURNEE) // Seance.PAS
-            texte = '<br/><br/>'.join('<br/>'.join(f"<b>{l}</b>" if k == 0 else l for k, l in enumerate(t))
-                                      for t in b['textes'])
+            texte = '<br/><br/>'.join('<br/>'.join(f"<b>{escape(l)}</b>" if k == 0 else escape(l)
+                                                    for k, l in enumerate(t)) for t in b['textes'])
             donnees[r0][col] = Paragraph(texte, style)
             regles += [('SPAN', (col, r0), (col, r1)),
                        ('BACKGROUND', (col, r0), (col, r1), colors.HexColor('#fecaca' if b['conflit'] else '#e0ecf7'))]
     largeur_jour = (842 - 60 - 45) / len(jours)
     grille = Table(donnees, colWidths=[45] + [largeur_jour] * len(jours), rowHeights=[14] + [13.4] * len(creneaux))
     grille.setStyle(TableStyle(regles))
-    filtres = [('Emploi du temps', _titre(sel))]
+    return grille
+
+
+def _resume(analyses):
     conflits = sum(1 for _, m in analyses if m)
-    total = f"{len(analyses)} cours" + (f" · {conflits} en conflit (rouge clair)" if conflits else '')
-    return imprimer_sections(request, 'emploi_du_temps', 'EMPLOI DU TEMPS', filtres, [section(avant=[grille])],
-                             paysage=True, total=total)
+    return f"{len(analyses)} cours" + (f" · {conflits} en conflit (rouge clair)" if conflits else '')
 
 
-def _export(sel, analyses):
-    import io
-    import openpyxl
+def _imprimer(request, sel, analyses):
+    from .pdf_listes import imprimer_sections, section
+    return imprimer_sections(request, 'emploi_du_temps', 'EMPLOI DU TEMPS', [('Emploi du temps', _titre(sel))],
+                             [section(avant=[_grille_pdf(sel['mode'], analyses)])], paysage=True,
+                             total=_resume(analyses))
+
+
+def _feuille(ws, titre, mode, analyses):
     from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = 'Emploi du temps'
-    ws.append([_titre(sel)])
+    ws.append([titre])
     ws['A1'].font = Font(bold=True, size=12)
     ws.append(['Heure'] + [lib for _, lib in Seance.JOURS])
     for cell in ws[2]:
@@ -303,7 +317,7 @@ def _export(sel, analyses):
         ws.append([lib])
     fin_trait = Side(style='thin', color='CBD5E1')
     for col, (jour, _) in enumerate(Seance.JOURS, start=2):
-        for b in _blocs(sel, analyses)[jour]:
+        for b in _blocs(mode, analyses)[jour]:
             r0 = 3 + (b['debut'] - Seance.DEBUT_JOURNEE) // Seance.PAS
             r1 = 2 + (b['fin'] - Seance.DEBUT_JOURNEE) // Seance.PAS
             c = ws.cell(row=r0, column=col, value='\n\n'.join('\n'.join(t) for t in b['textes']))
@@ -316,8 +330,99 @@ def _export(sel, analyses):
     for col in 'BCDEFG':
         ws.column_dimensions[col].width = 26
     ws.freeze_panes = 'B3'
+
+
+def _classeur(feuilles):
+    """[(nom de l'onglet, titre, mode, analyses)] → réponse Excel (un onglet par grille)."""
+    import io
+    import re
+    import openpyxl
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    vus = set()
+    for nom, titre, mode, analyses in feuilles:
+        nom = re.sub(r'[\\/*?:\[\]]', ' ', nom)[:28].strip() or 'Grille'
+        base, k = nom, 2
+        while nom.lower() in vus:
+            nom, k = f"{base[:25]} {k}", k + 1
+        vus.add(nom.lower())
+        _feuille(wb.create_sheet(nom), titre, mode, analyses)
+    if not wb.sheetnames:
+        wb.create_sheet('Emploi du temps').append(['Aucun cours placé.'])
     flux = io.BytesIO()
     wb.save(flux)
     reponse = HttpResponse(flux.getvalue(), content_type=XLSX)
     reponse['Content-Disposition'] = 'attachment; filename="emploi_du_temps.xlsx"'
     return reponse
+
+
+def _export(sel, analyses):
+    return _classeur([('Emploi du temps', _titre(sel), sel['mode'], analyses)])
+
+
+# ------------------------------------------------------------------ vue département (toutes les classes empilées)
+
+def _departements_du_profil(profil):
+    """Départements proposés : ceux des programmes que le profil voit (tous pour la scolarité et la Direction)."""
+    from .roles import departements_etablissement
+    ids = {p.departement_id or p.pk for p in programmes_du_profil(profil)}
+    return [d for d in departements_etablissement() if d.pk in ids]
+
+
+def _classes_departement(profil, sel):
+    """[{departement, classes: [{programme, licence, semestre, analyses, dispo, titre}]}] pour la session et la
+    période choisies : chaque classe qui a des matières, une grille par classe, empilées."""
+    from .models import Service
+    session, parite = sel['session'], 1 if sel['periode'] == 'impair' else 0
+    deps = [sel['departement']] if sel['departement'] else sel['departements']
+    programmes = list(programmes_du_profil(profil))
+    mats = (Matiere.objects.filter(session=session, filiere__in=programmes)
+            .select_related('filiere', 'licence', 'semestre'))
+    classes = {}
+    for m in mats:
+        if emplois.periode(m.semestre) not in (parite, None):
+            continue
+        classes.setdefault(emplois.cle_classe(m), m)
+    seances = list(Seance.objects.filter(matiere__session=session, matiere__filiere__in=programmes)
+                   .select_related('matiere__filiere', 'matiere__licence', 'matiere__semestre', 'salle__batiment')
+                   .prefetch_related('enseignants'))
+    analyses = emplois.avec_conflits(seances, session.pk) if seances else []
+    par_classe = {}
+    for s, msg in analyses:
+        par_classe.setdefault(emplois.cle_classe(s.matiere), []).append((s, msg))
+    groupes = []
+    for d in deps:
+        progs = {p.pk for p in programmes if (p.departement_id or p.pk) == d.pk}
+        liste = []
+        for cle, m in sorted(classes.items(), key=lambda x: (x[1].filiere.nom, x[1].licence.nom, x[1].semestre.nom)):
+            if m.filiere_id not in progs:
+                continue
+            a = par_classe.get(cle, [])
+            liste.append({'programme': m.filiere, 'licence': m.licence, 'semestre': m.semestre, 'analyses': a,
+                          'dispo': emplois.disposition(a), 'nb_conflits': sum(1 for _, x in a if x),
+                          'titre': f"{m.filiere.nom} · {m.licence.nom} · {m.semestre.nom}"})
+        if liste:
+            groupes.append({'departement': d, 'classes': liste})
+    return groupes
+
+
+def _vue_departement(request, profil, sel, contexte):
+    periode = 'semestres impairs' if sel['periode'] == 'impair' else 'semestres pairs'
+    titre = (f"{sel['departement'].nom if sel['departement'] else 'Tous les départements'} · "
+             f"{sel['session'].annee} ({periode})")
+    groupes = _classes_departement(profil, sel)
+    toutes = [c for g in groupes for c in g['classes']]
+    if request.GET.get('imprimer') == 'pdf':
+        from .pdf_listes import imprimer_sections, section
+        sections = [section(titre=f"{g['departement'].nom} — {c['titre']}", avant=[_grille_pdf('departement',
+                    c['analyses'])], note=_resume(c['analyses'])) for g in groupes for c in g['classes']]
+        return imprimer_sections(request, 'emplois_du_temps_departement', 'EMPLOIS DU TEMPS',
+                                 [('Département', titre)], sections or [section(note='Aucune classe.')],
+                                 paysage=True, total=f"{len(toutes)} classe{'s' if len(toutes) > 1 else ''}")
+    if request.GET.get('export') == 'xlsx':
+        return _classeur([(f"{c['programme'].nom[:14]} {c['licence'].nom[-2:].strip()} {c['semestre'].nom[-2:].strip()}",
+                           f"{g['departement'].nom} — {c['titre']} · {sel['session'].annee}", 'departement',
+                           c['analyses']) for g in groupes for c in g['classes']])
+    contexte.update({'groupes': groupes, 'titre_grille': titre, 'nb_classes': len(toutes),
+                     'nb_conflits': sum(c['nb_conflits'] for c in toutes)})
+    return render(request, 'pfe/emploi_du_temps.html', contexte)

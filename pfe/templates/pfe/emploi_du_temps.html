@@ -4,7 +4,7 @@
 {% block titre_page %}Emploi du temps{% endblock %}
 {% block sous_titre %}<div class="sous-titre">{% if titre_grille %}{{ titre_grille }} · {% endif %}semaine type · lundi → samedi, 7 h → 22 h{% if donnees.modifiable %} · glissez une matière sur la grille, étirez un cours par le bas{% endif %}</div>{% endblock %}
 {% block actions %}
-  {% if seances is not None %}
+  {% if seances is not None or groupes %}
     <a href="?{{ request.GET.urlencode }}&amp;export=xlsx" class="btn btn-light"><i class="bi bi-file-earmark-excel"></i> <span class="d-none d-sm-inline">Excel</span></a>
     <a href="?{{ request.GET.urlencode }}&amp;imprimer=pdf" target="_blank" rel="noopener" class="btn btn-light"><i class="bi bi-printer"></i> <span class="d-none d-sm-inline">Imprimer</span></a>
   {% endif %}
@@ -15,7 +15,7 @@
   <form method="get" class="barre-filtres" id="filtres-edt">
     <div class="d-flex flex-wrap gap-2 mb-2">
       {% for code, lib in modes %}
-        <a class="btn btn-sm {% if sel.mode == code %}btn-primary{% else %}btn-light{% endif %}" href="?vue={{ code }}{% if sel.session %}&amp;session={{ sel.session.pk }}{% endif %}">{% if code == 'classe' %}<i class="bi bi-people"></i>{% elif code == 'enseignant' %}<i class="bi bi-person-video3"></i>{% else %}<i class="bi bi-door-open"></i>{% endif %} {{ lib }}</a>
+        <a class="btn btn-sm {% if sel.mode == code %}btn-primary{% else %}btn-light{% endif %}" href="?vue={{ code }}{% if sel.session %}&amp;session={{ sel.session.pk }}{% endif %}">{% if code == 'classe' %}<i class="bi bi-people"></i>{% elif code == 'departement' %}<i class="bi bi-diagram-3"></i>{% elif code == 'enseignant' %}<i class="bi bi-person-video3"></i>{% else %}<i class="bi bi-door-open"></i>{% endif %} {{ lib }}</a>
       {% endfor %}
     </div>
     <input type="hidden" name="vue" value="{{ sel.mode }}">
@@ -49,6 +49,20 @@
             {% for s in sel.semestres %}<option value="{{ s.pk }}" {% if sel.semestre.pk == s.pk %}selected{% endif %}>{{ s.nom }}</option>{% endfor %}
           </select>
         </div>
+      {% elif sel.mode == 'departement' %}
+        <div class="col-12 col-md-5">
+          <label class="form-label small text-secondary mb-1" for="e-departement">Département</label>
+          <select id="e-departement" name="departement" class="form-select" data-cascade>
+            {% if sel.departements|length != 1 %}<option value="">Tous les départements</option>{% endif %}
+            {% for d in sel.departements %}<option value="{{ d.pk }}" {% if sel.departement.pk == d.pk %}selected{% endif %}>{{ d.nom }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="col-6 col-md-3">
+          <label class="form-label small text-secondary mb-1" for="e-periode-d">Période</label>
+          <select id="e-periode-d" name="periode" class="form-select" data-cascade>
+            {% for code, lib in periodes %}<option value="{{ code }}" {% if sel.periode == code %}selected{% endif %}>{{ lib }}</option>{% endfor %}
+          </select>
+        </div>
       {% else %}
         <div class="col-6 col-md-3">
           <label class="form-label small text-secondary mb-1" for="e-periode">Période</label>
@@ -76,7 +90,30 @@
   </form>
 </div>
 
-{% if seances is None %}
+{% if sel.mode == 'departement' %}
+  {% if nb_conflits %}<div class="alert alert-danger py-2 small d-flex gap-2 align-items-center"><i class="bi bi-exclamation-triangle"></i> <span><strong>{{ nb_conflits }}</strong> cours en conflit (en rouge clair) dans ces emplois du temps.</span></div>{% endif %}
+  {% for g in groupes %}
+    <h2 class="h5 mt-3 mb-2" style="color:var(--encre)"><i class="bi bi-diagram-3"></i> {{ g.departement.nom }} <span class="small text-secondary fw-normal">· {{ g.classes|length }} classe{{ g.classes|length|pluralize }}</span></h2>
+    {% for c in g.classes %}
+      <div class="card carte-gped mb-3">
+        <div class="card-header d-flex flex-wrap align-items-center gap-2">
+          <div class="me-auto"><strong>{{ c.programme.nom }}</strong> · {{ c.licence.nom }} · {{ c.semestre.nom }}
+            <span class="small text-secondary">· {{ c.analyses|length }} cours{% if c.nb_conflits %} · <span class="text-danger">{{ c.nb_conflits }} en conflit</span>{% endif %}</span></div>
+          <a class="btn btn-sm btn-light" href="?vue=classe&amp;session={{ sel.session.pk }}&amp;programme={{ c.programme.pk }}&amp;licence={{ c.licence.pk }}&amp;semestre={{ c.semestre.pk }}"><i class="bi bi-box-arrow-up-right"></i> {% if profil.gere_emplois %}Ouvrir pour modifier{% else %}Ouvrir{% endif %}</a>
+        </div>
+        <div class="card-body p-2">
+          {% if c.analyses %}
+            {% include 'pfe/_grille_emploi.html' with dispo=c.dispo %}
+          {% else %}
+            <div class="small text-secondary px-2 py-1"><i class="bi bi-calendar-x"></i> Aucun cours placé pour cette classe.</div>
+          {% endif %}
+        </div>
+      </div>
+    {% endfor %}
+  {% empty %}
+    <div class="card carte-gped"><div class="card-body"><div class="etat-vide"><i class="bi bi-calendar-week"></i>Aucune classe avec des matières pour cette session et cette période.</div></div></div>
+  {% endfor %}
+{% elif seances is None %}
   <div class="card carte-gped"><div class="card-body"><div class="etat-vide"><i class="bi bi-calendar-week"></i>
     {% if sel.mode == 'classe' and sel.programme and not sel.licences %}
       <strong>{{ sel.programme.nom }}</strong> n'a encore aucune matière en <strong>{{ sel.session.annee }}</strong> : aucun niveau à proposer.

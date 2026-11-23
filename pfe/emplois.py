@@ -72,14 +72,47 @@ def conflits(matiere, jour, debut, fin, salle, enseignant_ids, autres, exclure=N
     return messages
 
 
+def nom_court(e):
+    """« Mariame CAMARA » → « M. CAMARA » (prénom abrégé, nom en entier) ; « Alpha Issa » → « A.-I. »."""
+    initiales = '-'.join(p[:1].upper() + '.' for p in e.prenom.split() if p)
+    return f"{initiales} {e.nom}".strip()
+
+
+def disposition(analyses):
+    """Blocs d'une grille dessinée côté serveur : position (en pas de 30 min), couloir pour les chevauchements."""
+    blocs = []
+    for jour in range(1, 7):
+        liste = sorted(((s, m) for s, m in analyses if s.jour == jour), key=lambda x: (x[0].debut, x[0].fin))
+        couloirs, places = [], []
+        for s, m in liste:
+            k = 0
+            while k < len(couloirs) and couloirs[k] > s.debut:
+                k += 1
+            if k == len(couloirs):
+                couloirs.append(s.fin)
+            else:
+                couloirs[k] = s.fin
+            places.append((s, m, k))
+        for s, m, k in places:
+            n = max([k + 1] + [k2 + 1 for o, _, k2 in places if o is not s and o.debut < s.fin and s.debut < o.fin])
+            blocs.append({'s': s, 'conflits': [x for _, x in m], 'jour': jour, 'couleur': s.matiere_id % 10,
+                          'haut': (s.debut - Seance.DEBUT_JOURNEE) / Seance.PAS,
+                          'hauteur': (s.fin - s.debut) / Seance.PAS, 'gauche': 100 * k / n, 'largeur': 100 / n,
+                          'type': Seance.COURTS.get(s.type, s.type),
+                          'horaire': f"{Seance.heure(s.debut)}–{Seance.heure(s.fin)}",
+                          'enseignants': ', '.join(nom_court(e) for e in s.enseignants.all()),
+                          'enseignants_complets': ', '.join(f"{e.prenom} {e.nom}" for e in s.enseignants.all())})
+    return blocs
+
+
 def en_json(s, messages=()):
     return {
         'id': s.pk, 'matiere': s.matiere_id, 'nom': s.matiere.nom, 'code': s.matiere.code or '',
         'classe': libelle_classe(s.matiere), 'type': s.type, 'type_court': Seance.COURTS.get(s.type, s.type), 'jour': s.jour, 'debut': s.debut, 'fin': s.fin,
         'salle': ({'id': s.salle_id, 'nom': s.salle.nom, 'batiment': s.salle.batiment.code or s.salle.batiment.nom,
                    'capacite': s.salle.capacite} if s.salle_id else None),
-        'enseignants': [{'id': e.pk, 'nom': f"{e.civilite + ' ' if e.civilite else ''}{e.prenom} {e.nom}"}
-                        for e in s.enseignants.all()],
+        'enseignants': [{'id': e.pk, 'nom': f"{e.civilite + ' ' if e.civilite else ''}{e.prenom} {e.nom}",
+                         'court': nom_court(e)} for e in s.enseignants.all()],
         'conflits': [m for _, m in messages], 'force': s.conflit_force,
     }
 

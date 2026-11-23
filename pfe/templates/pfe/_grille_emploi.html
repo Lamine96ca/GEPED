@@ -1,0 +1,23 @@
+{# Grille d'emploi du temps dessinée côté serveur (lecture) : `dispo` vient de emplois.disposition() #}
+<div class="edt-grille compacte">
+  <div class="edt-heures">
+    <div class="edt-entete"></div>
+    {% for m, lib in creneaux %}<div class="edt-heure {% if m|divisibleby:60 %}pleine{% endif %}">{% if m|divisibleby:60 %}{{ lib }}{% endif %}</div>{% endfor %}
+  </div>
+  {% for num, lib in jours %}
+    <div class="edt-jour">
+      <div class="edt-entete">{{ lib }}</div>
+      <div class="edt-colonne" style="height: calc(var(--edt-pas) * {{ creneaux|length }})">
+        {% for b in dispo %}{% if b.jour == num %}
+          <div class="edt-cours edt-c{{ b.couleur }}{% if b.conflits %} conflit{% endif %}"
+               style="top: calc(var(--edt-pas) * {{ b.haut|stringformat:'g' }}); height: calc(var(--edt-pas) * {{ b.hauteur|stringformat:'g' }} - 2px); left: calc({{ b.gauche|stringformat:'g' }}% + 2px); right: auto; width: calc({{ b.largeur|stringformat:'g' }}% - 4px);"
+               title="{{ b.s.matiere.nom }} ({{ b.type }}) · {{ b.horaire }}{% if b.s.salle %}&#10;Salle {{ b.s.salle.nom }}{% endif %}{% if b.enseignants_complets %}&#10;{{ b.enseignants_complets }}{% endif %}{% if b.conflits %}&#10;&#10;Conflit :{% for x in b.conflits %}&#10;• {{ x }}{% endfor %}{% endif %}">
+            <div class="titre">{{ b.s.matiere.nom }} · {{ b.type }}</div>
+            <div class="info">{{ b.horaire }}{% if b.s.salle %} · {{ b.s.salle.nom }}{% endif %}</div>
+            {% if b.enseignants %}<div class="info ens">{{ b.enseignants }}</div>{% endif %}
+          </div>
+        {% endif %}{% endfor %}
+      </div>
+    </div>
+  {% endfor %}
+</div>

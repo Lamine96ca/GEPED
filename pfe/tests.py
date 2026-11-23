@@ -4901,3 +4901,37 @@ class EmploisDuTempsTests(TestCase):
         self.assertContains(r, f'session={self.session.pk}&amp;programme={self.info.pk}')
         self.connecter('sans_service')
         self.assertEqual(self.client.get(reverse('emploi_du_temps')).status_code, 403)
+
+
+class EmploisParDepartementTests(EmploisDuTempsTests):
+    """Vue « département » : toutes les classes des programmes d'un département (ou de tous), empilées."""
+    test_composer_avec_conflits_forcables = None
+    test_vues_exports_et_droits = None
+
+    def test_vue_departement(self):
+        from .emplois import nom_court
+        self.connecter('dge')
+        self.poster(self.cours(self.algo, salle=self.grande, enseignants=self.ens))
+        self.poster(self.cours(self.beton, jour=2, enseignants=[self.ens[1]]))
+        self.poster(self.cours(self.physique, jour=3))                         # semestre pair : autre période
+        base = {'vue': 'departement', 'session': self.session.pk, 'periode': 'impair'}
+        r = self.client.get(reverse('emploi_du_temps'), base)
+        self.assertEqual([g['departement'] for g in r.context['groupes']], [self.gc, self.info])
+        self.assertEqual(r.context['nb_classes'], 2)
+        self.assertContains(r, 'P. ENS1, P. ENS2')                              # noms abrégés, bien visibles
+        self.assertContains(r, 'Prof ENS1')                                      # nom complet dans l'infobulle
+        r = self.client.get(reverse('emploi_du_temps'), {**base, 'departement': self.info.pk})
+        classes = [c for g in r.context['groupes'] for c in g['classes']]
+        self.assertEqual([(c['programme'], c['semestre'], len(c['analyses'])) for c in classes],
+                         [(self.info, self.s1, 1)])
+        r = self.client.get(reverse('emploi_du_temps'), {**base, 'periode': 'pair', 'departement': self.info.pk})
+        self.assertEqual([c['semestre'] for g in r.context['groupes'] for c in g['classes']], [self.s2])
+        for params, type_ in (({'imprimer': 'pdf'}, 'application/pdf'), ({'export': 'xlsx'}, 'spreadsheetml')):
+            r = self.client.get(reverse('emploi_du_temps'), {**base, **params})
+            self.assertEqual(r.status_code, 200, params)
+            self.assertIn(type_, r['Content-Type'])
+        # Un directeur de programme ne voit que son département
+        self.connecter('info')
+        r = self.client.get(reverse('emploi_du_temps'), base)
+        self.assertEqual([g['departement'] for g in r.context['groupes']], [self.info])
+        self.assertEqual(nom_court(type('E', (), {'prenom': 'Alpha  Issa', 'nom': 'DIALLO'})), 'A.-I. DIALLO')

@@ -35,3 +35,11 @@
 .edt-matiere.deplacable { cursor: grab; touch-action: none; }
 .edt-cours.modifiable { touch-action: none; }
 .edt-etiquette-volante { position: fixed; z-index: 2000; pointer-events: none; opacity: .9; box-shadow: 0 8px 20px rgba(0, 0, 0, .2); }
+
+/* Noms des enseignants : abrégés, ils peuvent passer à la ligne pour rester lisibles */
+.edt-cours .info.ens { white-space: normal; font-weight: 600; color: #334155; }
+/* Vue département : grilles en lecture, plus compactes */
+.edt-grille.compacte { --edt-pas: 16px; }
+.edt-grille.compacte .edt-cours { font-size: .68rem; padding: 2px 4px; cursor: pointer; }
+a.edt-lien-classe { text-decoration: none; color: inherit; }
+a.edt-lien-classe:hover .edt-cours { box-shadow: 0 2px 8px rgba(0,0,0,.15); }
