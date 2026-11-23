@@ -61,11 +61,15 @@
           <td class="small">{{ e.telephone|default:"" }}<div class="text-secondary">{{ e.email }}</div></td>
           {% if profil.gere_enseignants %}
             <td><span class="pill {% if e.compte == 'actif' %}pill-succes{% elif e.compte == 'invite' %}pill-attention{% endif %}">{% if e.compte == 'invite' %}À activer{% else %}{{ e.compte_libelle }}{% endif %}</span>
+              <div>{% if e.compte_existant %}<span class="small fw-semibold" style="color:var(--accent)" title="La fiche enseignant est rattachée au compte qu'il avait déjà : pas d'autre compte"><i class="bi bi-person-check"></i> Compte existant</span>{% else %}<span class="small text-secondary" title="Compte créé pour l'enseignant"><i class="bi bi-person-plus"></i> Nouveau compte</span>{% endif %}</div>
               <div class="small text-secondary">{{ e.utilisateur.username }}</div></td>
             <td class="text-end text-nowrap">
-              {% if e.compte == 'invite' and e.actif %}
+              {% if e.actif and e.compte == 'invite' %}
                 <form method="post" action="{% url 'enseignant_action' e.pk %}" class="d-inline">{% csrf_token %}<input type="hidden" name="action" value="invitation"><input type="hidden" name="suivant" value="{{ request.get_full_path }}">
-                  <button class="btn btn-icone" title="Envoyer le lien d'activation du compte"><i class="bi bi-envelope-arrow-up"></i></button></form>
+                  <button class="btn btn-icone" title="{% if e.compte_existant %}Envoyer le lien d'activation (il a déjà un compte : l'e-mail lui dit de ne pas en créer d'autre){% else %}Envoyer le lien d'activation du nouveau compte{% endif %}"><i class="bi bi-envelope-arrow-up"></i></button></form>
+              {% elif e.actif and e.compte == 'actif' and e.compte_existant %}
+                <form method="post" action="{% url 'enseignant_action' e.pk %}" class="d-inline">{% csrf_token %}<input type="hidden" name="action" value="acces"><input type="hidden" name="suivant" value="{{ request.get_full_path }}">
+                  <button class="btn btn-icone" title="Informer par e-mail : accès enseignant ouvert sur son compte existant, inutile d'en créer un autre"><i class="bi bi-envelope-check"></i></button></form>
               {% endif %}
               <a class="btn btn-icone" href="{% url 'enseignant_modifier' e.pk %}" title="Modifier"><i class="bi bi-pencil"></i></a>
             </td>

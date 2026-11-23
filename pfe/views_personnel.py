@@ -163,6 +163,14 @@ class ActivationCompte(auth_views.PasswordResetConfirmView):
     post_reset_login_backend = 'django.contrib.auth.backends.ModelBackend'
     success_url = reverse_lazy('tableau_de_bord')
 
+    def get_context_data(self, **kwargs):
+        contexte = super().get_context_data(**kwargs)
+        u = getattr(self, 'user', None)
+        if u is not None:                    # enseignant seul : c'est la Direction des Études qui renvoie le lien
+            enseignant = hasattr(u, 'profil_enseignant') and not hasattr(u, 'profil_personnel')
+            contexte['expediteur'] = "la Direction des Études" if enseignant else "le Service de la Scolarité"
+        return contexte
+
     def form_valid(self, form):
         reponse = super().form_valid(form)
         messages.success(self.request, "Bienvenue sur gePed : votre compte est activé.")

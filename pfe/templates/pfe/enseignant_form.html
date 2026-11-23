@@ -49,12 +49,12 @@
 
       <div class="d-flex flex-wrap gap-2 align-items-center">
         {% if form.envoyer_invitation %}
-          <label class="form-check me-3">{{ form.envoyer_invitation }} <span class="form-check-label">{{ form.envoyer_invitation.label }}</span></label>
+          <label class="form-check me-3" title="{{ form.envoyer_invitation.help_text }}">{{ form.envoyer_invitation }} <span class="form-check-label">{{ form.envoyer_invitation.label }}</span></label>
         {% endif %}
         <button class="btn btn-primary"><i class="bi bi-check-lg"></i> {% if enseignant %}Enregistrer{% else %}Enregistrer l'enseignant{% endif %}</button>
         <a href="{% url 'enseignants_liste' %}" class="btn btn-light">Annuler</a>
       </div>
-      {% if not enseignant %}<div class="small text-secondary mt-2"><i class="bi bi-info-circle"></i> Sans la case cochée, aucun e-mail n'est envoyé : le lien d'activation pourra être envoyé plus tard depuis la liste.</div>{% endif %}
+      {% if not enseignant %}<div class="small text-secondary mt-2"><i class="bi bi-info-circle"></i> Sans la case cochée, aucun e-mail n'est envoyé : il pourra l'être plus tard depuis la liste. L'e-mail vient de la Direction des Études ; si la personne a déjà un compte, il lui dit d'utiliser ce compte et de ne pas en créer d'autre.</div>{% endif %}
     </form>
   </div>
 
@@ -64,7 +64,8 @@
         <div class="card-body">
           <div class="entete-carte"><span class="icone-carte"><i class="bi bi-key"></i></span><div><h3>Compte</h3><p>Identifiant : <strong>{{ enseignant.utilisateur.username }}</strong></p></div></div>
           <ul class="infos-compte">
-            <li><i class="bi bi-shield-check"></i><div><div class="lib">Compte</div><div class="val"><span class="pill {% if enseignant.compte == 'actif' %}pill-succes{% elif enseignant.compte == 'invite' %}pill-attention{% endif %}">{% if enseignant.compte == 'invite' %}À activer{% else %}{{ enseignant.compte_libelle }}{% endif %}</span></div></div></li>
+            <li><i class="bi bi-shield-check"></i><div><div class="lib">Compte</div><div class="val"><span class="pill {% if enseignant.compte == 'actif' %}pill-succes{% elif enseignant.compte == 'invite' %}pill-attention{% endif %}">{% if enseignant.compte == 'invite' %}À activer{% else %}{{ enseignant.compte_libelle }}{% endif %}</span>
+              {% if enseignant.compte_existant %}<div class="small mt-1" style="color:var(--accent)"><i class="bi bi-person-check"></i> Compte existant : la fiche est rattachée au compte qu'il avait déjà, pas d'autre compte.</div>{% else %}<div class="small text-secondary mt-1"><i class="bi bi-person-plus"></i> Nouveau compte, créé pour l'enseignant.</div>{% endif %}</div></div></li>
             <li><i class="bi bi-person-video3"></i><div><div class="lib">Espace enseignant</div><div class="val">{% if enseignant.actif %}Accès ouvert{% else %}<span class="pill pill-attention">Désactivé</span>{% endif %}</div></div></li>
             <li><i class="bi bi-person-gear"></i><div><div class="lib">Rôle</div><div class="val">{{ role }}{% if enseignant.personnel %} · aussi {{ enseignant.personnel.fonc }}{% endif %}</div></div></li>
             <li><i class="bi bi-clock-history"></i><div><div class="lib">Dernière connexion</div><div class="val">{{ enseignant.utilisateur.last_login|date:"d/m/Y à H:i"|default:"Jamais" }}</div></div></li>
@@ -74,6 +75,10 @@
               <form method="post" action="{% url 'enseignant_action' enseignant.pk %}">{% csrf_token %}<input type="hidden" name="action" value="invitation"><input type="hidden" name="suivant" value="{{ request.path }}">
                 <button class="btn btn-or w-100"><i class="bi bi-envelope-arrow-up"></i> Envoyer le lien d'activation</button></form>
             {% elif enseignant.actif and enseignant.compte == 'actif' %}
+              {% if enseignant.compte_existant %}
+                <form method="post" action="{% url 'enseignant_action' enseignant.pk %}">{% csrf_token %}<input type="hidden" name="action" value="acces"><input type="hidden" name="suivant" value="{{ request.path }}">
+                  <button class="btn btn-or w-100" title="Accès enseignant ouvert sur son compte existant : inutile d'en créer un autre"><i class="bi bi-envelope-check"></i> Informer de son accès enseignant</button></form>
+              {% endif %}
               <form method="post" action="{% url 'enseignant_action' enseignant.pk %}">{% csrf_token %}<input type="hidden" name="action" value="reinitialiser"><input type="hidden" name="suivant" value="{{ request.path }}">
                 <button class="btn btn-light w-100"><i class="bi bi-arrow-counterclockwise"></i> Envoyer un lien de nouveau mot de passe</button></form>
             {% endif %}
@@ -85,7 +90,7 @@
                 <button class="btn btn-primary w-100"><i class="bi bi-person-check"></i> Réactiver l'enseignant</button></form>
             {% endif %}
           </div>
-          <div class="small text-secondary mt-3"><i class="bi bi-envelope"></i> Les e-mails partent à {{ enseignant.email }}. Le lien d'activation est valable 7 jours.{% if enseignant.personnel %} Désactiver l'enseignant ne touche pas à son compte du personnel.{% endif %}</div>
+          <div class="small text-secondary mt-3"><i class="bi bi-envelope"></i> Les e-mails partent à {{ enseignant.email }}, au nom de la Direction des Études. Le lien d'activation est valable 7 jours.{% if enseignant.personnel %} Désactiver l'enseignant ne touche pas à son compte du personnel.{% endif %}</div>
         </div>
       </div>
     </div>

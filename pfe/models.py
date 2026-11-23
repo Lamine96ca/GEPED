@@ -1215,6 +1215,18 @@ class Enseignant(models.Model):
     def __str__(self):
         return ' '.join(x for x in (self.civilite, self.prenom, self.nom.upper()) if x)
 
+    @property
+    def compte_existant(self):
+        """
+        Vrai si la personne avait DÉJÀ un compte gePed (membre du personnel…) quand on l'a enregistrée comme enseignant :
+        la fiche a été rattachée à ce compte, il ne lui en faut pas d'autre. Faux : compte créé pour l'enseignant seul.
+        """
+        from datetime import timedelta
+        u = self.utilisateur
+        if hasattr(u, 'profil_personnel'):
+            return True
+        return bool(self.date_creation and u.date_joined < self.date_creation - timedelta(minutes=1))
+
 
 class Batiment(models.Model):
     """Bâtiment de l'établissement : il regroupe des salles (page « Salles et bâtiments »)."""

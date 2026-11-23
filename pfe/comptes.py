@@ -116,3 +116,51 @@ def envoyer_lien(request, user, invitation=True):
     message.attach_alternative(render_to_string('pfe/emails/invitation.html', contexte), 'text/html')
     message.send()
     return destinataire
+
+
+DIRECTION_ETUDES = "la Direction des Études"
+
+
+def envoyer_mail_enseignant(request, enseignant, quoi='activation'):
+    """
+    E-mail de la Direction des Études à un enseignant. `quoi` :
+      - 'activation'    : compte pas encore activé → lien pour choisir le mot de passe (7 jours) ;
+      - 'acces'         : compte déjà actif (rattaché à son compte existant) → simple information, pas de lien ;
+      - 'reinitialiser' : lien pour un nouveau mot de passe (2 heures).
+    Le texte dit clairement si la personne avait déjà un compte : dans ce cas, il ne sert à rien d'en créer un autre.
+    Renvoie l'adresse utilisée ; lève une exception si l'envoi échoue.
+    """
+    from .roles import _calculer_profil
+    user = enseignant.utilisateur
+    destinataire = enseignant.email or user.email
+    if not destinataire:
+        raise ValueError("Cet enseignant n'a pas d'adresse e-mail.")
+    if quoi == 'activation' and user.has_usable_password():
+        quoi = 'acces'                                      # déjà activé : on informe seulement
+    uid = urlsafe_base64_encode(force_bytes(user.pk))
+    site = _adresse_site(request)
+    if quoi == 'activation':
+        lien = site + reverse('compte_activer', args=[uid, jeton_invitation.make_token(user)])
+    elif quoi == 'reinitialiser':
+        lien = site + reverse('password_reset_confirm', args=[uid, PasswordResetTokenGenerator().make_token(user)])
+    else:
+        lien = site + reverse('login')
+    personnel = getattr(user, 'profil_personnel', None)
+    existant = enseignant.compte_existant
+    contexte = {
+        'user': user, 'enseignant': enseignant, 'personnel': personnel, 'existant': existant, 'quoi': quoi,
+        'lien': lien, 'site': site, 'expediteur': DIRECTION_ETUDES, 'role': _calculer_profil(user).libelle,
+        'validite': f"{VALIDITE_INVITATION_JOURS} jours" if quoi == 'activation' else "2 heures",
+        'logo': f"{site}{settings.STATIC_URL}pfe/img/logo_ist.png",
+    }
+    if quoi == 'reinitialiser':
+        sujet = "gePed : réinitialisation de votre mot de passe"
+    elif existant:
+        sujet = "gePed : votre accès enseignant, sur votre compte existant"
+    else:
+        sujet = "gePed : votre compte enseignant a été créé"
+    message = EmailMultiAlternatives(sujet, render_to_string('pfe/emails/enseignant.txt', contexte),
+                                     settings.DEFAULT_FROM_EMAIL, [destinataire])
+    message.attach_alternative(render_to_string('pfe/emails/enseignant.html', contexte), 'text/html')
+    message.send()
+    return destinataire

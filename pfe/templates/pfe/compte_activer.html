@@ -25,7 +25,7 @@
   {% else %}
     <div class="surtitre">Lien expiré</div>
     <h1>Lien d'invitation invalide</h1>
-    <p class="intro">Ce lien a expiré (7 jours) ou a déjà été utilisé. Demandez au Service de la Scolarité de vous renvoyer l'invitation, ou utilisez « Mot de passe oublié » avec votre adresse e-mail.</p>
+    <p class="intro">Ce lien a expiré (7 jours) ou a déjà été utilisé. Demandez à {{ expediteur|default:'la Direction des Études ou au Service de la Scolarité' }} de vous renvoyer l'invitation, ou utilisez « Mot de passe oublié » avec votre adresse e-mail.</p>
     <a href="{% url 'password_reset' %}" class="btn btn-primary w-100">Mot de passe oublié</a>
   {% endif %}
 {% endblock %}

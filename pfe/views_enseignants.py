@@ -20,7 +20,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 
-from .comptes import envoyer_lien, statut as statut_compte
+from .comptes import envoyer_mail_enseignant, statut as statut_compte
 from .forms import EnseignantForm
 from .models import Enseignant
 from .roles import (_calculer_profil, departements_du_profil, departements_etablissement, enseignants_gestion_requise,
@@ -134,14 +134,20 @@ def _imprimer(request, f, departements, qs):
                             total=total, vide='Aucun enseignant avec ces filtres.')
 
 
-def _envoyer(request, user, invitation=True):
+def _envoyer(request, enseignant, quoi='activation'):
+    """E-mail de la Direction des Études ; il précise si l'enseignant avait déjà un compte (inutile d'en créer un)."""
+    if quoi == 'activation' and enseignant.utilisateur.has_usable_password():
+        quoi = 'acces'
     try:
-        adresse = envoyer_lien(request, user, invitation=invitation)
+        adresse = envoyer_mail_enseignant(request, enseignant, quoi)
     except Exception as e:                                   # SMTP indisponible, adresse vide…
         messages.error(request, f"L'e-mail n'a pas pu être envoyé ({e}). Réessayez plus tard.")
         return False
-    messages.success(request, (f"Lien d'activation du compte envoyé à {adresse}." if invitation
-                               else f"Lien de nouveau mot de passe envoyé à {adresse}."))
+    existant = " (compte existant : l'e-mail précise qu'il ne lui faut pas d'autre compte)" if enseignant.compte_existant else ""
+    messages.success(request, {'activation': f"Lien d'activation du compte envoyé à {adresse}{existant}.",
+                               'acces': f"E-mail d'information envoyé à {adresse} : son accès enseignant est ouvert "
+                                        f"sur son compte existant, inutile d'en créer un autre.",
+                               'reinitialiser': f"Lien de nouveau mot de passe envoyé à {adresse}."}[quoi])
     return True
 
 
@@ -153,16 +159,17 @@ def _formulaire(request, enseignant=None):
             e = form.save(cree_par=request.user)
             if enseignant is not None:
                 messages.success(request, f"Fiche de {e.prenom} {e.nom} enregistrée.")
-            elif rattache:
-                messages.success(request, f"{e.prenom} {e.nom} est enregistré(e) comme enseignant(e), sur son compte "
-                                          f"existant (identifiant : {e.utilisateur.username}) : un seul compte.")
             else:
-                messages.success(request, f"Enseignant(e) enregistré(e) : {e.prenom} {e.nom} (identifiant : "
-                                          f"{e.utilisateur.username}).")
-                if form.cleaned_data.get('envoyer_invitation'):
-                    _envoyer(request, e.utilisateur)
+                if rattache:
+                    messages.success(request, f"{e.prenom} {e.nom} est enregistré(e) comme enseignant(e), sur son "
+                                              f"compte existant (identifiant : {e.utilisateur.username}) : un seul compte.")
                 else:
-                    messages.info(request, "Aucun e-mail envoyé : utilisez « Envoyer le lien d'activation » quand "
+                    messages.success(request, f"Enseignant(e) enregistré(e) : {e.prenom} {e.nom} (identifiant : "
+                                              f"{e.utilisateur.username}).")
+                if form.cleaned_data.get('envoyer_invitation'):
+                    _envoyer(request, e)
+                else:
+                    messages.info(request, "Aucun e-mail envoyé : utilisez « Envoyer l'e-mail » depuis la liste quand "
                                            "vous serez prêt.")
             return redirect('enseignants_liste')
     else:
@@ -191,7 +198,8 @@ def enseignant_modifier(request, pk):
 @enseignants_gestion_requise
 @require_POST
 def enseignant_action(request, pk):
-    """Envoyer le lien d'activation (ou de nouveau mot de passe), désactiver ou réactiver l'enseignant."""
+    """Envoyer le lien d'activation, l'information (compte existant) ou un lien de nouveau mot de passe ;
+    désactiver ou réactiver l'enseignant."""
     e = get_object_or_404(Enseignant.objects.select_related('utilisateur'), pk=pk)
     action, u = request.POST.get('action'), e.utilisateur
     if action == 'desactiver':
@@ -203,13 +211,13 @@ def enseignant_action(request, pk):
         e.actif = True
         e.save(update_fields=['actif'])
         messages.success(request, f"{e.prenom} {e.nom} a de nouveau accès à l'espace enseignant.")
-    elif action in ('invitation', 'reinitialiser'):
+    elif action in ('invitation', 'acces', 'reinitialiser'):
         if not u.is_active:
             messages.error(request, "Ce compte est désactivé (gestion du personnel) : aucun e-mail envoyé.")
         elif not e.actif:
             messages.error(request, "Cet enseignant est désactivé : réactivez-le avant d'envoyer un lien.")
         else:
-            _envoyer(request, u, invitation=(action == 'invitation'))
+            _envoyer(request, e, {'invitation': 'activation'}.get(action, action))
     suivant = request.POST.get('suivant', '')
     return redirect(suivant if suivant.startswith('/') and not suivant.startswith('//') else reverse('enseignants_liste'))
 

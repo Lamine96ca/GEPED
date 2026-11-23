@@ -1,0 +1,33 @@
+{% autoescape off %}Bonjour {{ enseignant }},
+
+{% if quoi == 'reinitialiser' %}{{ expediteur|capfirst }} vous envoie un lien pour choisir un nouveau mot de passe gePed.
+{% elif existant %}{{ expediteur|capfirst }} vous a enregistré(e) comme enseignant(e) du département {{ enseignant.departement.nom }}.
+
+VOUS AVEZ DÉJÀ UN COMPTE gePed{% if personnel %} ({{ personnel.fonc }}){% endif %}.
+Votre fiche enseignant a été rattachée à CE compte : vous n'avez pas besoin d'un autre compte et il ne sert à rien d'en créer un.
+Utilisez le même identifiant et le même mot de passe : l'espace enseignant s'ajoute à votre espace habituel.
+{% else %}{{ expediteur|capfirst }} vous a enregistré(e) comme enseignant(e) du département {{ enseignant.departement.nom }}.
+Un compte gePed (gestion pédagogique de l'Institut Supérieur de Technologie de Mamou) a été créé pour vous.
+{% endif %}
+Identifiant : {{ user.get_username }}
+Rôle : {{ role }}
+Département : {{ enseignant.departement.nom }}
+
+{% if quoi == 'activation' %}{% if existant %}Votre compte n'est pas encore activé : choisissez votre mot de passe une seule fois, il servira pour toutes vos fonctions.{% else %}Pour activer votre compte, choisissez votre mot de passe en ouvrant ce lien :{% endif %}
+{{ lien }}
+
+Ce lien est personnel, valable {{ validite }} et utilisable une seule fois. Ne le transférez à personne.
+{% elif quoi == 'reinitialiser' %}Pour choisir un nouveau mot de passe, ouvrez ce lien :
+{{ lien }}
+
+Ce lien est personnel, valable {{ validite }} et utilisable une seule fois. Ne le transférez à personne.
+{% else %}Connectez-vous comme d'habitude :
+{{ lien }}
+
+Mot de passe oublié ? Utilisez « Mot de passe oublié » sur la page de connexion.
+{% endif %}
+Vous vous connectez sur {{ site }} avec votre identifiant ou votre adresse e-mail.
+Si vous n'attendiez pas ce message, ignorez-le ou prévenez {{ expediteur }}.
+
+{{ expediteur|capfirst }} · Institut Supérieur de Technologie de Mamou
+{% endautoescape %}

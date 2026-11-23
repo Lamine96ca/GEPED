@@ -390,8 +390,9 @@ class EnseignantForm(BootstrapMixin, forms.ModelForm):
     """
     identifiant = forms.CharField(label='Identifiant de connexion', max_length=150, required=False,
                                   help_text="Vide : proposé d'après le prénom et le nom (ex. mariame.camara).")
-    envoyer_invitation = forms.BooleanField(label="Envoyer l'e-mail d'activation du compte", required=False,
-                                            initial=False)
+    envoyer_invitation = forms.BooleanField(label="Envoyer l'e-mail à l'enseignant", required=False, initial=False,
+                                            help_text="Lien d'activation ; ou, s'il a déjà un compte, une information "
+                                                      "lui disant d'utiliser ce compte.")
     rattacher = forms.BooleanField(label="Rattacher la fiche enseignant à ce compte existant", required=False)
 
     class Meta:

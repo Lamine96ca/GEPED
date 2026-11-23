@@ -4684,6 +4684,52 @@ class EnseignantsTests(TestCase):
         self.client.force_login(e.utilisateur)
         self.assertEqual(self.client.get(reverse('espace_enseignant')).status_code, 403)
 
+    def test_emails_nouveau_compte_ou_compte_existant(self):
+        """L'e-mail vient de la Direction des Études et dit si l'enseignant avait déjà un compte (inutile d'en créer)."""
+        from django.core import mail
+        from .models import Enseignant
+        self.connecter('dge')
+        # Enseignant seul : nouveau compte, lien d'activation
+        self.client.post(reverse('enseignant_creer'), self.fiche(envoyer_invitation='on'))
+        seul = Enseignant.objects.get(email='aissatou.barry@exemple.org')
+        self.assertFalse(seul.compte_existant)
+        m = mail.outbox[-1]
+        self.assertEqual(m.subject, "gePed : votre compte enseignant a été créé")
+        self.assertIn('La Direction des Études vous a enregistré(e)', m.body)
+        self.assertIn('a été créé pour vous', m.body)
+        self.assertIn('/compte/activer/', m.body)
+        self.assertNotIn('DÉJÀ UN COMPTE', m.body)
+        self.assertNotIn('Scolarité', m.body + m.alternatives[0][0])
+        # Membre du personnel (compte actif) : rattaché, e-mail d'information sans lien d'activation
+        r = self.client.post(reverse('enseignant_creer'), self.fiche(email='info@t.local', rattacher='on',
+                                                                     envoyer_invitation='on'), follow=True)
+        existant = Enseignant.objects.get(email='info@t.local')
+        self.assertTrue(existant.compte_existant)
+        self.assertContains(r, 'inutile d&#x27;en créer un autre')
+        m = mail.outbox[-1]
+        self.assertEqual((m.to, m.subject), (['info@t.local'], "gePed : votre accès enseignant, sur votre compte existant"))
+        self.assertIn('VOUS AVEZ DÉJÀ UN COMPTE', m.body)
+        self.assertIn('il ne sert à rien d\'en créer un', m.body)
+        self.assertNotIn('/compte/activer/', m.body)
+        self.assertIn('Vous avez déjà un compte gePed', m.alternatives[0][0])
+        # La liste distingue les deux et propose « Informer » pour le compte existant
+        r = self.client.get(reverse('enseignants_liste'))
+        self.assertContains(r, 'Compte existant', count=1)
+        self.assertContains(r, 'Nouveau compte', count=1)
+        self.assertContains(r, 'value="acces"', count=1)
+        n = len(mail.outbox)
+        self.client.post(reverse('enseignant_action', args=[existant.pk]), {'action': 'acces'})
+        self.assertEqual(len(mail.outbox), n + 1)
+        # Compte existant pas encore activé : lien d'activation, mais en disant de ne pas créer d'autre compte
+        u = existant.utilisateur
+        u.set_unusable_password()
+        u.save()
+        self.client.post(reverse('enseignant_action', args=[existant.pk]), {'action': 'invitation'})
+        m = mail.outbox[-1]
+        self.assertIn('/compte/activer/', m.body)
+        self.assertIn('VOUS AVEZ DÉJÀ UN COMPTE', m.body)
+        self.assertIn('une seule fois', m.body)
+
 
 class SallesBatimentsTests(TestCase):
     """Salles et bâtiments : gérés par la Direction des Études sur une même page, import Excel / CSV, exports."""
