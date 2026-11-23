@@ -243,9 +243,10 @@ class PersonnelForm(BootstrapMixin, forms.ModelForm):
         model = Personnel
         fields = ['civilite', 'prenom', 'nom', 'fonc', 'email', 'telephone', 'service', 'chef']
         labels = {'fonc': 'Fonction', 'service': 'Services'}
-        help_texts = {'chef': "Chef du Service Scolarité, chef de département (premier responsable des programmes "
-                              "du département : il valide les notes de leurs semestres) ou directeur d'un Master "
-                              "(il signe les documents du Master).",
+        help_texts = {'chef': "Chef de son service (Scolarité, Direction des Études, Direction générale…) ou de son "
+                              "département : son nom et sa fonction sont imprimés sous la signature des documents "
+                              "du service. Un chef de département valide aussi les notes ; le chef de la scolarité "
+                              "délibère ; le directeur d'un Master signe les documents du Master.",
                       'fonc': "Imprimée au-dessus de la signature (ex. Le Chef Service de la Scolarité)."}
         widgets = {'service': forms.CheckboxSelectMultiple, 'email': forms.EmailInput()}
 
@@ -327,14 +328,17 @@ class PersonnelForm(BootstrapMixin, forms.ModelForm):
     def clean(self):
         d = super().clean()
         services = d.get('service')
-        if d.get('chef') and services is not None:
-            # Chef : du Service Scolarité, d'un département (service auquel des programmes sont rattachés,
-            # ou programme qui est son propre département), ou d'un programme (directeur du Master)
-            dirige = [s for s in services if s.pk in self.services_scolarite or s.programme
-                      or s.pk in self.services_departements]
-            if not dirige:
-                self.add_error('chef', "Impossible : un chef doit être rattaché au Service Scolarité, à un département "
-                                       "ou à un programme.")
+        if d.get('chef') and services:
+            # Chaque service peut avoir un chef (même droits que ses agents hors scolarité et départements) : c'est
+            # son nom qui est imprimé sur les documents du service. Un seul chef par service.
+            avant = {s.pk for s in self.instance.service.all()} if self.instance.pk and self.instance.chef else set()
+            nouveaux = [s for s in services if s.pk not in avant]
+            autres = Personnel.objects.filter(chef=True, service__in=nouveaux).exclude(pk=self.instance.pk) \
+                .prefetch_related('service').distinct()
+            conflits = [f"{s.nom} ({p.prenom} {p.nom})" for p in autres for s in p.service.all() if s in nouveaux]
+            if conflits:
+                self.add_error('chef', "Ce service a déjà un chef : " + ', '.join(conflits) + ". Décochez d'abord "
+                                       "« Chef » sur sa fiche.")
         return d
 
     def save(self, commit=True):

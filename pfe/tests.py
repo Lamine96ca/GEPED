@@ -2813,17 +2813,38 @@ class GpedTests(TestCase):
         for attendu in ('M. Lanciné 2 CONDE', 'LE CHEF SERVICE DE LA SCOLARITÉ', 'SERVICE SCOLARITÉ', 'scol@ist.gn'):
             self.assertIn(attendu, textes)
 
-    def test_personnel_chef_seulement_scolarite_ou_programme(self):
+    def test_personnel_un_chef_par_service(self):
         from .forms import PersonnelForm
+        from .roles import _calculer_profil
+        from .signataires import signataire_du_profil
         admin = User.objects.create_superuser('admin_chef', 'a@t.local', 'x')
-        donnees = {'civilite': 'Mme', 'prenom': 'Awa', 'nom': 'Bah', 'fonc': 'Chef', 'email': 'awa@t.local',
-                   'telephone': '999', 'service': [self.dep.pk], 'chef': 'on'}
+        donnees = {'civilite': 'Mme', 'prenom': 'Awa', 'nom': 'Bah', 'fonc': 'Directrice des études',
+                   'email': 'awa@t.local', 'telephone': '999', 'service': [self.dep.pk], 'chef': 'on'}
+        # Chaque service peut avoir un chef : mêmes droits que ses agents, son nom signe les documents du service
         f = PersonnelForm(donnees, editeur=admin)
+        self.assertTrue(f.is_valid(), f.errors)
+        chef = f.save()
+        agent = Personnel.objects.get(utilisateur__username='dep')
+        self.assertEqual(_calculer_profil(chef.utilisateur).role, _calculer_profil(agent.utilisateur).role)
+        s = signataire_du_profil(_calculer_profil(agent.utilisateur))       # l'agent imprime : signé par la cheffe
+        self.assertEqual((s.nom, s.fonction), ('Mme Awa BAH', 'Directrice des études'))
+        # Un seul chef par service
+        f = PersonnelForm({**donnees, 'prenom': 'Binta', 'email': 'binta@t.local', 'telephone': '998'}, editeur=admin)
         self.assertFalse(f.is_valid())
-        self.assertIn('Impossible', f.errors['chef'][0])                      # simple service : pas de chef
-        self.assertTrue(PersonnelForm({**donnees, 'service': [self.gc.pk]}, editeur=admin).is_valid())   # programme
-        self.assertTrue(PersonnelForm({**donnees, 'service': [self.scol.pk]}, editeur=admin).is_valid())
-        f = PersonnelForm({**donnees, 'service': [self.gc.pk]}, editeur=admin)
+        self.assertIn('déjà un chef', f.errors['chef'][0])
+        self.assertIn('Awa BAH', f.errors['chef'][0])
+        f = PersonnelForm({**donnees, 'telephone': '999'}, instance=chef, editeur=admin)   # se ré-enregistrer : permis
+        self.assertTrue(f.is_valid(), f.errors)
+        # Seul un super utilisateur désigne un chef
+        f = PersonnelForm({**donnees, 'email': 'c@t.local', 'telephone': '997', 'service': [self.gc.pk]},
+                          editeur=User.objects.get(username='scol'))
+        self.assertFalse(f.is_valid())
+        self.assertTrue(PersonnelForm({**donnees, 'email': 'd@t.local', 'telephone': '996', 'service': [self.gc.pk]},
+                                      editeur=admin).is_valid())   # programme
+        self.assertTrue(PersonnelForm({**donnees, 'email': 'f@t.local', 'telephone': '994', 'service': [self.scol.pk]},
+                                      editeur=admin).is_valid())
+        f = PersonnelForm({**donnees, 'email': 'e@t.local', 'telephone': '995', 'service': [self.gc.pk]},
+                          editeur=admin)
         self.assertTrue(f.is_valid(), f.errors)
         self.assertEqual(f.save().nom_signature, 'Mme Awa BAH')
 

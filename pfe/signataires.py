@@ -144,7 +144,9 @@ def signataire_du_profil(profil):
     chef = _chef_du_service(service)
     nom_service = service.nom.upper()
     if chef is not None:
-        return Signataire(chef.nom_signature, chef.fonc or f"Le Chef du {nom_service.title()}", nom_service,
+        defaut_fonction = (service.nom.strip() if service.nom.strip().lower().startswith('direction')
+                           else f"Le Chef du {nom_service.title()}")
+        return Signataire(chef.nom_signature, chef.fonc or defaut_fonction, nom_service,
                           chef.email or defaut.email, chef.telephone or defaut.telephone, scolarite=False)
     if service.programme or service.programmes_rattaches.exists():
         fonction = f"Le Chef du département {service.nom}"
