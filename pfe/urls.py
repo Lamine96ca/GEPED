@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import (views, views_conges, views_demandes, views_enseignants, views_guides, views_salles, views_notes, views_personnel, views_releves,
+from . import (views, views_conges, views_demandes, views_emplois, views_enseignants, views_guides, views_salles, views_notes, views_personnel, views_releves,
                views_soutenances,
                views_suivi_notes)
 
@@ -84,6 +84,12 @@ urlpatterns = [
     path('enseignants/<int:pk>/', views_enseignants.enseignant_modifier, name='enseignant_modifier'),
     path('enseignants/<int:pk>/compte/', views_enseignants.enseignant_action, name='enseignant_action'),
     path('enseignant/', views_enseignants.espace_enseignant, name='espace_enseignant'),
+    # Emplois du temps (semaine type par semestre)
+    path('emplois/', views_emplois.emploi_du_temps, name='emploi_du_temps'),
+    path('emplois/donnees/', views_emplois.emploi_donnees, name='emploi_donnees'),
+    path('emplois/seances/', views_emplois.seance_enregistrer, name='seance_enregistrer'),
+    path('emplois/seances/<int:pk>/', views_emplois.seance_enregistrer, name='seance_enregistrer'),
+    path('emplois/seances/<int:pk>/supprimer/', views_emplois.seance_supprimer, name='seance_supprimer'),
     # Salles et bâtiments (Direction des Études), sur une même page
     path('salles/', views_salles.salles, name='salles'),
     path('salles/ajouter/', views_salles.salle_enregistrer, name='salle_enregistrer'),

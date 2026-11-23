@@ -4441,13 +4441,19 @@ class ConnexionDeuxEtapesTests(TestCase):
         self.client.post(reverse('connexion_code'), {'code': second})
         self.assertTrue(self.connecte())
 
-    def test_sans_email_utilisable_connexion_directe(self):
+    def test_tous_sauf_le_super_utilisateur(self):
         from django.core import mail
+        # Sans adresse utilisable (vide, ou fictive en .local) : connexion refusée, avec un message clair
         for login in ('sans_mail', 'fictif'):
             self.client.logout()
             r = self.etape1(login)
-            self.assertRedirects(r, reverse('tableau_de_bord'), fetch_redirect_response=False)
-            self.assertTrue(self.connecte(), login)
+            self.assertContains(r, "n'a pas d'adresse e-mail valide")
+            self.assertFalse(self.connecte(), login)
+        # Super utilisateur : le mot de passe suffit, même sans adresse
+        User.objects.create_superuser('patron', email='', password=self.MDP)
+        r = self.etape1('patron')
+        self.assertRedirects(r, reverse('tableau_de_bord'), fetch_redirect_response=False)
+        self.assertTrue(self.connecte())
         self.assertEqual(len(mail.outbox), 0)
 
     def test_interrupteur_d_urgence(self):
@@ -4493,7 +4499,8 @@ class EspaceDirectionTests(TestCase):
         for login in ('dg', 'dge'):
             p = _calculer_profil(User.objects.get(username=login))
             self.assertTrue(p.est_direction and p.lecture_seule, login)
-            self.assertTrue(p.lit_notes and p.voit_conges and p.consulte_demandes and p.voit_validations, login)
+            self.assertTrue(p.lit_notes and p.voit_conges and p.consulte_demandes, login)
+            self.assertFalse(p.voit_validations or p.voit_autorisations, login)   # chef de département / scolarité
             self.assertFalse(p.gere_etudiants or p.gere_matieres or p.est_scolarite or p.gere_attestations, login)
             self.assertFalse(p.voit_matieres, login)
         self.assertFalse(_calculer_profil(User.objects.get(username='dep')).est_direction)
@@ -4501,7 +4508,7 @@ class EspaceDirectionTests(TestCase):
     def test_voit_tout(self):
         pages = ['tableau_de_bord', 'etudiants_liste', 'preinscriptions_liste', 'demandes_liste', 'conges_liste',
                  'statistiques', 'notes_liste', 'notes_resultats',
-                 'notes_deliberation', 'notes_validations', 'notes_historique', 'notes_imports',
+                 'notes_deliberation', 'notes_historique', 'notes_imports',
                  'soutenances', 'projets_liste', 'soutenances_calendrier', 'mon_compte']
         for login in ('dg', 'dge'):
             self.connecter(login)
@@ -4512,7 +4519,7 @@ class EspaceDirectionTests(TestCase):
             profil = _calculer_profil(User.objects.get(username=login))
             self.assertEqual(inscriptions_visibles(profil).count(), Inscription.objects.count(), login)
             # Relevés, attestations (scolarité) et partie Matières : ni page ni entrée de menu
-            for nom in ('releves', 'attestations', 'matieres_liste'):
+            for nom in ('releves', 'attestations', 'matieres_liste', 'notes_validations', 'notes_autorisations'):
                 self.assertEqual(self.client.get(reverse(nom)).status_code, 403, (login, nom))
             menu = self.client.get(reverse('tableau_de_bord')).content.decode().split('gped-nav', 1)[1]
             menu = menu.split('</nav>', 1)[0]
@@ -4761,3 +4768,136 @@ class SallesBatimentsTests(TestCase):
             self.connecter(login)
             self.assertEqual(self.client.get(reverse('salles')).status_code, 403, login)
         self.assertFalse(Batiment.objects.exists())
+
+
+class EmploisDuTempsTests(TestCase):
+    """Emploi du temps : semaine type, plusieurs enseignants, conflits signalés et forçables, vues et exports."""
+    setUpTestData_base = GpedTests.__dict__['setUpTestData']
+    connecter = GpedTests.connecter
+
+    @classmethod
+    def setUpTestData(cls):
+        import json  # noqa: F401
+        from .models import Batiment, Enseignant, Matiere, Salle, Semestre
+        EnseignantsTests.__dict__['setUpTestData'].__func__(cls)
+        cls.s1 = Semestre.objects.create(nom='SEMESTRE 1', licence=cls.licence)
+        cls.s2 = Semestre.objects.create(nom='SEMESTRE 2', licence=cls.licence)
+        cls.s3 = Semestre.objects.create(nom='SEMESTRE 3', licence=cls.l2)
+
+        def mat(nom, prog, sem, lic=None):
+            return Matiere.objects.create(nom=nom, filiere=prog, semestre=sem, licence=lic or cls.licence,
+                                          session=cls.session, credit=6)
+        cls.algo, cls.maths = mat('Algorithmique', cls.info, cls.s1), mat('Mathématiques', cls.info, cls.s1)
+        cls.beton = mat('Béton armé', cls.gc, cls.s1)
+        cls.physique = mat('Physique', cls.info, cls.s2)
+        bat = Batiment.objects.create(nom='Bâtiment A', code='BA')
+        cls.petite = Salle.objects.create(batiment=bat, nom='Salle 1', capacite=1)
+        cls.grande = Salle.objects.create(batiment=bat, nom='Amphi', capacite=100, type='amphi')
+        cls.ens = []
+        for k, (login, dep) in enumerate([('ens1', cls.info), ('ens2', cls.gc)]):
+            u = User.objects.create_user(login, password='x', email=f'{login}@t.local')
+            cls.ens.append(Enseignant.objects.create(utilisateur=u, prenom='Prof', nom=login.upper(),
+                                                     email=f'{login}@t.local', departement=dep))
+
+    def poster(self, corps, pk=None):
+        import json
+        url = reverse('seance_enregistrer', args=[pk]) if pk else reverse('seance_enregistrer')
+        return self.client.post(url, json.dumps(corps), content_type='application/json')
+
+    def cours(self, matiere, jour=1, debut=480, fin=600, salle=None, enseignants=(), **extra):
+        return {'matiere': matiere.pk, 'type': 'CM', 'jour': jour, 'debut': debut, 'fin': fin,
+                'salle': salle.pk if salle else None, 'enseignants': [e.pk for e in enseignants], **extra}
+
+    def test_composer_avec_conflits_forcables(self):
+        from .models import Seance
+        self.connecter('dge')
+        # Plusieurs enseignants pour un même cours
+        r = self.poster(self.cours(self.algo, salle=self.grande, enseignants=self.ens))
+        self.assertEqual(r.status_code, 200, r.content)
+        s = Seance.objects.get()
+        self.assertEqual({e.pk for e in s.enseignants.all()}, {e.pk for e in self.ens})
+        self.assertFalse(s.conflit_force)
+        # Enseignant déjà pris (autre classe, même période) : 409, puis « Enregistrer quand même »
+        r = self.poster(self.cours(self.beton, debut=540, fin=660, enseignants=[self.ens[0]]))
+        self.assertEqual(r.status_code, 409)
+        self.assertIn('ENS1 est déjà pris', ' '.join(r.json()['conflits']))
+        r = self.poster(self.cours(self.beton, debut=540, fin=660, enseignants=[self.ens[0]], forcer=True))
+        self.assertEqual(r.status_code, 200)
+        force = Seance.objects.get(matiere=self.beton)
+        self.assertTrue(force.conflit_force)
+        self.assertEqual(force.force_par.username, 'dge')
+        self.assertTrue(r.json()['seance']['conflits'])                    # reste en rouge clair
+        # Même classe au même moment ; salle déjà prise ; salle trop petite
+        r = self.poster(self.cours(self.maths, debut=570, fin=630))
+        self.assertIn('La classe a déjà', ' '.join(r.json()['conflits']))
+        r = self.poster(self.cours(self.beton, jour=2, salle=self.petite))      # 1 inscrit, 1 place : assez grande
+        self.assertEqual(r.status_code, 200)
+        r = self.poster(self.cours(self.maths, jour=2, debut=540, fin=600, salle=self.petite))
+        self.assertIn('La salle Salle 1 est déjà prise', ' '.join(r.json()['conflits']))
+        r = self.poster(self.cours(self.maths, jour=3, salle=self.petite))
+        self.assertIn('1 places pour 2 inscrits', ' '.join(r.json()['conflits']))
+        # Autre période (semestre pair) : pas de conflit d'enseignant
+        r = self.poster(self.cours(self.physique, enseignants=[self.ens[0]], salle=self.grande))
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.json()['seance']['type_court'], 'CM')
+        # Type « CM, TD et TP » (tout)
+        r = self.poster(self.cours(self.physique, jour=6, type='TOUT'))
+        self.assertEqual((r.status_code, r.json()['seance']['type_court']), (200, 'CM·TD·TP'))
+        # Déplacer (autre jour) et étirer
+        r = self.poster(self.cours(self.algo, jour=4, debut=420, fin=720, salle=self.grande, enseignants=self.ens), pk=s.pk)
+        self.assertEqual(r.status_code, 200)
+        s.refresh_from_db()
+        self.assertEqual((s.jour, s.debut, s.fin), (4, 420, 720))
+        # Horaires hors grille ou hors demi-heure : refusés
+        for debut, fin in ((400, 480), (425, 480), (1290, 1350), (600, 600)):
+            self.assertEqual(self.poster(self.cours(self.algo, debut=debut, fin=fin)).status_code, 400, (debut, fin))
+        # Suppression
+        self.client.post(reverse('seance_supprimer', args=[s.pk]))
+        self.assertFalse(Seance.objects.filter(pk=s.pk).exists())
+
+    def test_vues_exports_et_droits(self):
+        from .models import Seance
+        self.connecter('dge')
+        self.poster(self.cours(self.algo, salle=self.grande, enseignants=[self.ens[0]]))
+        classe = {'vue': 'classe', 'session': self.session.pk, 'programme': self.info.pk, 'licence': self.licence.pk,
+                  'semestre': self.s1.pk}
+        r = self.client.get(reverse('emploi_du_temps'), classe)
+        self.assertTrue(r.context['donnees']['modifiable'])
+        self.assertEqual([m['nom'] for m in r.context['donnees']['matieres']], ['Algorithmique', 'Mathématiques'])
+        self.assertEqual(r.context['donnees']['effectif'], 2)
+        noms = [e['nom'] for e in r.context['donnees']['enseignants']]
+        self.assertEqual(len(noms), 2)
+        for params in ({'imprimer': 'pdf'}, {'export': 'xlsx'}):
+            r = self.client.get(reverse('emploi_du_temps'), {**classe, **params})
+            self.assertEqual(r.status_code, 200, params)
+        self.assertEqual(len(self.client.get(reverse('emploi_donnees'), classe).json()['seances']), 1)
+        # Vues enseignant et salle (consultation), pour la scolarité
+        self.connecter('scol')
+        for vue, cle, obj in (('enseignant', 'enseignant', self.ens[0]), ('salle', 'salle', self.grande)):
+            r = self.client.get(reverse('emploi_du_temps'), {'vue': vue, 'session': self.session.pk, cle: obj.pk,
+                                                             'periode': 'impair'})
+            self.assertEqual(len(r.context['donnees']['seances']), 1, vue)
+            self.assertFalse(r.context['donnees']['modifiable'])
+            r = self.client.get(reverse('emploi_du_temps'), {'vue': vue, 'session': self.session.pk, cle: obj.pk,
+                                                             'periode': 'pair'})
+            self.assertEqual(len(r.context['donnees']['seances']), 0, vue)
+        self.assertFalse(self.client.get(reverse('emploi_du_temps'), classe).context['donnees']['modifiable'])
+        # Composer : la Direction des Études seulement
+        nb = Seance.objects.count()
+        for login in ('scol', 'dg', 'info'):
+            self.connecter(login)
+            self.assertEqual(self.poster(self.cours(self.maths, jour=5)).status_code, 403, login)
+        self.assertEqual(Seance.objects.count(), nb)
+        # Le directeur de programme voit l'emploi du temps de son programme, pas celui d'un autre
+        self.connecter('info')
+        self.assertEqual(len(self.client.get(reverse('emploi_du_temps'), classe).context['donnees']['seances']), 1)
+        autre = {**classe, 'programme': self.gc.pk}                     # un seul programme : ramené au sien
+        self.assertEqual(self.client.get(reverse('emploi_du_temps'), autre).context['sel']['programme'], self.info)
+        # Programme sans matière dans la session choisie : on explique et on propose les sessions qui en ont
+        self.connecter('dge')
+        vide = Session.objects.create(annee='2030-2031')
+        r = self.client.get(reverse('emploi_du_temps'), {'vue': 'classe', 'session': vide.pk, 'programme': self.info.pk})
+        self.assertContains(r, 'aucune matière en <strong>2030-2031</strong>')
+        self.assertContains(r, f'session={self.session.pk}&amp;programme={self.info.pk}')
+        self.connecter('sans_service')
+        self.assertEqual(self.client.get(reverse('emploi_du_temps')).status_code, 403)

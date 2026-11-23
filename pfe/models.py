@@ -1251,3 +1251,44 @@ class Salle(models.Model):
 
     def __str__(self):
         return f"{self.nom} ({self.batiment.code or self.batiment.nom})"
+
+
+class Seance(models.Model):
+    """
+    Cours de l'emploi du temps : une SEMAINE TYPE par semestre (elle se répète chaque semaine). La classe est celle
+    de la matière (programme, niveau, semestre, session). Plusieurs enseignants possibles. Horaires en minutes depuis
+    minuit, par pas de 30 minutes, de 7 h à 22 h, du lundi (1) au samedi (6). Un conflit (enseignant ou salle déjà
+    pris, salle trop petite, deux cours en même temps) peut être forcé : on garde qui l'a forcé et quand.
+    """
+    CM, TD, TP, TOUT = 'CM', 'TD', 'TP', 'TOUT'
+    TYPES = [(CM, 'Cours magistral'), (TD, 'Travaux dirigés'), (TP, 'Travaux pratiques'),
+             (TOUT, 'CM, TD et TP (tout)')]
+    COURTS = {CM: 'CM', TD: 'TD', TP: 'TP', TOUT: 'CM·TD·TP'}          # affiché dans la grille
+    JOURS = [(1, 'Lundi'), (2, 'Mardi'), (3, 'Mercredi'), (4, 'Jeudi'), (5, 'Vendredi'), (6, 'Samedi')]
+    DEBUT_JOURNEE, FIN_JOURNEE, PAS = 7 * 60, 22 * 60, 30
+
+    matiere = models.ForeignKey(Matiere, on_delete=models.CASCADE, related_name='seances', verbose_name="Matière")
+    type = models.CharField(max_length=4, choices=TYPES, default=CM, verbose_name="Type")
+    jour = models.PositiveSmallIntegerField(choices=JOURS, verbose_name="Jour")
+    debut = models.PositiveSmallIntegerField(verbose_name="Début (minutes)")
+    fin = models.PositiveSmallIntegerField(verbose_name="Fin (minutes)")
+    salle = models.ForeignKey('Salle', on_delete=models.PROTECT, null=True, blank=True, related_name='seances',
+                              verbose_name="Salle")
+    enseignants = models.ManyToManyField('Enseignant', blank=True, related_name='seances', verbose_name="Enseignants")
+    conflit_force = models.BooleanField(default=False, verbose_name="Conflit forcé")
+    force_par = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+                                  verbose_name="Conflit forcé par")
+    force_le = models.DateTimeField(null=True, blank=True, verbose_name="Conflit forcé le")
+    modifie_par = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+                                    verbose_name="Modifiée par")
+    date_maj = models.DateTimeField(auto_now=True, verbose_name="Dernière modification")
+
+    class Meta:
+        ordering = ['jour', 'debut']
+
+    def __str__(self):
+        return f"{self.matiere} · {self.get_jour_display()} {self.heure(self.debut)}-{self.heure(self.fin)}"
+
+    @staticmethod
+    def heure(minutes):
+        return f"{minutes // 60:02d}h{minutes % 60:02d}"

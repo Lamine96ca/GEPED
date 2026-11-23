@@ -1,0 +1,186 @@
+{% extends 'pfe/base.html' %}
+{% load static %}
+{% block titre %}Emploi du temps{% endblock %}
+{% block titre_page %}Emploi du temps{% endblock %}
+{% block sous_titre %}<div class="sous-titre">{% if titre_grille %}{{ titre_grille }} · {% endif %}semaine type · lundi → samedi, 7 h → 22 h{% if donnees.modifiable %} · glissez une matière sur la grille, étirez un cours par le bas{% endif %}</div>{% endblock %}
+{% block actions %}
+  {% if seances is not None %}
+    <a href="?{{ request.GET.urlencode }}&amp;export=xlsx" class="btn btn-light"><i class="bi bi-file-earmark-excel"></i> <span class="d-none d-sm-inline">Excel</span></a>
+    <a href="?{{ request.GET.urlencode }}&amp;imprimer=pdf" target="_blank" rel="noopener" class="btn btn-light"><i class="bi bi-printer"></i> <span class="d-none d-sm-inline">Imprimer</span></a>
+  {% endif %}
+{% endblock %}
+{% block contenu %}
+<link rel="stylesheet" href="{% static 'pfe/css/emploi_du_temps.css' %}?v={{ version_statique }}">
+<div class="card carte-gped liste mb-3">
+  <form method="get" class="barre-filtres" id="filtres-edt">
+    <div class="d-flex flex-wrap gap-2 mb-2">
+      {% for code, lib in modes %}
+        <a class="btn btn-sm {% if sel.mode == code %}btn-primary{% else %}btn-light{% endif %}" href="?vue={{ code }}{% if sel.session %}&amp;session={{ sel.session.pk }}{% endif %}">{% if code == 'classe' %}<i class="bi bi-people"></i>{% elif code == 'enseignant' %}<i class="bi bi-person-video3"></i>{% else %}<i class="bi bi-door-open"></i>{% endif %} {{ lib }}</a>
+      {% endfor %}
+    </div>
+    <input type="hidden" name="vue" value="{{ sel.mode }}">
+    <div class="row g-2 align-items-end">
+      <div class="col-6 col-md-3 col-lg-2">
+        <label class="form-label small text-secondary mb-1" for="e-session">Session</label>
+        <select id="e-session" name="session" class="form-select" data-cascade>
+          {% for s in sel.sessions %}<option value="{{ s.pk }}" {% if sel.session.pk == s.pk %}selected{% endif %}>{{ s.annee }}</option>{% endfor %}
+        </select>
+      </div>
+      {% if sel.mode == 'classe' %}
+        <div class="col-6 col-md-4 col-lg-3">
+          <label class="form-label small text-secondary mb-1" for="e-programme">Programme</label>
+          <select id="e-programme" name="programme" class="form-select" data-cascade>
+            {% if sel.programmes|length != 1 %}<option value="">Choisir…</option>{% endif %}
+            {% if sel.programmes_avec %}<optgroup label="Avec des matières en {{ sel.session.annee }}">{% for p in sel.programmes_avec %}<option value="{{ p.pk }}" {% if sel.programme.pk == p.pk %}selected{% endif %}>{{ p.nom }}</option>{% endfor %}</optgroup>{% endif %}
+            {% if sel.programmes_sans %}<optgroup label="Sans matière en {{ sel.session.annee }}">{% for p in sel.programmes_sans %}<option value="{{ p.pk }}" {% if sel.programme.pk == p.pk %}selected{% endif %}>{{ p.nom }}</option>{% endfor %}</optgroup>{% endif %}
+          </select>
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label small text-secondary mb-1" for="e-licence">Niveau</label>
+          <select id="e-licence" name="licence" class="form-select" data-cascade {% if not sel.licences %}disabled{% endif %}>
+            <option value="">{% if sel.licences %}Choisir…{% else %}—{% endif %}</option>
+            {% for l in sel.licences %}<option value="{{ l.pk }}" {% if sel.licence.pk == l.pk %}selected{% endif %}>{{ l.nom }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="col-6 col-md-3 col-lg-2">
+          <label class="form-label small text-secondary mb-1" for="e-semestre">Semestre</label>
+          <select id="e-semestre" name="semestre" class="form-select" data-cascade {% if not sel.semestres %}disabled{% endif %}>
+            <option value="">{% if sel.semestres %}Choisir…{% else %}—{% endif %}</option>
+            {% for s in sel.semestres %}<option value="{{ s.pk }}" {% if sel.semestre.pk == s.pk %}selected{% endif %}>{{ s.nom }}</option>{% endfor %}
+          </select>
+        </div>
+      {% else %}
+        <div class="col-6 col-md-3">
+          <label class="form-label small text-secondary mb-1" for="e-periode">Période</label>
+          <select id="e-periode" name="periode" class="form-select" data-cascade>
+            {% for code, lib in periodes %}<option value="{{ code }}" {% if sel.periode == code %}selected{% endif %}>{{ lib }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="col-12 col-md-5">
+          {% if sel.mode == 'enseignant' %}
+            <label class="form-label small text-secondary mb-1" for="e-enseignant">Enseignant</label>
+            <select id="e-enseignant" name="enseignant" class="form-select" data-cascade>
+              <option value="">Choisir…</option>
+              {% for e in sel.enseignants %}<option value="{{ e.pk }}" {% if sel.enseignant.pk == e.pk %}selected{% endif %}>{{ e.nom }} {{ e.prenom }} · {{ e.departement.nom }}</option>{% endfor %}
+            </select>
+          {% else %}
+            <label class="form-label small text-secondary mb-1" for="e-salle">Salle</label>
+            <select id="e-salle" name="salle" class="form-select" data-cascade>
+              <option value="">Choisir…</option>
+              {% for s in sel.salles %}<option value="{{ s.pk }}" {% if sel.salle.pk == s.pk %}selected{% endif %}>{{ s.batiment.nom }} · {{ s.nom }} ({{ s.capacite }} places)</option>{% endfor %}
+            </select>
+          {% endif %}
+        </div>
+      {% endif %}
+    </div>
+  </form>
+</div>
+
+{% if seances is None %}
+  <div class="card carte-gped"><div class="card-body"><div class="etat-vide"><i class="bi bi-calendar-week"></i>
+    {% if sel.mode == 'classe' and sel.programme and not sel.licences %}
+      <strong>{{ sel.programme.nom }}</strong> n'a encore aucune matière en <strong>{{ sel.session.annee }}</strong> : aucun niveau à proposer.
+      <div class="mt-2">Les matières de cette session doivent d'abord être importées (par la scolarité ou le département){% if sel.sessions_avec_matieres %}, ou choisissez une session qui en a :
+        {% for s in sel.sessions_avec_matieres %}<a href="?vue=classe&amp;session={{ s.pk }}&amp;programme={{ sel.programme.pk }}">{{ s.annee }}</a>{% if not forloop.last %} · {% endif %}{% endfor %}{% endif %}.</div>
+    {% elif sel.mode == 'classe' %}Choisissez le <strong>programme</strong>, le <strong>niveau</strong> et le <strong>semestre</strong> pour afficher l'emploi du temps de la classe.{% elif sel.mode == 'enseignant' %}Choisissez un <strong>enseignant</strong> pour voir sa semaine.{% else %}Choisissez une <strong>salle</strong> pour voir son occupation.{% endif %}
+  </div></div></div>
+{% else %}
+  {% csrf_token %}
+  <div class="row g-3">
+    {% if sel.mode == 'classe' %}
+      <div class="col-xl-2 col-lg-3">
+        <div class="card carte-gped edt-palette">
+          <div class="card-body">
+            <div class="small fw-semibold text-secondary mb-2"><i class="bi bi-journal-bookmark"></i> Matières{% if donnees.modifiable %} <span class="fw-normal">· à glisser</span>{% endif %}</div>
+            <div id="edt-matieres" class="d-flex flex-column gap-2"></div>
+            {% if donnees.modifiable %}<div class="small text-secondary mt-3">Effectif de la classe : <strong>{{ donnees.effectif }}</strong></div>{% endif %}
+          </div>
+        </div>
+      </div>
+    {% endif %}
+    <div class="{% if sel.mode == 'classe' %}col-xl-10 col-lg-9{% else %}col-12{% endif %}">
+      <div class="alert alert-danger py-2 small gap-2 align-items-center {% if nb_conflits %}d-flex{% else %}d-none{% endif %}" id="edt-alerte"><i class="bi bi-exclamation-triangle"></i> <span><strong id="edt-nb-conflits">{{ nb_conflits }}</strong> cours en conflit (en rouge clair). Survolez ou cliquez un cours pour voir le détail.</span></div>
+      <div class="card carte-gped">
+        <div class="card-body p-2">
+          <div class="edt-grille" id="edt-grille">
+            <div class="edt-heures">
+              <div class="edt-entete"></div>
+              {% for m, lib in creneaux %}<div class="edt-heure {% if m|divisibleby:60 %}pleine{% endif %}">{% if m|divisibleby:60 %}{{ lib }}{% endif %}</div>{% endfor %}
+            </div>
+            {% for num, lib in jours %}
+              <div class="edt-jour">
+                <div class="edt-entete">{{ lib }}</div>
+                <div class="edt-colonne" data-jour="{{ num }}" style="height: calc(var(--edt-pas) * {{ creneaux|length }})"></div>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Panneau d'un cours -->
+  <div class="modal fade" id="edt-modal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable"><div class="modal-content">
+      <div class="modal-header"><h5 class="modal-title" id="edt-modal-titre">Cours</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button></div>
+      <div class="modal-body">
+        <div id="edt-modal-conflits"></div>
+        <div class="row g-3" id="edt-modal-champs">
+          <div class="col-md-4"><label class="form-label small mb-1" for="edt-type">Type</label>
+            <select id="edt-type" class="form-select">{% for code, lib in types %}<option value="{{ code }}">{{ lib }}</option>{% endfor %}</select></div>
+          <div class="col-md-3"><label class="form-label small mb-1" for="edt-jour">Jour</label>
+            <select id="edt-jour" class="form-select">{% for num, lib in jours %}<option value="{{ num }}">{{ lib }}</option>{% endfor %}</select></div>
+          <div class="col-6 col-md-2"><label class="form-label small mb-1" for="edt-debut">Début</label><select id="edt-debut" class="form-select"></select></div>
+          <div class="col-6 col-md-3"><label class="form-label small mb-1" for="edt-fin">Fin</label><select id="edt-fin" class="form-select"></select></div>
+          <div class="col-12"><label class="form-label small mb-1" for="edt-salle">Salle</label>
+            <select id="edt-salle" class="form-select"></select>
+            <div class="small text-secondary mt-1">Les salles assez grandes pour l'effectif de la classe sont proposées en premier.</div></div>
+          <div class="col-12">
+            <label class="form-label small mb-1" for="edt-recherche-ens">Enseignants <span class="text-secondary fw-normal">(plusieurs possibles · ceux du département en premier)</span></label>
+            <div id="edt-choisis" class="d-flex flex-wrap gap-1 mb-2"></div>
+            <input type="search" id="edt-recherche-ens" class="form-control mb-2" placeholder="Rechercher un enseignant…">
+            <div id="edt-liste-ens" class="edt-liste-ens"></div>
+          </div>
+        </div>
+        <div id="edt-modal-lecture" class="d-none"></div>
+      </div>
+      <div class="modal-footer" id="edt-modal-pied">
+        <button type="button" class="btn btn-danger-doux me-auto" id="edt-supprimer"><i class="bi bi-trash"></i> Supprimer</button>
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal">Fermer</button>
+        <button type="button" class="btn btn-or-plein d-none" id="edt-forcer"><i class="bi bi-exclamation-triangle"></i> Enregistrer quand même</button>
+        <button type="button" class="btn btn-primary" id="edt-enregistrer"><i class="bi bi-check-lg"></i> Enregistrer</button>
+      </div>
+    </div></div>
+  </div>
+
+  <!-- Conflit lors d'un dépôt / déplacement -->
+  <div class="modal fade" id="edt-conflit" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog"><div class="modal-content">
+      <div class="modal-header"><h5 class="modal-title"><i class="bi bi-exclamation-triangle text-danger"></i> Conflit</h5></div>
+      <div class="modal-body"><div id="edt-conflit-liste"></div><div class="small text-secondary">Vous pouvez enregistrer quand même : le cours restera en rouge clair.</div></div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-light" id="edt-conflit-annuler">Annuler</button>
+        <button type="button" class="btn btn-or-plein" id="edt-conflit-forcer"><i class="bi bi-exclamation-triangle"></i> Enregistrer quand même</button>
+      </div>
+    </div></div>
+  </div>
+
+  {{ donnees|json_script:"edt-donnees" }}
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+  (function () {
+    var form = document.getElementById('filtres-edt');
+    var listes = Array.prototype.slice.call(form.querySelectorAll('select[data-cascade]'));
+    listes.forEach(function (s, i) {
+      s.addEventListener('change', function () {
+        if (form.querySelector('[name=vue]').value === 'classe') listes.slice(i + 1).forEach(function (b) { b.removeAttribute('name'); });
+        form.submit();
+      });
+    });
+  })();
+</script>
+{% if seances is not None %}<script src="{% static 'pfe/js/emploi_du_temps.js' %}?v={{ version_statique }}"></script>{% endif %}
+{% endblock %}

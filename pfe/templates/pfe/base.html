@@ -187,6 +187,9 @@
       {% if profil.voit_enseignants %}
         <a class="nav-link {% if actif == 'enseignants' %}active{% endif %}" href="{% url 'enseignants_liste' %}"><i class="bi bi-person-video3"></i> Enseignants</a>
       {% endif %}
+      {% if profil.voit_emplois %}
+        <a class="nav-link {% if actif == 'emplois' %}active{% endif %}" href="{% url 'emploi_du_temps' %}"><i class="bi bi-calendar-week"></i> Emploi du temps</a>
+      {% endif %}
       {% if profil.voit_salles %}
         <a class="nav-link {% if actif == 'salles' %}active{% endif %}" href="{% url 'salles' %}"><i class="bi bi-door-open"></i> Salles et bâtiments</a>
       {% endif %}

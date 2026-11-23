@@ -1,0 +1,37 @@
+/* Emploi du temps : grille de la semaine type (7 h → 22 h, pas de 30 minutes) */
+.edt-grille { --edt-pas: 22px; display: grid; grid-template-columns: 52px repeat(6, minmax(120px, 1fr)); overflow-x: auto; user-select: none; }
+.edt-entete { height: 30px; display: flex; align-items: center; justify-content: center; font-weight: 600; color: var(--encre, #1f2d3d); font-size: .85rem; border-bottom: 1px solid #e5e7eb; }
+.edt-heure { height: var(--edt-pas); font-size: .68rem; color: #94a3b8; text-align: right; padding-right: 6px; transform: translateY(-.55em); }
+.edt-jour { border-left: 1px solid #e5e7eb; min-width: 0; }
+.edt-colonne { position: relative; background-image: repeating-linear-gradient(to bottom, transparent 0, transparent calc(var(--edt-pas) - 1px), #f1f5f9 calc(var(--edt-pas) - 1px), #f1f5f9 var(--edt-pas)); }
+.edt-colonne.survol { background-color: #fffbeb; }
+.edt-fantome { position: absolute; left: 3px; right: 3px; border: 2px dashed var(--or, #f5b700); border-radius: 6px; background: rgba(245, 183, 0, .12); pointer-events: none; z-index: 1; }
+
+.edt-cours { position: absolute; left: 3px; right: 3px; border-radius: 6px; padding: 3px 6px 8px; font-size: .74rem; line-height: 1.2; overflow: hidden; cursor: pointer; border: 1px solid rgba(0, 0, 0, .08); box-shadow: 0 1px 2px rgba(0, 0, 0, .06); z-index: 2; }
+.edt-cours.modifiable { cursor: grab; }
+.edt-cours.deplace { opacity: .85; cursor: grabbing; z-index: 5; box-shadow: 0 6px 16px rgba(0, 0, 0, .18); }
+.edt-cours .titre { font-weight: 700; }
+.edt-cours .info { color: #475569; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.edt-cours .poignee { position: absolute; left: 0; right: 0; bottom: 0; height: 7px; cursor: ns-resize; }
+.edt-cours .poignee::after { content: ''; position: absolute; left: 40%; right: 40%; bottom: 2px; height: 2px; border-radius: 2px; background: rgba(0, 0, 0, .25); }
+.edt-cours.conflit { background: #fee2e2 !important; border-color: #f87171 !important; }
+.edt-cours.conflit .titre::before { content: '\26A0  '; color: #dc2626; }
+
+/* Couleurs des matières (pastel) */
+.edt-c0 { background: #dbeafe; } .edt-c1 { background: #dcfce7; } .edt-c2 { background: #fef3c7; } .edt-c3 { background: #ede9fe; }
+.edt-c4 { background: #cffafe; } .edt-c5 { background: #fce7f3; } .edt-c6 { background: #e0e7ff; } .edt-c7 { background: #ecfccb; }
+.edt-c8 { background: #ffedd5; } .edt-c9 { background: #f1f5f9; }
+
+.edt-matiere { border-radius: 8px; padding: 6px 8px; font-size: .8rem; font-weight: 600; color: var(--encre, #1f2d3d); border: 1px solid rgba(0, 0, 0, .08); }
+.edt-matiere[draggable="true"] { cursor: grab; }
+.edt-matiere .code { font-weight: 400; color: #64748b; font-size: .72rem; }
+.edt-palette { position: sticky; top: 1rem; }
+
+.edt-liste-ens { max-height: 260px; overflow: auto; border: 1px solid #e5e7eb; border-radius: 8px; }
+.edt-liste-ens .groupe { font-size: .72rem; font-weight: 700; color: #64748b; padding: 6px 10px; background: #f8fafc; position: sticky; top: 0; }
+.edt-liste-ens label { display: flex; gap: 8px; align-items: center; padding: 5px 10px; font-size: .85rem; cursor: pointer; }
+.edt-liste-ens label:hover { background: #fffbeb; }
+.edt-liste-ens .secondaire { color: #94a3b8; font-size: .75rem; }
+.edt-matiere.deplacable { cursor: grab; touch-action: none; }
+.edt-cours.modifiable { touch-action: none; }
+.edt-etiquette-volante { position: fixed; z-index: 2000; pointer-events: none; opacity: .9; box-shadow: 0 8px 20px rgba(0, 0, 0, .2); }

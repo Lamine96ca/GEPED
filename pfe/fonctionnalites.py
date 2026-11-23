@@ -67,6 +67,10 @@ def _gere_salles(profil, user):        # @salles_gestion_requise : Direction des
     return profil.gere_salles
 
 
+def _voit_emplois(profil, user):       # @emplois_lecture_requise
+    return profil.voit_emplois
+
+
 def _enseignant(profil, user):         # @espace_enseignant_requis
     return profil.est_enseignant
 
@@ -208,6 +212,9 @@ CATALOGUE = [
      'enseignant_creer', (), 'bi-person-plus', _gere_enseignants),
     ('Enseignants', 'Espace enseignant', "Votre espace enseignant.", 'espace enseignant mon espace emploi du temps',
      'espace_enseignant', (), 'bi-person-video3', _enseignant),
+    ('Emplois du temps', 'Emploi du temps', "Semaine type d'une classe, d'un enseignant ou d'une salle : cours, "
+     "salles, enseignants et conflits.", 'emploi du temps planning horaire cours semaine créneau grille séance',
+     'emploi_du_temps', (), 'bi-calendar-week', _voit_emplois),
     ('Salles', 'Salles et bâtiments', "Salles de cours, amphithéâtres, laboratoires : capacité, type, bâtiment.",
      'salle salles bâtiment batiment amphi amphithéâtre laboratoire capacité places classe local',
      'salles', (), 'bi-door-open', _voit_salles),

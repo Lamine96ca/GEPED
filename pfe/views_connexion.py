@@ -5,7 +5,9 @@ dans la session anonyme (le code y est stocké haché, jamais en clair).
 
 - Code valable GPED_CODE_CONNEXION_MINUTES minutes (10 par défaut), 5 essais au plus, puis il faut recommencer.
 - « Renvoyer le code » : un nouveau code au plus toutes les 60 secondes, 3 renvois au plus.
-- Compte sans adresse e-mail utilisable (vide, ou fictive en .local) : connexion avec le seul mot de passe.
+- TOUS les comptes reçoivent un code, sauf les super utilisateurs (connexion avec le seul mot de passe).
+- Compte sans adresse e-mail utilisable (vide, ou fictive en .local hors développement) : connexion refusée, avec
+  un message pour contacter l'administrateur (qui ajoute l'adresse dans « Personnel » ou « Enseignants »).
 - Interrupteur d'urgence : GPED_DOUBLE_FACTEUR=0 dans le .env coupe le code pour tout le monde.
 """
 import hashlib
@@ -40,9 +42,10 @@ def _minutes():
 
 
 def email_utilisable(user):
-    """Adresse à laquelle envoyer le code, ou '' (vide ou adresse fictive de démonstration en .local)."""
+    """Adresse à laquelle envoyer le code, ou '' (vide, ou fictive en .local). En développement, une adresse
+    .local est acceptée : le code est écrit dans emails_dev/ (ou MailHog), rien ne part."""
     email = (user.email or '').strip()
-    if not email or '@' not in email or email.lower().endswith('.local'):
+    if not email or '@' not in email or (email.lower().endswith('.local') and not settings.DEBUG):
         return ''
     return email
 
@@ -90,15 +93,19 @@ class Connexion(LoginView):
     template_name = 'pfe/connexion.html'
     redirect_authenticated_user = True
     erreur_envoi = False
+    sans_email = False
 
     def get_context_data(self, **kwargs):
-        return {**super().get_context_data(**kwargs), 'erreur_envoi': self.erreur_envoi}
+        return {**super().get_context_data(**kwargs), 'erreur_envoi': self.erreur_envoi, 'sans_email': self.sans_email}
 
     def form_valid(self, form):
         user = form.get_user()
+        if not getattr(settings, 'GPED_DOUBLE_FACTEUR', True) or user.is_superuser:
+            return super().form_valid(form)                  # super utilisateur : connexion directe
         email = email_utilisable(user)
-        if not getattr(settings, 'GPED_DOUBLE_FACTEUR', True) or not email:
-            return super().form_valid(form)                  # connexion directe
+        if not email:
+            self.sans_email = True                           # pas d'adresse pour le code : connexion refusée
+            return self.form_invalid(form)
         self.request.session.pop(CLE, None)
         self.request.session[CLE] = {'user_id': user.pk, 'backend': user.backend, 'suivant': self.get_success_url(),
                                      'renvois': 0}

@@ -102,7 +102,7 @@ class Profil:
     @property
     def voit_validations(self):
         """Page « Validation des semestres » : le chef de département (il valide) et le super utilisateur."""
-        return self.est_chef_departement or self.superuser or self.est_direction
+        return self.est_chef_departement or self.superuser
 
     @property
     def voit_deliberation(self):
@@ -179,6 +179,17 @@ class Profil:
     def voit_salles(self):
         """Salles et bâtiments en consultation : la Direction Générale et la scolarité."""
         return self.gere_salles or self.est_direction or self.est_scolarite
+
+    @property
+    def gere_emplois(self):
+        """Composer les emplois du temps : la Direction Générale des Études et le super utilisateur."""
+        return self.superuser or self.est_dge
+
+    @property
+    def voit_emplois(self):
+        """Emplois du temps en consultation : Direction Générale et scolarité (tous), départements et programmes
+        (les leurs)."""
+        return self.gere_emplois or self.est_direction or self.est_scolarite or self.a_perimetre
 
     @property
     def voit_enseignants(self):
@@ -432,6 +443,9 @@ salles_lecture_requise = _exige('voit_salles', "Salles et bâtiments : réservé
                                                  "Direction Générale et à la scolarité.")
 salles_gestion_requise = _exige('gere_salles', "Gestion des salles et des bâtiments : réservée à la Direction "
                                                "Générale des Études.")
+emplois_lecture_requise = _exige('voit_emplois', "Emplois du temps : réservé au personnel concerné.")
+emplois_gestion_requise = _exige('gere_emplois', "Composer les emplois du temps : réservé à la Direction Générale "
+                                                 "des Études.")
 espace_enseignant_requis = _exige('est_enseignant', "Espace réservé aux enseignants.")
 soutenances_lecture_requise = _exige('voit_soutenances', "Soutenances : réservé au personnel de l'établissement.")
 fiches_requises = _exige('telecharge_fiches', "Fiche de notes de l'enseignant : réservé aux chefs de département et "

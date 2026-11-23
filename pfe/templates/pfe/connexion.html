@@ -29,7 +29,9 @@
   <h1>Connexion</h1>
   <p class="intro">Saisissez vos identifiants pour accéder à votre espace.</p>
   {% include 'pfe/_messages_publics.html' %}
-  {% if erreur_envoi %}
+  {% if sans_email %}
+    <div class="alert alert-danger py-2 d-flex gap-2 align-items-center"><i class="bi bi-envelope-x"></i> Ce compte n'a pas d'adresse e-mail valide pour recevoir le code de connexion : contactez l'administrateur pour l'ajouter.</div>
+  {% elif erreur_envoi %}
     <div class="alert alert-danger py-2 d-flex gap-2 align-items-center"><i class="bi bi-exclamation-circle"></i> Le code de connexion n'a pas pu être envoyé par e-mail. Réessayez dans un instant ; si le problème continue, contactez la scolarité.</div>
   {% elif form.errors %}
     <div class="alert alert-danger py-2 d-flex gap-2 align-items-center"><i class="bi bi-exclamation-circle"></i> Identifiant ou mot de passe incorrect.</div>
