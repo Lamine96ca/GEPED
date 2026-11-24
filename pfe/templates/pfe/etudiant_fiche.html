@@ -4,7 +4,7 @@
 {% block titre_page %}<a href="{% url 'etudiants_liste' %}" class="text-decoration-none text-secondary me-1" title="Retour à la liste"><i class="bi bi-arrow-left"></i></a> Fiche étudiant{% endblock %}
 {% block contenu %}
 
-{% if request.GET.imprimer and gere and not etudiant.preinscrit %}
+{% if request.GET.imprimer and gere and profil.est_scolarite and not etudiant.preinscrit %}
   <div class="alert alert-success d-flex flex-wrap align-items-center gap-2">
     <i class="bi bi-printer fs-5"></i>
     <div class="me-auto">Inscription enregistrée : imprimez la fiche à faire signer par l'étudiant.</div>
@@ -46,7 +46,7 @@
           <button class="btn btn-or-plein"><i class="bi bi-check2-circle"></i> Inscrire l'étudiant</button>
         </form>
       {% endif %}
-      {% if not etudiant.preinscrit %}
+      {% if not etudiant.preinscrit and profil.est_scolarite %}
         <a class="btn btn-verre" href="{% url 'inscription_fiche_pdf' inscription.pk %}" target="_blank" rel="noopener"
            title="Fiche à imprimer pour {{ inscription.licence }} · {{ inscription.session }}"><i class="bi bi-printer"></i> Fiche d'inscription</a>
       {% endif %}

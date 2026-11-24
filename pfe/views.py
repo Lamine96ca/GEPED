@@ -586,9 +586,9 @@ def _promotions_prevues():
 
 
 @login_required
-@etudiants_requise
+@scolarite_requise
 def inscription_fiche_pdf(request, pk):
-    """Fiche d'inscription (ou de réinscription) à imprimer, avec la photo de l'étudiant."""
+    """Fiche d'inscription (ou de réinscription) à imprimer, avec la photo de l'étudiant : la scolarité seulement."""
     from .fiche_inscription import reponse_fiche
     return reponse_fiche(get_object_or_404(inscriptions_gerees(get_profil(request)).select_related(
         'etudiant', 'session', 'licence', 'semestre', 'filiere', 'promotion'), pk=pk))

@@ -1918,9 +1918,10 @@ class GpedTests(TestCase):
         self.assertContains(r, reverse('inscription_modifier', args=[insc.pk]))
         self.assertNotContains(r, reverse('inscription_supprimer', args=[insc.pk]))
         self.assertEqual(self.client.get(reverse('etudiant_fiche', args=[autre.pk])).status_code, 404)
-        self.assertEqual(self.client.get(reverse('inscription_fiche_pdf', args=[insc.pk]))['Content-Type'],
-                         'application/pdf')
-        self.assertEqual(self.client.get(reverse('inscription_fiche_pdf', args=[autre.pk])).status_code, 404)
+        # La fiche d'inscription (PDF) ne s'imprime qu'à la scolarité : ni bouton ni accès pour le directeur
+        self.assertNotContains(r, reverse('inscription_fiche_pdf', args=[insc.pk]))
+        self.assertEqual(self.client.get(reverse('inscription_fiche_pdf', args=[insc.pk])).status_code, 403)
+        self.assertEqual(self.client.get(reverse('inscription_fiche_pdf', args=[autre.pk])).status_code, 403)
         self.assertEqual(self.client.get(reverse('inscription_modifier', args=[autre.pk])).status_code, 404)
         r = self.client.get(reverse('inscription_modifier', args=[insc.pk]))
         self.assertNotContains(r, 'Situation de handicap')
@@ -4704,6 +4705,20 @@ class EnseignantsTests(TestCase):
         self.assertEqual(_calculer_profil(e.utilisateur).role, AUCUN)
         self.client.force_login(e.utilisateur)
         self.assertEqual(self.client.get(reverse('espace_enseignant')).status_code, 403)
+
+    def test_fiche_inscription_imprimee_par_la_scolarite_seulement(self):
+        insc = Inscription.objects.get(etudiant__matricule='M0')
+        url = reverse('inscription_fiche_pdf', args=[insc.pk])
+        for login in ('dge', 'dg', 'info'):
+            self.connecter(login)
+            r = self.client.get(reverse('etudiant_fiche', args=[insc.pk]))
+            self.assertEqual(r.status_code, 200, login)
+            self.assertNotContains(r, url)
+            self.assertEqual(self.client.get(url).status_code, 403, login)
+        self.connecter('scol')
+        self.assertContains(self.client.get(reverse('etudiant_fiche', args=[insc.pk])), url)
+        r = self.client.get(url)
+        self.assertEqual((r.status_code, r['Content-Type']), (200, 'application/pdf'))
 
     def test_emails_nouveau_compte_ou_compte_existant(self):
         """L'e-mail vient de la Direction des Études et dit si l'enseignant avait déjà un compte (inutile d'en créer)."""

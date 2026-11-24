@@ -60,7 +60,7 @@
           <td>{{ d.derniere_inscription.filiere|default:"—" }}</td>
           <td class="text-nowrap">{{ d.date_depot|date:"d/m/Y H:i" }}{% if d.statut == 'validee' and not d.traitee_par_id %}<div class="small text-secondary">validée ailleurs</div>{% endif %}</td>
           <td class="text-end text-nowrap">
-            {% if d.statut != 'refusee' %}<a class="btn btn-sm btn-primary" href="{% url 'demande_fiche_pdf' d.pk %}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Imprimer la fiche {% if d.type == 'reinscription' %}de réinscription{% else %}d'inscription{% endif %}"><i class="bi bi-printer"></i> Fiche</a>{% endif %}
+            {% if d.statut != 'refusee' and profil.est_scolarite %}<a class="btn btn-sm btn-primary" href="{% url 'demande_fiche_pdf' d.pk %}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Imprimer la fiche {% if d.type == 'reinscription' %}de réinscription{% else %}d'inscription{% endif %}"><i class="bi bi-printer"></i> Fiche</a>{% endif %}
             <a class="btn btn-sm btn-light" href="{% url 'demande_detail' d.pk %}"><i class="bi bi-eye"></i> Examiner</a>
           </td>
         </tr>

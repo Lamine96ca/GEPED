@@ -266,8 +266,10 @@ def inscription_de_la_fiche(demande):
 @login_required
 @demandes_lecture_requise
 def demande_fiche_pdf(request, pk):
-    """Fiche d'inscription / de réinscription de la demande, à imprimer directement."""
+    """Fiche d'inscription / de réinscription de la demande, à imprimer directement : la scolarité seulement."""
     from .fiche_inscription import reponse_fiche
+    if not get_profil(request).est_scolarite:
+        raise PermissionDenied("Seule la scolarité imprime les fiches d'inscription.")
     demande = get_object_or_404(demandes_gerees(get_profil(request)).select_related(
         'etudiant', 'session', 'licence', 'derniere_inscription'), pk=pk)
     inscription, photo = inscription_de_la_fiche(demande)
