@@ -1,0 +1,32 @@
+{% extends 'pfe/base.html' %}
+{% block titre %}Étudiant exclu{% endblock %}
+{% block titre_page %}Étudiant exclu d'un programme{% endblock %}
+{% block contenu %}
+<div class="row justify-content-center">
+  <div class="col-xl-7 col-lg-9">
+    <div class="card carte-gped border-danger" style="border-width:2px">
+      <div class="card-body p-4">
+        <div class="d-flex gap-3 align-items-start mb-3">
+          <span class="tuile" style="background:#fee2e2;color:#b91c1c"><i class="bi bi-slash-circle"></i></span>
+          <div>
+            <h2 class="h5 mb-1" style="color:var(--encre)">{{ etudiant.prenom }} {{ etudiant.nom }} est exclu{% if etudiant.sexe == 'F' %}e{% endif %} {% if exclusions|length == 1 %}du programme {{ exclusions.0.filiere }}{% else %}de plusieurs programmes{% endif %}</h2>
+            <div class="small text-secondary">Matricule {{ etudiant.matricule|default:"—" }} · document demandé : <strong>{{ document }}</strong></div>
+          </div>
+        </div>
+        {% for x in exclusions %}
+          <div class="border rounded-3 p-3 mb-2 small">
+            <div class="fw-semibold" style="color:var(--encre)">{{ x.filiere }} · {{ x.get_motif_display }}{% if x.credits_dettes %} ({{ x.credits_dettes }} crédits de dettes){% endif %}</div>
+            <div class="text-secondary">Exclusion du {{ x.date|date:"d/m/Y" }} ({{ x.inscription.session }}){% if x.prononcee_par %} · enregistrée par {{ x.prononcee_par.get_full_name|default:x.prononcee_par.username }}{% endif %}</div>
+            {% if x.details %}<div class="mt-1">{{ x.details }}</div>{% endif %}
+          </div>
+        {% endfor %}
+        <p class="small mt-3 mb-3">Un document pédagogique ne devrait normalement pas être délivré à un étudiant exclu. Vous pouvez quand même l'imprimer (par exemple pour un relevé des notes déjà acquises ou à la demande de la Direction).</p>
+        <div class="d-flex flex-wrap gap-2">
+          <a class="btn btn-danger" href="{{ url_forcer }}"><i class="bi bi-printer"></i> Imprimer quand même</a>
+          <a class="btn btn-light" href="{% url 'etudiant_fiche' exclusions.0.inscription_id %}#exclusion"><i class="bi bi-person-lines-fill"></i> Voir la fiche de l'étudiant</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

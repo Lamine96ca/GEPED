@@ -598,8 +598,12 @@ def _promotions_prevues():
 def inscription_fiche_pdf(request, pk):
     """Fiche d'inscription (ou de réinscription) à imprimer, avec la photo de l'étudiant : la scolarité seulement."""
     from .fiche_inscription import reponse_fiche
-    return reponse_fiche(get_object_or_404(inscriptions_gerees(get_profil(request)).select_related(
-        'etudiant', 'session', 'licence', 'semestre', 'filiere', 'promotion'), pk=pk))
+    from .views_exclusions import avertir_si_exclu
+    inscription = get_object_or_404(inscriptions_gerees(get_profil(request)).select_related(
+        'etudiant', 'session', 'licence', 'semestre', 'filiere', 'promotion'), pk=pk)
+    avertissement = avertir_si_exclu(request, inscription.etudiant, inscription.filiere_id,
+                                     f"fiche d'inscription {inscription.session}")
+    return avertissement or reponse_fiche(inscription)
 
 
 @login_required
@@ -1128,6 +1132,11 @@ def attestation_pdf(request, pk):
         attestations_visibles(get_profil(request)).select_related('etudiant', 'licence', 'session', 'filiere'), pk=pk)
     if attestation.type not in CONTENUS_ATTESTATION:
         raise Http404("Ce type d'attestation n'est pas encore disponible.")
+    from .views_exclusions import avertir_si_exclu
+    avertissement = avertir_si_exclu(request, attestation.etudiant, attestation.filiere_id,
+                                     f"attestation {attestation.get_type_display().lower()} n° {attestation.num_ref}")
+    if avertissement:
+        return avertissement
     # Fin d'études : cachet et signature numérisés UNIQUEMENT pour un super utilisateur qui le demande.
     # Pour tout autre compte, « ?signature=1 » est ignoré : la version imprimée est sans cachet ni signature.
     signee = signature_autorisee(request, attestation) and request.GET.get('signature') == '1'

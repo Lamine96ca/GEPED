@@ -3364,6 +3364,21 @@ class GpedTests(TestCase):
         self.client.post(reverse('exclusion_enregistrer', args=[insc.pk]), {'motif': 'indiscipline'})
         self.client.post(reverse('exclusion_enregistrer', args=[e1.pk]), {'motif': 'autre'})
         self.assertEqual(Exclusion.objects.count(), 1)
+        # Impression d'un document pédagogique : avertissement, puis « Imprimer quand même »
+        from .models import ReleveNote
+        url = reverse('inscription_fiche_pdf', args=[insc.pk])
+        r = self.client.get(url)
+        self.assertContains(r, 'Imprimer quand même')
+        self.assertContains(r, f"{url}?forcer=1")
+        r = self.client.get(url + '?forcer=1')
+        self.assertEqual(r['Content-Type'], 'application/pdf')
+        releve = ReleveNote.objects.create(type=ReleveNote.ANNUEL, etudiant=e0, filiere=self.info,
+                                           session=self.session, licence=self.licence)
+        self.assertContains(self.client.get(reverse('releve_pdf', args=[releve.pk])), 'Imprimer quand même')
+        self.assertContains(self.client.get(reverse('releves') + f'?etudiant={e0.pk}'), 'du programme Informatique')
+        autre = Inscription.objects.get(etudiant__matricule='M2', session=self.session)       # pas exclu
+        self.assertEqual(self.client.get(reverse('inscription_fiche_pdf', args=[autre.pk]))['Content-Type'],
+                         'application/pdf')
         # Statistiques : exclus par programme, avec le taux
         r = self.client.get(reverse('statistiques'))
         exclus = r.context['origine']['exclus']

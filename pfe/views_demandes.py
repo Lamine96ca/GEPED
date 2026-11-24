@@ -273,6 +273,12 @@ def demande_fiche_pdf(request, pk):
     demande = get_object_or_404(demandes_gerees(get_profil(request)).select_related(
         'etudiant', 'session', 'licence', 'derniere_inscription'), pk=pk)
     inscription, photo = inscription_de_la_fiche(demande)
+    if inscription is not None and inscription.etudiant_id:
+        from .views_exclusions import avertir_si_exclu
+        avertissement = avertir_si_exclu(request, inscription.etudiant, inscription.filiere_id,
+                                         f"fiche de la demande ({demande.session})")
+        if avertissement:
+            return avertissement
     if inscription is None:
         messages.error(request, "Fiche impossible à imprimer : demande refusée, ou niveau / inscription introuvable "
                                 "pour cette session.")

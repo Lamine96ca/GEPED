@@ -65,6 +65,10 @@
     </div>
 
     {% if etudiant %}
+      {% for x in exclusions_etudiant %}
+        <div class="alert alert-danger py-2 small d-flex gap-2 align-items-center"><i class="bi bi-slash-circle"></i>
+          <span><strong>Exclu{% if etudiant.sexe == 'F' %}e{% endif %} du programme {{ x.filiere }}</strong> depuis le {{ x.date|date:"d/m/Y" }} ({{ x.get_motif_display|lower }}) : chaque impression d'un relevé de ce programme vous le rappellera, vous pourrez imprimer quand même.</span></div>
+      {% endfor %}
       <div class="card carte-gped">
         <div class="card-body">
           <div class="entete-carte flex-wrap">

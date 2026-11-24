@@ -20,6 +20,27 @@ from .roles import (exclusions_gestion_requise, exclusions_lecture_requise, get_
                     reintegration_requise)
 
 
+def avertir_si_exclu(request, etudiant, filiere_id, document):
+    """
+    Avant d'imprimer un document pédagogique (relevé, attestation, fiche d'inscription) : si l'étudiant est exclu
+    du programme du document (de n'importe quel programme quand le document n'en a pas), page d'avertissement avec
+    « Imprimer quand même » (?forcer=1). None : rien à signaler, ou l'utilisateur a choisi de forcer.
+    """
+    if request.GET.get('forcer') == '1':
+        return None
+    qs = exclusions.exclusions_en_vigueur([etudiant.pk]).select_related('filiere', 'inscription__session',
+                                                                         'prononcee_par')
+    if filiere_id:
+        qs = qs.filter(filiere_id=filiere_id)
+    liste = list(qs)
+    if not liste:
+        return None
+    url = request.get_full_path()
+    return render(request, 'pfe/exclusion_avertissement.html', {
+        'etudiant': etudiant, 'exclusions': liste, 'document': document,
+        'url_forcer': url + ('&' if '?' in url else '?') + 'forcer=1'})
+
+
 def _visibles(profil):
     return Exclusion.objects.filter(inscription__in=inscriptions_visibles(profil))
 

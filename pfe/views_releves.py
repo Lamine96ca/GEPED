@@ -77,7 +77,10 @@ def releves(request):
         candidats = list(etudiants_geres(profil).filter(recherche(q)).order_by('nom', 'prenom')[:30])
         if len(candidats) == 1:
             etudiant = candidats[0]
+    exclusions_etudiant = []
     if etudiant is not None:
+        from .exclusions import exclusions_en_vigueur
+        exclusions_etudiant = list(exclusions_en_vigueur([etudiant.pk]).select_related('filiere'))
         inscriptions, programmes = parcours(etudiant)
         if masters is not None:                 # directeur de Master : ses programmes seulement
             inscriptions = [i for i in inscriptions if i.filiere_id in masters]
@@ -122,6 +125,7 @@ def releves(request):
         'programmes': programmes, 'page': page, 'sessions': sessions, 'session_id': session_id,
         'prochaine_ref': ReleveNote.prochaine_reference(master=masters is not None),
         'ref_aussi_master': masters is None, 'imprimer': imprimer, 'actif': 'releves',
+        'exclusions_etudiant': exclusions_etudiant,
         'semestres_par_licence': {str(s.pk): str(s.licence_id) for s in Semestre.objects.all()},
     })
 
@@ -168,6 +172,11 @@ def releve_pdf(request, pk):
     from .views import url_verification
     releve = get_object_or_404(_releves_geres(request).select_related('etudiant', 'filiere', 'session', 'licence',
                                                                    'semestre'), pk=pk)
+    from .views_exclusions import avertir_si_exclu
+    avertissement = avertir_si_exclu(request, releve.etudiant, releve.filiere_id,
+                                     f"{releve.get_type_display().lower()} n° {releve.num_ref}")
+    if avertissement:
+        return avertissement
     # Cachet et signature numérisés : UNIQUEMENT un super utilisateur qui le demande
     signee = request.user.is_superuser and request.GET.get('signature') == '1'
     try:
