@@ -75,36 +75,32 @@ def tableau_de_bord(request):
     if session:
         qs = qs.filter(session=session)
 
+    inscrits = _chiffres_tableau(qs.filter(etudiant__preinscrit=False))
+    preinscrits = _chiffres_tableau(qs.filter(etudiant__preinscrit=True))
+    return render(request, 'pfe/tableau_de_bord.html', {
+        'session': session, 'inscrits': inscrits, 'preinscrits': preinscrits,
+        'total': inscrits['total'],
+        'actif': 'tableau',
+    })
+
+
+def _chiffres_tableau(qs):
+    """Chiffres d'un bloc du tableau de bord (inscrits, ou préinscrits) : effectifs, sexe, niveau, programme, cycle."""
     par_sexe = dict(qs.values_list('etudiant__sexe').annotate(n=Count('id')).order_by())
     garcons, filles = par_sexe.get('M', 0), par_sexe.get('F', 0)
     total = garcons + filles
     redoublants = qs.filter(redouble=True).count()
-    preinscrits = qs.filter(etudiant__preinscrit=True).count()
-
-    par_programme = _repartition_par_sexe(qs, 'filiere__nom', 'Sans programme', trier_par_effectif=True, limite=10)
-    par_niveau = _repartition_par_sexe(qs, 'licence__nom', 'Sans niveau')
-    par_cycle = [
-        {'code': code or '?', 'nom': liste.CYCLE_LIBELLES.get(code, 'Non renseigné'), 'n': n, 'pct': _pct(n, total)}
-        for code, n in qs.values_list('cycle').annotate(n=Count('id')).order_by('-n')
-    ]
-
-    return render(request, 'pfe/tableau_de_bord.html', {
-        'session': session,
-        'total': total,
-        'garcons': garcons,
-        'filles': filles,
-        'pct_garcons': _pct(garcons, total),
-        'pct_filles': _pct(filles, total),
-        'redoublants': redoublants,
-        'pct_redoublants': _pct(redoublants, total),
-        'preinscrits': preinscrits,
-        'pct_preinscrits': _pct(preinscrits, total),
+    return {
+        'total': total, 'garcons': garcons, 'filles': filles,
+        'pct_garcons': _pct(garcons, total), 'pct_filles': _pct(filles, total),
+        'redoublants': redoublants, 'pct_redoublants': _pct(redoublants, total),
         'nb_programmes': qs.exclude(filiere=None).values('filiere').distinct().count(),
-        'par_programme': par_programme,
-        'par_niveau': par_niveau,
-        'par_cycle': par_cycle,
-        'actif': 'tableau',
-    })
+        'par_programme': _repartition_par_sexe(qs, 'filiere__nom', 'Sans programme', trier_par_effectif=True, limite=10),
+        'par_niveau': _repartition_par_sexe(qs, 'licence__nom', 'Sans niveau'),
+        'par_cycle': [{'code': code or '?', 'nom': liste.CYCLE_LIBELLES.get(code, 'Non renseigné'), 'n': n,
+                       'pct': _pct(n, total)}
+                      for code, n in qs.values_list('cycle').annotate(n=Count('id')).order_by('-n')],
+    }
 
 
 # ------------------------------------------------------------------ liste
@@ -332,7 +328,19 @@ def etudiant_fiche(request, pk):
         'conge': conge,
         'conge_en_cours': conges.conge_en_cours(inscription.etudiant_id),
         'peut_gerer_conges': gere and profil.est_chef_scolarite,
+        # Exclusions d'un programme : badge, historique ; exclure (scolarité), réintégrer (chef de la scolarité)
+        **_exclusions_fiche(profil, inscription),
     })
+
+
+def _exclusions_fiche(profil, inscription):
+    from .models import Exclusion
+    liste = list(Exclusion.objects.filter(etudiant_id=inscription.etudiant_id, inscription__in=inscriptions_visibles(
+        profil)).select_related('filiere', 'inscription__session', 'prononcee_par', 'reintegre_par'))
+    en_vigueur = [x for x in liste if x.en_vigueur]
+    return {'exclusions': liste, 'exclusions_en_vigueur': en_vigueur,
+            'exclu_ici': next((x for x in en_vigueur if x.filiere_id == inscription.filiere_id), None),
+            'motifs_exclusion': Exclusion.MOTIFS}
 
 
 # ------------------------------------------------------------------ dossier (pièces)

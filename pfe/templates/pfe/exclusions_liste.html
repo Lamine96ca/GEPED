@@ -1,0 +1,103 @@
+{% extends 'pfe/base.html' %}
+{% load humanize %}
+{% block titre %}Exclusions{% endblock %}
+{% block titre_page %}Exclusions d'un programme{% endblock %}
+{% block sous_titre %}<div class="sous-titre">Prononcées par la scolarité · réintégration par le chef de la scolarité ou l'administrateur{% if not profil.gere_exclusions %} · consultation{% endif %}</div>{% endblock %}
+{% block actions %}
+  <a href="?{{ request.GET.urlencode }}{% if request.GET %}&amp;{% endif %}imprimer=pdf" target="_blank" rel="noopener" class="btn btn-light" title="Imprimer la liste (PDF, avec l'en-tête de l'IST)"><i class="bi bi-printer"></i> <span class="d-none d-sm-inline">Imprimer</span></a>
+{% endblock %}
+{% block contenu %}
+
+<!-- Propositions de GePed : dettes non résorbées au-delà du seuil du règlement -->
+<div class="card carte-gped mb-3" id="propositions">
+  <div class="card-body">
+    <div class="entete-carte flex-wrap">
+      <span class="icone-carte"><i class="bi bi-exclamation-octagon"></i></span>
+      <div class="me-auto"><h3>À examiner : dettes non résorbées</h3>
+        <p>{% if seuils %}Étudiants au-delà du seuil d'exclusion{% for code, s in seuils.items %} ({% if code == '877' %}arrêté 877{% else %}{{ code }}{% endif %} : plus de {{ s }} crédits de dettes){% endfor %}. Proposition de GePed : l'exclusion est toujours décidée par la scolarité.{% else %}Aucun règlement ne fixe de seuil d'exclusion.{% endif %}</p></div>
+      <span class="pill {% if propositions %}pill-attention{% else %}pill-succes{% endif %}">{{ propositions|length }} étudiant{{ propositions|length|pluralize }}</span>
+    </div>
+    {% if propositions %}
+      <div class="table-responsive">
+        <table class="table table-etudiants mb-0">
+          <thead><tr><th>Étudiant</th><th>Programme · dernière inscription</th><th class="text-end">Dettes</th><th class="text-end">Matières</th><th class="text-end"></th></tr></thead>
+          <tbody>
+          {% for p in propositions %}{% with i=p.inscription %}
+            <tr style="cursor:default">
+              <td><a href="{% url 'etudiant_fiche' i.pk %}#exclusion" style="color:var(--encre);font-weight:600">{{ i.etudiant.nom }}</a> {{ i.etudiant.prenom }}<div class="matricule text-secondary">{{ i.etudiant.matricule }}</div></td>
+              <td style="white-space:normal">{{ i.filiere }}<div class="small text-secondary">{{ i.session }} · {{ i.licence }}</div></td>
+              <td class="text-end fw-semibold text-danger">{{ p.credits }} crédits<div class="small text-secondary fw-normal">seuil : {{ p.seuil }}</div></td>
+              <td class="text-end">{{ p.matieres }}</td>
+              <td class="text-end text-nowrap">
+                {% if profil.gere_exclusions %}
+                  <form method="post" action="{% url 'exclusion_enregistrer' i.pk %}" class="d-inline"
+                        onsubmit="return confirm('Exclure {{ i.etudiant.prenom|escapejs }} {{ i.etudiant.nom|escapejs }} du programme {{ i.filiere|escapejs }} pour dettes non résorbées ({{ p.credits }} crédits) ?');">
+                    {% csrf_token %}<input type="hidden" name="motif" value="dettes"><input type="hidden" name="suivant" value="{{ request.get_full_path }}">
+                    <button class="btn btn-sm btn-danger-doux"><i class="bi bi-slash-circle"></i> Exclure</button>
+                  </form>
+                {% endif %}
+                <a class="btn btn-icone" href="{% url 'etudiant_fiche' i.pk %}#exclusion" title="Fiche de l'étudiant"><i class="bi bi-person-lines-fill"></i></a>
+              </td>
+            </tr>
+          {% endwith %}{% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Exclusions prononcées -->
+<div class="card carte-gped liste">
+  <div class="card-header">
+    <form method="get" class="d-flex flex-wrap gap-2">
+      <select name="session" class="form-select form-select-sm" style="height:38px;width:auto" title="Session" onchange="this.form.submit()">
+        <option value="">Toutes les sessions</option>
+        {% for s in sessions %}<option value="{{ s.pk }}"{% if s.pk == session_id %} selected{% endif %}>{{ s.annee }}{% if s.en_cours %} (en cours){% endif %}</option>{% endfor %}
+      </select>
+      <select name="etat" class="form-select form-select-sm" style="height:38px;width:auto" title="État" onchange="this.form.submit()">
+        <option value="">En vigueur et réintégrés</option>
+        <option value="en_vigueur"{% if etat == 'en_vigueur' %} selected{% endif %}>En vigueur</option>
+        <option value="reintegres"{% if etat == 'reintegres' %} selected{% endif %}>Réintégrés</option>
+      </select>
+      <select name="motif" class="form-select form-select-sm" style="height:38px;width:auto" title="Motif" onchange="this.form.submit()">
+        <option value="">Tous les motifs</option>
+        {% for code, lib in motifs %}<option value="{{ code }}"{% if code == motif %} selected{% endif %}>{{ lib }}</option>{% endfor %}
+      </select>
+      <div class="champ-icone" style="min-width:240px"><i class="bi bi-search"></i>
+        <input type="search" name="q" value="{{ q }}" class="form-control form-control-sm" style="height:38px" placeholder="Matricule, nom, INE">
+      </div>
+    </form>
+  </div>
+  <div class="px-4 pt-3 small text-secondary"><i class="bi bi-slash-circle text-danger"></i> {{ page.paginator.count|intcomma }} exclusion{{ page.paginator.count|pluralize }} · {{ en_vigueur|intcomma }} en vigueur au total{% if profil.gere_exclusions %} · une exclusion se prononce aussi depuis la fiche de l'étudiant{% endif %}</div>
+  <div class="table-responsive mt-2">
+    <table class="table table-etudiants mb-0">
+      <thead><tr><th>Étudiant</th><th>Programme · année</th><th>Motif</th><th>Date</th><th>État</th><th class="text-end"></th></tr></thead>
+      <tbody>
+      {% for x in page %}
+        <tr style="cursor:default">
+          <td><a href="{% url 'etudiant_fiche' x.inscription_id %}#exclusion" style="color:var(--encre);font-weight:600">{{ x.etudiant.nom }}</a> {{ x.etudiant.prenom }}
+            <div class="matricule text-secondary">{{ x.etudiant.matricule|default:"" }}</div></td>
+          <td style="white-space:normal">{{ x.filiere }}<div class="small text-secondary">{{ x.inscription.session }} · {{ x.inscription.licence }}</div></td>
+          <td style="white-space:normal;min-width:160px;max-width:300px">{{ x.get_motif_display }}{% if x.credits_dettes %} <span class="small text-secondary">({{ x.credits_dettes }} crédits)</span>{% endif %}{% if x.details %}<div class="small text-secondary">{{ x.details|truncatechars:100 }}</div>{% endif %}</td>
+          <td class="text-nowrap">{{ x.date|date:"d/m/Y" }}</td>
+          <td>{% if x.en_vigueur %}<span class="pill pill-danger">En vigueur</span>{% else %}<span class="pill pill-succes" title="{{ x.motif_reintegration }}">Réintégré le {{ x.reintegre_le|date:"d/m/Y" }}</span>{% endif %}</td>
+          <td class="text-end text-nowrap"><a class="btn btn-icone" href="{% url 'etudiant_fiche' x.inscription_id %}#exclusion" title="Fiche de l'étudiant"><i class="bi bi-person-lines-fill"></i></a></td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="6"><div class="etat-vide"><i class="bi bi-slash-circle"></i>Aucune exclusion{% if q or session_id or etat or motif %} avec ces filtres{% endif %}.</div></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if page.has_other_pages %}
+    <div class="pied-tableau d-flex justify-content-end">
+      <ul class="pagination pagination-sm mb-0">
+        {% if page.has_previous %}<li class="page-item"><a class="page-link" href="?q={{ q|urlencode }}&session={{ session_id|default_if_none:'' }}&etat={{ etat }}&motif={{ motif }}&page={{ page.previous_page_number }}"><i class="bi bi-chevron-left"></i></a></li>{% endif %}
+        <li class="page-item active"><span class="page-link">{{ page.number }} / {{ page.paginator.num_pages }}</span></li>
+        {% if page.has_next %}<li class="page-item"><a class="page-link" href="?q={{ q|urlencode }}&session={{ session_id|default_if_none:'' }}&etat={{ etat }}&motif={{ motif }}&page={{ page.next_page_number }}"><i class="bi bi-chevron-right"></i></a></li>{% endif %}
+      </ul>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -581,6 +581,45 @@ class CongeAcademique(models.Model):
         return self.levee_le is None
 
 
+class Exclusion(models.Model):
+    """
+    Exclusion d'un étudiant d'un programme, prononcée par la scolarité : dettes académiques non résorbées (GePed
+    propose la liste, voir pfe/exclusions.py), indiscipline, abandon… Elle reste en vigueur jusqu'à la
+    réintégration, que seuls le chef de la scolarité et l'administrateur peuvent décider. Les autres espaces la voient
+    sans la modifier ; la fiche de l'étudiant porte un badge.
+    """
+    DETTES, INDISCIPLINE, ABANDON, FRAUDE, AUTRE = 'dettes', 'indiscipline', 'abandon', 'fraude', 'autre'
+    MOTIFS = [(DETTES, 'Dettes académiques non résorbées'), (INDISCIPLINE, 'Indiscipline'), (ABANDON, 'Abandon'),
+              (FRAUDE, 'Fraude aux examens'), (AUTRE, 'Autre motif')]
+    inscription = models.ForeignKey(Inscription, on_delete=models.CASCADE, related_name='exclusions',
+                                    verbose_name="Inscription (année de l'exclusion)")
+    etudiant = models.ForeignKey(Etudiant, on_delete=models.CASCADE, related_name='exclusions', verbose_name='Étudiant')
+    filiere = models.ForeignKey(Service, on_delete=models.PROTECT, related_name='exclusions', verbose_name='Programme')
+    motif = models.CharField('Motif', max_length=20, choices=MOTIFS)
+    details = models.TextField('Précisions', blank=True, default='')
+    credits_dettes = models.PositiveSmallIntegerField('Crédits de dettes', null=True, blank=True)
+    date = models.DateField("Date de l'exclusion")
+    prononcee_par = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+                                      verbose_name='Enregistrée par')
+    date_creation = models.DateTimeField('Enregistrée le', auto_now_add=True)
+    reintegre_le = models.DateTimeField('Réintégré le', null=True, blank=True)
+    reintegre_par = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+                                      verbose_name='Réintégré par')
+    motif_reintegration = models.TextField('Motif de la réintégration', blank=True, default='')
+
+    class Meta:
+        ordering = ['-date', '-pk']
+        verbose_name = "Exclusion d'un programme"
+        verbose_name_plural = "Exclusions d'un programme"
+
+    def __str__(self):
+        return f"Exclusion de {self.etudiant} ({self.filiere})"
+
+    @property
+    def en_vigueur(self):
+        return self.reintegre_le is None
+
+
 class DemandeEtudiant(models.Model):
     """
     Demande déposée par l'étudiant depuis l'espace étudiant (sans compte) :

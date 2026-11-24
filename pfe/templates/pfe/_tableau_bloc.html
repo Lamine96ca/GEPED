@@ -1,0 +1,145 @@
+{% load humanize %}{# Bloc du tableau de bord : `s` = chiffres (views._chiffres_tableau), `mode` = 'inscrits' ou 'preinscrits' #}
+{% if mode == 'preinscrits' %}{% url 'preinscriptions_liste' as lien %}{% else %}{% url 'etudiants_liste' as lien %}{% endif %}
+<div class="d-flex flex-wrap align-items-end gap-2 mt-4 mb-2">
+  <h2 class="h5 mb-0 me-auto" style="color:var(--encre)">
+    {% if mode == 'preinscrits' %}<i class="bi bi-hourglass-split" style="color:var(--succes)"></i> Préinscrits{% else %}<i class="bi bi-mortarboard" style="color:var(--accent)"></i> Inscrits{% endif %}
+    <span class="small text-secondary fw-normal">· {% if session %}année {{ session }}{% else %}toutes les sessions{% endif %}</span>
+  </h2>
+  <a href="{{ lien }}" class="small">{% if mode == 'preinscrits' %}Voir les préinscrits{% else %}Voir la liste des étudiants{% endif %} <i class="bi bi-arrow-right"></i></a>
+</div>
+
+{% if mode == 'preinscrits' and not s.total %}
+  <div class="card carte-gped mb-3"><div class="card-body"><div class="etat-vide py-3"><i class="bi bi-hourglass"></i>Aucun préinscrit en attente pour cette session.</div></div></div>
+{% else %}
+<!-- Chiffres clés -->
+<div class="row g-3 mb-3">
+  <div class="col-6 col-xl-3">
+    <a href="{{ lien }}" class="card kpi text-decoration-none">
+      <div class="haut">
+        <span class="tuile {% if mode == 'preinscrits' %}tuile-vert{% else %}tuile-bleu{% endif %}"><i class="bi {% if mode == 'preinscrits' %}bi-hourglass-split{% else %}bi-mortarboard{% endif %}"></i></span>
+        <div><div class="lib">{% if mode == 'preinscrits' %}Préinscrits{% else %}Étudiants inscrits{% endif %}</div><div class="val">{{ s.total|intcomma }}</div></div>
+      </div>
+      <div class="bas"><span>{{ s.nb_programmes }} programme{{ s.nb_programmes|pluralize }}</span></div>
+    </a>
+  </div>
+  <div class="col-6 col-xl-3">
+    <a href="{{ lien }}?sexe=F" class="card kpi text-decoration-none">
+      <div class="haut">
+        <span class="tuile tuile-or"><i class="bi bi-gender-female"></i></span>
+        <div><div class="lib">Filles</div><div class="val">{{ s.filles|intcomma }}</div></div>
+      </div>
+      <div class="bas"><div class="jauge"><div class="jauge-or" style="width: {{ s.pct_filles }}%"></div></div><span>{{ s.pct_filles }} %</span></div>
+    </a>
+  </div>
+  <div class="col-6 col-xl-3">
+    <a href="{{ lien }}?sexe=M" class="card kpi text-decoration-none">
+      <div class="haut">
+        <span class="tuile tuile-bleu"><i class="bi bi-gender-male"></i></span>
+        <div><div class="lib">Garçons</div><div class="val">{{ s.garcons|intcomma }}</div></div>
+      </div>
+      <div class="bas"><div class="jauge"><div class="jauge-bleu" style="width: {{ s.pct_garcons }}%"></div></div><span>{{ s.pct_garcons }} %</span></div>
+    </a>
+  </div>
+  <div class="col-6 col-xl-3">
+    {% if mode == 'preinscrits' %}
+      <div class="card kpi">
+        <div class="haut">
+          <span class="tuile tuile-orange"><i class="bi bi-diagram-3"></i></span>
+          <div><div class="lib">Programmes demandés</div><div class="val">{{ s.nb_programmes|intcomma }}</div></div>
+        </div>
+        <div class="bas"><span>à inscrire par la scolarité</span></div>
+      </div>
+    {% else %}
+      <a href="{{ lien }}?statut=redoublant" class="card kpi text-decoration-none">
+        <div class="haut">
+          <span class="tuile tuile-orange"><i class="bi bi-arrow-repeat"></i></span>
+          <div><div class="lib">Redoublants</div><div class="val">{{ s.redoublants|intcomma }}</div></div>
+        </div>
+        <div class="bas"><div class="jauge"><div class="jauge-orange" style="width: {{ s.pct_redoublants }}%"></div></div><span>{{ s.pct_redoublants }} %</span></div>
+      </a>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Graphiques -->
+<div class="row g-3 mb-3">
+  <div class="col-lg-8">
+    <div class="card carte-graphe">
+      <div class="card-body">
+        <div class="entete">
+          <h3 class="me-auto"><i class="bi bi-bar-chart-fill"></i> {% if mode == 'preinscrits' %}Préinscrits{% else %}Effectif{% endif %} par niveau</h3>
+          <div class="legende"><span class="g">Garçons</span><span class="f">Filles</span></div>
+        </div>
+        <div class="barres aere">
+          {% for g in s.par_niveau %}
+            <div class="ligne" title="{{ g.nom }} : {{ g.M|intcomma }} garçons, {{ g.F|intcomma }} filles">
+              <span class="nom">{{ g.nom }}<small class="detail">{{ g.M|intcomma }} G · {{ g.F|intcomma }} F</small></span>
+              <div class="piste"><div class="barre" style="width: {{ g.largeur }}%"><div class="g" style="width: {{ g.pct_m }}%"></div><div class="f" style="width: {{ g.pct_f }}%"></div></div></div>
+              <span class="total">{{ g.n|intcomma }}</span>
+            </div>
+          {% empty %}
+            <div class="etat-vide"><i class="bi bi-inbox"></i>Aucun étudiant inscrit pour cette session.</div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-4">
+    <div class="card carte-graphe">
+      <div class="card-body">
+        <div class="entete"><h3><i class="bi bi-pie-chart-fill"></i> Répartition par sexe</h3></div>
+        <div class="anneau-sexe" style="--p: {{ s.pct_garcons }}">
+          <div><div><div class="v">{{ s.total|intcomma }}</div><div class="l">{% if mode == 'preinscrits' %}préinscrits{% else %}étudiants{% endif %}</div></div></div>
+        </div>
+        <div class="chiffres-sexe">
+          <div class="g"><div class="v">{{ s.garcons|intcomma }}</div><div class="l">Garçons · {{ s.pct_garcons }} %</div></div>
+          <div class="f"><div class="v">{{ s.filles|intcomma }}</div><div class="l">Filles · {{ s.pct_filles }} %</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-2">
+  <div class="col-lg-8">
+    <div class="card carte-graphe">
+      <div class="card-body">
+        <div class="entete">
+          <h3 class="me-auto"><i class="bi bi-diagram-3-fill"></i> {% if mode == 'preinscrits' %}Préinscrits{% else %}Effectif{% endif %} par programme</h3>
+          <div class="legende"><span class="g">Garçons</span><span class="f">Filles</span></div>
+        </div>
+        <div class="barres">
+          {% for g in s.par_programme %}
+            <div class="ligne" title="{{ g.nom }} : {{ g.M|intcomma }} garçons, {{ g.F|intcomma }} filles">
+              <span class="nom">{{ g.nom }}<small class="detail">{{ g.M|intcomma }} G · {{ g.F|intcomma }} F</small></span>
+              <div class="piste"><div class="barre" style="width: {{ g.largeur }}%"><div class="g" style="width: {{ g.pct_m }}%"></div><div class="f" style="width: {{ g.pct_f }}%"></div></div></div>
+              <span class="total">{{ g.n|intcomma }}</span>
+            </div>
+          {% empty %}
+            <div class="etat-vide"><i class="bi bi-inbox"></i>Aucun étudiant inscrit pour cette session.</div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-4">
+    <div class="card carte-graphe">
+      <div class="card-body">
+        <div class="entete"><h3><i class="bi bi-layers-fill"></i> Par cycle</h3></div>
+        <div class="cycles">
+          {% for c in s.par_cycle %}
+            <a class="cycle text-decoration-none" href="{{ lien }}{% if c.code != '?' %}?cycle={{ c.code }}{% endif %}">
+              <span class="pastille-cycle">{{ c.code }}</span>
+              <span class="nom">{{ c.nom }}</span>
+              <span class="n">{{ c.n|intcomma }}</span>
+              <span class="p">{{ c.pct }} %</span>
+            </a>
+          {% empty %}
+            <p class="text-secondary mb-0">—</p>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}

@@ -34,6 +34,7 @@
     <span class="puce"><i class="bi bi-calendar3"></i> Session {{ inscription.session }}</span>
     {% if inscription.redouble %}<span class="puce"><i class="bi bi-arrow-repeat"></i> Redoublant</span>{% else %}<span class="puce"><i class="bi bi-check2-circle"></i> Passant</span>{% endif %}
     {% if etudiant.preinscrit %}<span class="puce"><i class="bi bi-hourglass-split"></i> Préinscrit</span>{% endif %}
+    {% for x in exclusions_en_vigueur %}<span class="puce puce-exclusion" title="{{ x.get_motif_display }} · le {{ x.date|date:'d/m/Y' }}"><i class="bi bi-slash-circle"></i> Exclu{% if etudiant.sexe == 'F' %}e{% endif %} · {{ x.filiere }}</span>{% endfor %}
     {% if conge %}<span class="puce puce-conge"><i class="bi bi-pause-circle"></i> {% if conge.en_cours %}En congé académique{% else %}Année suspendue (congé levé){% endif %}</span>{% endif %}
   </div>
   {% if gere %}
@@ -79,6 +80,63 @@
         </ul>
       </div>
     </div>
+
+    {% if exclusions or profil.gere_exclusions and not etudiant.preinscrit and inscription.filiere %}
+    <!-- Exclusion d'un programme : prononcée par la scolarité, réintégration par le chef de la scolarité -->
+    <div class="card carte-gped {% if exclusions_en_vigueur %}border-danger{% endif %}" id="exclusion">
+      <div class="card-body">
+        <div class="entete-carte">
+          <span class="icone-carte"><i class="bi bi-slash-circle"></i></span>
+          <div><h3>Exclusion</h3>
+            <p>{% if exclu_ici %}Exclu{% if etudiant.sexe == 'F' %}e{% endif %} de ce programme depuis le {{ exclu_ici.date|date:"d/m/Y" }}{% elif exclusions_en_vigueur %}Exclu{% if etudiant.sexe == 'F' %}e{% endif %} d'un autre programme{% elif exclusions %}Réintégré{% if etudiant.sexe == 'F' %}e{% endif %}{% else %}Aucune exclusion{% endif %}</p></div>
+        </div>
+        {% for x in exclusions %}
+          <div class="border rounded-3 p-2 mb-2 small {% if x.en_vigueur %}border-danger{% endif %}">
+            <div class="fw-semibold" style="color:var(--encre)">{{ x.filiere }} · {{ x.get_motif_display }}{% if x.credits_dettes %} ({{ x.credits_dettes }} crédits){% endif %}</div>
+            <div class="text-secondary">Le {{ x.date|date:"d/m/Y" }} ({{ x.inscription.session }}){% if x.prononcee_par %} · {{ x.prononcee_par.get_full_name|default:x.prononcee_par.username }}{% endif %}</div>
+            {% if x.details %}<div class="mt-1">{{ x.details }}</div>{% endif %}
+            {% if x.en_vigueur %}
+              <span class="pill pill-danger mt-1">En vigueur</span>
+              {% if profil.reintegre_exclus %}
+                <form method="post" action="{% url 'exclusion_reintegrer' x.pk %}" class="mt-2">
+                  {% csrf_token %}<input type="hidden" name="suivant" value="{{ request.get_full_path }}#exclusion">
+                  <textarea name="motif_reintegration" class="form-control form-control-sm mb-2" rows="2" required maxlength="1000" placeholder="Motif de la réintégration (obligatoire)"></textarea>
+                  <button class="btn btn-sm btn-primary" onclick="return confirm('Réintégrer {{ etudiant.prenom|escapejs }} {{ etudiant.nom|escapejs }} dans le programme {{ x.filiere|escapejs }} ?');"><i class="bi bi-arrow-counterclockwise"></i> Réintégrer</button>
+                </form>
+              {% endif %}
+            {% else %}
+              <span class="pill pill-succes mt-1">Réintégré le {{ x.reintegre_le|date:"d/m/Y" }}</span>
+              {% if x.motif_reintegration %}<div class="text-secondary mt-1">{{ x.motif_reintegration }}{% if x.reintegre_par %} · {{ x.reintegre_par.get_full_name|default:x.reintegre_par.username }}{% endif %}</div>{% endif %}
+            {% endif %}
+          </div>
+        {% endfor %}
+        {% if profil.gere_exclusions and not exclu_ici and not etudiant.preinscrit and inscription.filiere %}
+          <button class="btn btn-sm btn-danger-doux" type="button" data-bs-toggle="collapse" data-bs-target="#form-exclusion" aria-expanded="false" aria-controls="form-exclusion"><i class="bi bi-slash-circle"></i> Exclure du programme</button>
+          <form method="post" action="{% url 'exclusion_enregistrer' inscription.pk %}" class="collapse mt-3" id="form-exclusion">
+            {% csrf_token %}<input type="hidden" name="suivant" value="{{ request.get_full_path }}#exclusion">
+            <div class="row g-2">
+              <div class="col-12"><div class="small text-secondary">Programme : <strong>{{ inscription.filiere }}</strong></div></div>
+              <div class="col-7">
+                <label class="form-label small mb-1" for="motif-exclusion">Motif <span class="text-danger">*</span></label>
+                <select id="motif-exclusion" name="motif" class="form-select form-select-sm" required>
+                  {% for code, lib in motifs_exclusion %}<option value="{{ code }}">{{ lib }}</option>{% endfor %}
+                </select>
+              </div>
+              <div class="col-5">
+                <label class="form-label small mb-1" for="date-exclusion">Date</label>
+                <input id="date-exclusion" type="date" name="date" class="form-control form-control-sm" value="{% now 'Y-m-d' %}">
+              </div>
+              <div class="col-12">
+                <label class="form-label small mb-1" for="details-exclusion">Précisions <span class="text-secondary">(obligatoires pour « Autre motif »)</span></label>
+                <textarea id="details-exclusion" name="details" class="form-control form-control-sm" rows="2" maxlength="1000" placeholder="Ex. décision du conseil de discipline du…"></textarea>
+              </div>
+              <div class="col-12"><button class="btn btn-danger btn-sm" onclick="return confirm('Exclure {{ etudiant.prenom|escapejs }} {{ etudiant.nom|escapejs }} du programme {{ inscription.filiere|escapejs }} ? Seuls le chef de la scolarité et l’administrateur pourront le réintégrer.');"><i class="bi bi-slash-circle"></i> Exclure</button></div>
+            </div>
+          </form>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
 
     {% if conge or peut_gerer_conges and not etudiant.preinscrit %}
     <!-- Congé académique : l'inscription de l'année est suspendue -->

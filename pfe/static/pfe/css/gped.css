@@ -132,6 +132,7 @@ code { color: var(--encre); background: var(--survol); padding: .05rem .3rem; bo
 .pill-accent    { color: var(--accent-fonce); background: var(--accent-doux); border-color: var(--accent-bord); }
 .pill-succes    { color: var(--succes); background: var(--succes-doux); border-color: #bbf7d0; }
 .pill-attention { color: var(--attention); background: var(--attention-doux); border-color: #fde68a; }
+.pill-danger    { color: #b91c1c; background: #fee2e2; border-color: #fecaca; }
 
 /* ---------------------------------------------------------- structure */
 /* Bandeau supérieur pleine largeur, puis menu à gauche + contenu */
@@ -242,6 +243,13 @@ code { color: var(--encre); background: var(--survol); padding: .05rem .3rem; bo
 .gped-nav .nav-link:hover .bi { background: rgba(255, 255, 255, .14); }
 .gped-nav .nav-link.active { background: var(--or); color: #fff; font-weight: 700; box-shadow: 0 6px 16px -8px rgba(0, 0, 0, .4); }
 .gped-nav .nav-link.active .bi { background: rgba(255, 255, 255, .25); }
+/* Espace enseignant : turquoise, à part des pages du personnel (or) et du bleu ardoise du menu */
+.gped-nav .lien-enseignant { color: #ccfbf1; background: rgba(45, 212, 191, .12); margin-top: .6rem; }
+.gped-nav .lien-enseignant .bi { background: #14b8a6; color: #fff; }
+.gped-nav .lien-enseignant:hover { background: rgba(45, 212, 191, .22); color: #fff; }
+.gped-nav .lien-enseignant:hover .bi { background: #0d9488; }
+.gped-nav .lien-enseignant.active { background: #0d9488; color: #fff; }
+.gped-nav .lien-enseignant.active .bi { background: rgba(255, 255, 255, .25); }
 .gped-nav .btn-or-plein { width: 100%; margin-top: 1rem; padding: .6rem; font-size: 1rem; }
 
 /* Groupe avec sous-menu (Étudiants) */
@@ -484,6 +492,8 @@ code { color: var(--encre); background: var(--survol); padding: .05rem .3rem; bo
 .bandeau-profil h2 { color: #fff; font-size: 1.6rem; font-weight: 700; margin: .1rem 0 .35rem; }
 .bandeau-profil .puce { display: inline-flex; align-items: center; gap: .35rem; background: rgba(255, 255, 255, .12); color: #fff; border-radius: 999px; padding: .2rem .7rem; font-size: .8125rem; margin: .15rem .3rem .15rem 0; }
 .bandeau-profil .puce .bi { color: var(--or); }
+.bandeau-profil .puce-exclusion { background: #dc2626; }
+.bandeau-profil .puce-exclusion .bi { color: #fff; }
 
 .carte-gped { border-radius: 14px; }
 .carte-gped .card-body { padding: 1.5rem; }

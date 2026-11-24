@@ -134,9 +134,10 @@
       <div class="col-xl-6"><div class="card carte-gped liste"><div class="card-header"><h3 class="titre-stat">Centres du bac (15 premiers)</h3></div>
         {% include 'pfe/_completude.html' with taux=origine.centres.taux quoi='centre du bac' %}
         {% include 'pfe/_stat_hf.html' with lignes=origine.centres.lignes total=origine.centres.total titre_colonne='Centre' %}</div></div>
-      <div class="col-xl-6"><div class="card carte-gped liste"><div class="card-header"><h3 class="titre-stat">Écoles d'origine (15 premières)</h3></div>
-        {% include 'pfe/_completude.html' with taux=origine.ecoles.taux quoi="école d'origine" %}
-        {% include 'pfe/_stat_hf.html' with lignes=origine.ecoles.lignes total=origine.ecoles.total titre_colonne='École' %}</div></div>
+      <div class="col-xl-6"><div class="card carte-gped liste"><div class="card-header d-flex align-items-center"><h3 class="titre-stat me-auto">Étudiants exclus d'un programme</h3>
+          {% if profil.voit_exclusions %}<a class="small" href="{% url 'exclusions_liste' %}?etat=en_vigueur">Voir la liste <i class="bi bi-arrow-right"></i></a>{% endif %}</div>
+        <div class="px-4 pt-2 small text-secondary">Exclusions en vigueur prononcées par la scolarité (dettes, indiscipline, abandon…) ; taux parmi les inscrits du programme.</div>
+        {% include 'pfe/_stat_hf.html' with lignes=origine.exclus.lignes total=origine.exclus.total titre_colonne='Programme' extra='taux' titre_taux="Taux d'exclusion" %}</div></div>
       <div class="col-12"><div class="card carte-gped liste"><div class="card-header"><h3 class="titre-stat">Moyenne au bac par programme</h3></div>
         {% include 'pfe/_completude.html' with taux=origine.taux_bac quoi='moyenne au bac' %}
         <div class="table-responsive"><table class="table table-etudiants table-stat mb-0">

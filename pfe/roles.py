@@ -156,6 +156,21 @@ class Profil:
         return self.role == SCOLARITE
 
     @property
+    def gere_exclusions(self):
+        """Exclure un étudiant d'un programme : la scolarité (agents et chef) et l'administrateur."""
+        return self.est_scolarite
+
+    @property
+    def reintegre_exclus(self):
+        """Réintégrer un étudiant exclu : le chef de la scolarité et l'administrateur seulement."""
+        return self.est_chef_scolarite
+
+    @property
+    def voit_exclusions(self):
+        """Liste des exclusions (consultation) : tous les espaces du personnel, chacun pour ses étudiants."""
+        return self.a_acces
+
+    @property
     def a_acces(self):
         """Pages du personnel : tout rôle de service (pas un compte seulement enseignant)."""
         return self.role not in (AUCUN, ENSEIGNANT)
@@ -453,6 +468,10 @@ fiches_requises = _exige('telecharge_fiches', "Fiche de notes de l'enseignant : 
 suivi_notes_requis = _exige('voit_suivi_notes', "Réservé à la scolarité, à l'administrateur et à la Direction.")
 lecture_conges_requise = _exige('voit_conges', "Congés académiques : réservé à la scolarité et à la Direction.")
 chef_scolarite_requis = _exige('est_chef_scolarite', "Réservé au chef de la scolarité et à l'administrateur.")
+exclusions_lecture_requise = _exige('voit_exclusions', "Exclusions : réservé au personnel.")
+exclusions_gestion_requise = _exige('gere_exclusions', "Seule la scolarité prononce une exclusion.")
+reintegration_requise = _exige('reintegre_exclus', "Seuls le chef de la scolarité et l'administrateur réintègrent "
+                                                   "un étudiant exclu.")
 
 
 def acces_requis(vue):

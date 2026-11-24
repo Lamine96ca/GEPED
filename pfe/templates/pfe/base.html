@@ -70,14 +70,11 @@
       {% endwith %}
     </div>
     <nav class="nav flex-column gped-nav">
-      {% if profil.est_enseignant %}
-        <a class="nav-link {% if actif == 'espace_enseignant' %}active{% endif %}" href="{% url 'espace_enseignant' %}"><i class="bi bi-person-video3"></i> Espace enseignant</a>
-      {% endif %}
       {% if profil.a_acces %}
       <a class="nav-link {% if actif == 'tableau' %}active{% endif %}" href="{% url 'tableau_de_bord' %}"><i class="bi bi-grid-1x2"></i> Tableau de bord</a>
 
       <!-- 1. Étudiants : sous-menu, ouvert quand on est sur l'une de ses pages -->
-      {% if actif == 'etudiants' or actif == 'preinscriptions' or actif == 'inscrire' or actif == 'importer' or actif == 'statistiques' or actif == 'demandes' or actif == 'conges' %}
+      {% if actif == 'etudiants' or actif == 'preinscriptions' or actif == 'inscrire' or actif == 'importer' or actif == 'statistiques' or actif == 'demandes' or actif == 'conges' or actif == 'exclusions' %}
         {% firstof 'show' as etu_ouvert %}
       {% else %}
         {% firstof '' as etu_ouvert %}
@@ -104,6 +101,9 @@
           {% endif %}
           {% if profil.voit_conges %}
             <a class="nav-link {% if actif == 'conges' %}active{% endif %}" href="{% url 'conges_liste' %}">Congés académiques</a>
+          {% endif %}
+          {% if profil.voit_exclusions %}
+            <a class="nav-link {% if actif == 'exclusions' %}active{% endif %}" href="{% url 'exclusions_liste' %}">Exclusions</a>
           {% endif %}
           <a class="nav-link {% if actif == 'statistiques' %}active{% endif %}" href="{% url 'statistiques' %}">Statistiques</a>
         </div>
@@ -197,6 +197,10 @@
       <!-- Personnel : administrateurs -->
       {% if profil.gere_etudiants and user.is_superuser %}
         <a class="nav-link {% if actif == 'personnel' %}active{% endif %}" href="{% url 'personnel_liste' %}"><i class="bi bi-person-badge"></i> Personnel</a>
+      {% endif %}
+      <!-- Espace enseignant : juste avant le compte, dans sa propre couleur -->
+      {% if profil.est_enseignant %}
+        <a class="nav-link lien-enseignant {% if actif == 'espace_enseignant' %}active{% endif %}" href="{% url 'espace_enseignant' %}"><i class="bi bi-person-video3"></i> Espace enseignant</a>
       {% endif %}
       <!-- 4. Mon compte -->
       <a class="nav-link {% if actif == 'compte' %}active{% endif %}" href="{% url 'mon_compte' %}"><i class="bi bi-person-gear"></i> Mon compte</a>

@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import (views, views_conges, views_demandes, views_emplois, views_enseignants, views_guides, views_salles, views_notes, views_personnel, views_releves,
+from . import (views, views_conges, views_demandes, views_exclusions, views_emplois, views_enseignants, views_guides, views_salles, views_notes, views_personnel, views_releves,
                views_soutenances,
                views_suivi_notes)
 
@@ -33,6 +33,10 @@ urlpatterns = [
     path('scolarite/conges/<int:pk>/lever/', views_conges.conge_lever, name='conge_lever'),
     path('scolarite/conges/<int:pk>/annuler/', views_conges.conge_annuler, name='conge_annuler'),
     path('scolarite/conges/<int:pk>/justificatif/', views_conges.conge_justificatif, name='conge_justificatif'),
+    path('exclusions/', views_exclusions.exclusions_liste, name='exclusions_liste'),
+    path('scolarite/inscriptions/<int:pk>/exclure/', views_exclusions.exclusion_enregistrer, name='exclusion_enregistrer'),
+    path('scolarite/exclusions/<int:pk>/reintegrer/', views_exclusions.exclusion_reintegrer,
+         name='exclusion_reintegrer'),
     path('scolarite/importer/modele/', views.modele_import, name='modele_import'),
     path('matieres/', views.matieres_liste, name='matieres_liste'),
     path('matieres/ajouter/', views.matiere_creer, name='matiere_creer'),

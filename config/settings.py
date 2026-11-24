@@ -386,6 +386,9 @@ GPED_NOTES = {
             # commun (CPC, S1-S4) et le programme d'ingénieur (S5-S10) ont chacun la leur
             'moyenne_cycle': 'cumulative',
             'dettes': True,                      # ECUE < 5 après délibération : dette (art. 71)
+            # Exclusion (art. 68 pour le CPC, art. 69 pour le cycle d'ingénieur) : plus de 30 crédits de dettes non
+            # résorbées dans le programme. GePed propose la liste ; la scolarité décide (pfe/exclusions.py).
+            'seuil_exclusion': 30,
             'libelle_session': 'Validée au rattrapage',
             'libelles': {'controle': 'CC', 'tp': 'TP', 'examen': 'CT'},
             # Barème (art. 51 et 75)

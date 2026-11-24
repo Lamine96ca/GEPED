@@ -923,11 +923,11 @@ class GpedTests(TestCase):
         self.connecter('scol')
         r = self.client.get(reverse('tableau_de_bord'))
         self.assertEqual(r.context['total'], 3)
-        self.assertEqual({g['nom']: g['n'] for g in r.context['par_programme']}, {'Informatique': 2, 'Génie civil': 1})
+        self.assertEqual({g['nom']: g['n'] for g in r.context['inscrits']['par_programme']}, {'Informatique': 2, 'Génie civil': 1})
         self.connecter('info')
         r = self.client.get(reverse('tableau_de_bord'))
         self.assertEqual(r.context['total'], 2)
-        self.assertEqual([g['nom'] for g in r.context['par_programme']], ['Informatique'])
+        self.assertEqual([g['nom'] for g in r.context['inscrits']['par_programme']], ['Informatique'])
         self.assertNotContains(r, 'Nouvelle inscription')
 
     def test_preinscriptions_liste_et_inscription_directe(self):
@@ -3314,6 +3314,72 @@ class GpedTests(TestCase):
         r = creer(type='A', inscription=insc_m1.pk)
         self.assertRedirects(r, f"{page}?etudiant={insc_m1.etudiant_id}", fetch_redirect_response=False)
         self.assertEqual(ReleveNote.objects.count(), 3)
+
+    def test_tableau_de_bord_inscrits_et_preinscrits_a_part(self):
+        Etudiant.objects.filter(matricule='M1').update(preinscrit=True)
+        self.connecter('scol')
+        r = self.client.get(reverse('tableau_de_bord'))
+        inscrits, preinscrits = r.context['inscrits'], r.context['preinscrits']
+        attendu = Inscription.objects.filter(session=self.session, etudiant__preinscrit=False).count()
+        self.assertEqual((inscrits['total'], preinscrits['total']), (attendu, 1))
+        self.assertContains(r, 'Préinscrits')
+        self.assertContains(r, 'Programmes demandés')
+
+    def test_exclusions_proposees_prononcees_et_reintegrees(self):
+        """Dettes > 30 crédits (arrêté 877) : GePed propose, la scolarité exclut, seul le chef réintègre."""
+        from .models import Deliberation, Exclusion, Note, Semestre
+        from .exclusions import propositions
+        Inscription.objects.filter(filiere=self.info).update(cycle='Tronc commun')       # arrêté 877 (2025-2026)
+        s1 = Semestre.objects.create(nom='SEMESTRE 1', abrege='S1', licence=self.licence)
+        e0 = Etudiant.objects.get(matricule='M0')
+        insc = Inscription.objects.get(etudiant=e0, session=self.session)
+        for k in range(6):                                                  # 6 × 6 = 36 crédits de dettes
+            Note.objects.create(etudiant=e0, matiere=self._matiere(f'Matière {k}', self.info, s1), moyenne=3,
+                                moyenne_deposee=True)
+        self.assertEqual(propositions(Inscription.objects.all()), [])      # pas délibéré : pas encore des dettes
+        Deliberation.objects.create(filiere=self.info, session=self.session, semestre=s1)
+        p = propositions(Inscription.objects.all())
+        self.assertEqual([(x['inscription'].pk, x['credits'], x['seuil']) for x in p], [(insc.pk, 36, 30)])
+        # Le programme voit la liste, sans pouvoir exclure
+        self.connecter('info')
+        r = self.client.get(reverse('exclusions_liste'))
+        self.assertContains(r, e0.nom)
+        self.assertNotContains(r, reverse('exclusion_enregistrer', args=[insc.pk]))
+        self.assertEqual(self.client.post(reverse('exclusion_enregistrer', args=[insc.pk]),
+                                          {'motif': 'dettes'}).status_code, 403)
+        # Un agent de la scolarité exclut ; il ne peut pas réintégrer
+        Personnel.objects.filter(utilisateur__username='scol').update(chef=False)
+        self.connecter('scol')
+        self.client.post(reverse('exclusion_enregistrer', args=[insc.pk]), {'motif': 'dettes'})
+        x = Exclusion.objects.get()
+        self.assertEqual((x.etudiant, x.filiere, x.credits_dettes, x.en_vigueur), (e0, self.info, 36, True))
+        self.assertEqual(propositions(Inscription.objects.all()), [])      # déjà exclu : plus proposé
+        r = self.client.get(reverse('etudiant_fiche', args=[insc.pk]))
+        self.assertContains(r, 'puce-exclusion')
+        self.assertNotContains(r, reverse('exclusion_reintegrer', args=[x.pk]))
+        self.assertEqual(self.client.post(reverse('exclusion_reintegrer', args=[x.pk]),
+                                          {'motif_reintegration': 'Recours'}).status_code, 403)
+        # Une seconde exclusion du même programme est refusée ; « Autre motif » exige des précisions
+        e1 = Inscription.objects.get(etudiant__matricule='M1', session=self.session)
+        self.client.post(reverse('exclusion_enregistrer', args=[insc.pk]), {'motif': 'indiscipline'})
+        self.client.post(reverse('exclusion_enregistrer', args=[e1.pk]), {'motif': 'autre'})
+        self.assertEqual(Exclusion.objects.count(), 1)
+        # Statistiques : exclus par programme, avec le taux
+        r = self.client.get(reverse('statistiques'))
+        exclus = r.context['origine']['exclus']
+        self.assertEqual([(l.libelle, l.total) for l in exclus['lignes']], [(self.info.nom, 1)])
+        self.assertContains(r, "Étudiants exclus d'un programme")
+        # Le chef de la scolarité réintègre, avec un motif
+        Personnel.objects.filter(utilisateur__username='scol').update(chef=True)
+        self.client.post(reverse('exclusion_reintegrer', args=[x.pk]), {'motif_reintegration': ''})
+        x.refresh_from_db()
+        self.assertTrue(x.en_vigueur)                                      # motif obligatoire
+        self.client.post(reverse('exclusion_reintegrer', args=[x.pk]), {'motif_reintegration': 'Recours accepté'})
+        x.refresh_from_db()
+        self.assertEqual((x.en_vigueur, x.motif_reintegration), (False, 'Recours accepté'))
+        self.assertNotContains(self.client.get(reverse('etudiant_fiche', args=[insc.pk])), 'puce-exclusion')
+        r = self.client.get(reverse('exclusions_liste') + '?imprimer=pdf')
+        self.assertEqual((r.status_code, r.content[:4]), (200, b'%PDF'))
 
     def test_mentions_du_master_et_des_soutenances_selon_le_cycle(self):
         """Master : mentions Excellent… comme le cycle ingénieur ; la soutenance suit le règlement de son cycle."""

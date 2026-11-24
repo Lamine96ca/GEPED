@@ -105,8 +105,9 @@ def sections_onglet(onglet, s, largeur_utile):
         secs = [_hf(titre, (o[cle]['lignes'], o[cle]['total']), colonne, note="Renseigné : " + _pc(o[cle]['taux']))
                 for titre, cle, colonne in (('Option du bac', 'options', 'Option'),
                                             ('Nationalité', 'nationalites', 'Nationalité'),
-                                            ('Centres du bac (15 premiers)', 'centres', 'Centre'),
-                                            ("Écoles d'origine (15 premières)", 'ecoles', 'École'))]
+                                            ('Centres du bac (15 premiers)', 'centres', 'Centre'))]
+        secs.append(_hf("Étudiants exclus d'un programme", (o['exclus']['lignes'], o['exclus']['total']), 'Programme',
+                        taux="Taux d'exclusion", note="Exclusions en vigueur ; taux parmi les inscrits du programme"))
         secs.append(section('Moyenne au bac par programme', [('Programme', 220), ('Moyenne au bac', 70),
                                                              ('Étudiants renseignés', 80)],
                             [[b['programme'], cellule(b['moyenne'], align='d', gras=True), cellule(_n(b['n']), align='d')]

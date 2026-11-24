@@ -26,13 +26,16 @@ CHAMPS = {                                # attribut de la ligne → champ de l'
     'session_id': 'session_id', 'session': 'session__annee', 'niveau': 'licence__nom', 'programme': 'filiere__nom',
     'promotion': 'promotion__nom', 'redouble': 'redouble', 'sexe': 'etudiant__sexe',
     'naissance': 'etudiant__date_de_naissance', 'nationalite': 'etudiant__nationalite',
-    'option': 'etudiant__option_de_bac', 'centre': 'etudiant__centre_de_bac', 'ecole': 'etudiant__ecole_origine',
+    'option': 'etudiant__option_de_bac', 'centre': 'etudiant__centre_de_bac', 'exclu': 'exclu',
     'bac': 'etudiant__moyenne_au_bac', 'handicap': 'etudiant__handicap', 'type_handicap': 'etudiant__type_handicap',
 }
 
 
 def charger(qs):
-    """Une seule requête : les champs utiles de chaque inscription."""
+    """Une seule requête : les champs utiles de chaque inscription (et si une exclusion en vigueur y est attachée)."""
+    from django.db.models import Exists, OuterRef
+    from .models import Exclusion
+    qs = qs.annotate(exclu=Exists(Exclusion.objects.filter(inscription=OuterRef('pk'), reintegre_le__isnull=True)))
     noms = list(CHAMPS)
     return [SimpleNamespace(**dict(zip(noms, v))) for v in qs.values_list(*CHAMPS.values()).order_by()]
 
@@ -189,7 +192,7 @@ def _par_valeur(lignes_insc, attr, normaliser, limite=None):
 
 
 def origine(lignes_insc):
-    """Nationalité, option du bac, centres et écoles d'origine, moyenne au bac par programme."""
+    """Nationalité, option du bac, centres du bac, exclus d'un programme, moyenne au bac par programme."""
     bac = defaultdict(lambda: [0.0, 0])
     for r in lignes_insc:
         if r.bac:                                 # 0 : non renseignée
@@ -200,9 +203,15 @@ def origine(lignes_insc):
         'nationalites': _par_valeur(lignes_insc, 'nationalite', _nationalite),
         'options': _par_valeur(lignes_insc, 'option', _option),
         'centres': _par_valeur(lignes_insc, 'centre', _texte, limite=15),
-        'ecoles': _par_valeur(lignes_insc, 'ecole', _texte, limite=15),
+        'exclus': _exclus(lignes_insc),
         'bac': moyennes, 'taux_bac': pct(sum(m['n'] for m in moyennes), len(lignes_insc)),
     }
+
+
+def _exclus(lignes_insc):
+    """Étudiants exclus d'un programme (exclusion en vigueur) par programme, H/F, avec le taux d'exclusion."""
+    lignes, total = _avec_taux(lignes_insc, [r for r in lignes_insc if r.exclu], 'programme')
+    return {'lignes': lignes, 'total': total}
 
 
 def redoublants(lignes_insc):
@@ -337,10 +346,12 @@ def classeur(s, filtres_texte):
             + [[], ['Âge moyen', a['moyenne_h'], a['moyenne_f'], a['moyenne']],
                ['Fiches renseignées (%)', a['taux']], ['Dates incohérentes', a['incoherentes']]])
     o = s['origine']
-    for titre, cle_ in (('Nationalité', 'nationalites'), ('Option du bac', 'options'), ('Centre du bac', 'centres'),
-                        ("École d'origine", 'ecoles')):
+    for titre, cle_ in (('Nationalité', 'nationalites'), ('Option du bac', 'options'), ('Centre du bac', 'centres')):
         feuille(titre, [titre] + HF, [hf(l) for l in o[cle_]['lignes']] + [hf(o[cle_]['total']),
                                                                              [], ['Renseigné (%)', o[cle_]['taux']]])
+    feuille("Exclus d'un programme", ['Programme'] + HF + ["Taux d'exclusion (%)"],
+            [hf(l) + [l.extra['taux']] for l in o['exclus']['lignes']]
+            + [hf(o['exclus']['total']) + [o['exclus']['total'].extra['taux']]])
     feuille('Moyenne au bac', ['Programme', 'Moyenne au bac', 'Étudiants renseignés'],
             [[b['programme'], b['moyenne'], b['n']] for b in o['bac']])
     for titre, cle_ in (('Redoublants par niveau', 'niveaux'), ('Redoublants par programme', 'programmes')):
