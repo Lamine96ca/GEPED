@@ -3315,6 +3315,38 @@ class GpedTests(TestCase):
         self.assertRedirects(r, f"{page}?etudiant={insc_m1.etudiant_id}", fetch_redirect_response=False)
         self.assertEqual(ReleveNote.objects.count(), 3)
 
+    def test_mentions_du_master_et_des_soutenances_selon_le_cycle(self):
+        """Master : mentions Excellent… comme le cycle ingénieur ; la soutenance suit le règlement de son cycle."""
+        from .models import Note, Resultat, Soutenance
+        from .notes import code_reglement, codes_soutenances, mention, recalculer
+        self.assertEqual([code_reglement('Master', a) for a in ('2019-2020', '2026 - 2027')], ['master', 'master'])
+        self.assertEqual([mention(v, 'master') for v in (8.2, 7, 6, 5, 4.9)],
+                         ['Excellent', 'Remarquable', 'Satisfaisant', 'Acceptable', ''])
+        # Note et résultats d'un étudiant de Master
+        s1, _ = self._semestres()
+        Inscription.objects.filter(filiere=self.info).update(cycle='Master')
+        e0, e1 = Etudiant.objects.get(matricule='M0'), Etudiant.objects.get(matricule='M1')
+        m = self._matiere('Algorithmique', self.info, s1, credit=6)
+        n = Note.objects.create(etudiant=e0, matiere=m, moyenne=8.2, moyenne_deposee=True)
+        self.assertEqual((n.reglement, n.moyenne_finale, n.mention), ('master', 8.2, 'Excellent'))
+        recalculer([e0.pk])
+        self.assertTrue(Resultat.objects.filter(etudiant=e0, mention='Excellent').exists())
+        # Soutenances : Master et Ingénieur (877) → Excellent ; Licence (règles générales) → Très bien
+        sm = Soutenance.objects.create(etudiant=e0, cycle='Master', filiere=self.info, session=self.session,
+                                       promotion=self.p18, note=8.2)
+        si = Soutenance.objects.create(etudiant=e1, cycle='Ingénieur', filiere=self.info, session=self.session,
+                                       promotion=self.p18, note=7.4)
+        sl = Soutenance.objects.create(etudiant=e0, cycle='Licence', filiere=self.info, session=self.session,
+                                       promotion=self.p18, note=8.2)
+        self.assertEqual([(s.reglement, s.mention) for s in Soutenance.objects.filter(pk__in=[sm.pk, si.pk, sl.pk])
+                          .order_by('pk')], [('master', 'Excellent'), ('877', 'Remarquable'), ('', 'Très bien')])
+        self.assertEqual([s.mention for s in codes_soutenances(Soutenance.objects.order_by('pk'))],
+                         ['Excellent', 'Remarquable', 'Très bien'])
+        self.connecter('info')
+        r = self.client.get(reverse('soutenances'))
+        for texte in ('Excellent', 'Remarquable', 'Très bien'):
+            self.assertContains(r, texte)
+
     def test_reglement_877_tronc_commun_et_ingenieur(self):
         """Arrêté 877 : Tronc commun et cycle Ingénieur depuis 2025-2026 ; les autres cycles ne changent pas."""
         from .import_notes import importer_notes
@@ -3662,7 +3694,7 @@ class GpedTests(TestCase):
         # Page publique de vérification
         r = self.client.get(reverse('verifier_document', args=[a.code_verification]))
         self.assertContains(r, 'Réseau du campus')
-        self.assertContains(r, 'Très bien')
+        self.assertContains(r, 'Excellent')                    # cycle Ingénieur (arrêté 877) : barème Excellent…
         # Bouton « Attestation » dans la liste des soutenances
         self.assertContains(self.client.get(reverse('soutenances')), 'Attestation de soutenance')
 
@@ -4181,7 +4213,7 @@ class GpedTests(TestCase):
         from .releves import contenu
         self.assertEqual([code_reglement('DUT', '2026-2027'), code_reglement('DUT', '2027-2028', '2025-2026'),
                           code_reglement('DUT', '2025-2026'), code_reglement('Licence', '2026-2027'),
-                          code_reglement('Master', '2026-2027')], ['878', '', '', '879', ''])
+                          code_reglement('Master', '2026-2027')], ['878', '', '', '879', 'master'])
         self.assertEqual([lettre(v, '878') for v in (9, 7.4, 5.2, 4.99)], ['A+', 'B', 'D-', 'E'])
         self.assertEqual(mention(7.44, '878'), 'Bien')                              # exemple de l'art. 56
         s2627 = Session.objects.create(annee='2026-2027')

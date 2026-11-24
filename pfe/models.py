@@ -787,9 +787,17 @@ class Soutenance(models.Model):
         return est_validee(self.note_finale)
 
     @property
+    def reglement(self):
+        """Règlement du cycle de l'étudiant (877, 878, 879, master ou '') : il fixe les mentions."""
+        if not hasattr(self, '_reglement'):
+            from .notes import code_soutenance
+            self._reglement = code_soutenance(self)
+        return self._reglement
+
+    @property
     def mention(self):
         from .notes import mention
-        return mention(self.note_finale)
+        return mention(self.note_finale, self.reglement)
 
 
 class SoutenanceHistorique(models.Model):

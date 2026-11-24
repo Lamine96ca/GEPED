@@ -163,7 +163,6 @@ def contenu_soutenance(attestation):
 
 
 def pdf_soutenance(attestation, url_verification=None):
-    from .notes import mention
     normale, grasse = _polices_fin_etudes()
     e, s = attestation.etudiant, soutenance_de(attestation)
     p = s.projet if s else None
@@ -239,7 +238,7 @@ def pdf_soutenance(attestation, url_verification=None):
     y_cles = haut_theme - hauteur_cadre - 40
     cles = [('DATE DE SOUTENANCE', date_longue(p.date) if p and p.date else '—'),
             ('NOTE OBTENUE', f"{s.note_finale:.2f}".replace('.', ',') + ' / 10' if s and s.note_finale is not None else '—'),
-            ('MENTION', (mention(s.note_finale) or '—') + (' (Session)' if s and s.par_session else '') if s else '—'),
+            ('MENTION', (s.mention or '—') + (' (Session)' if s and s.par_session else '') if s else '—'),
             ('ANNÉE UNIVERSITAIRE', str(attestation.session or '—'))]
     largeur_cle = largeur_texte / len(cles)
     for i, (libelle, valeur) in enumerate(cles):

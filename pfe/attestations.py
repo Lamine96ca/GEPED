@@ -565,7 +565,6 @@ def infos_publiques(attestation):
             infos.append(('Cycle validé', libelle_cycle(attestation.cycle, 'texte')))
     elif attestation.type == Attestation.SOUTENANCE:
         from .attestation_soutenance import soutenance_de
-        from .notes import mention
         s = soutenance_de(attestation)
         if attestation.filiere:
             infos.append(('Département', _nom_departement(attestation.filiere)))      # imprimé sur l'attestation
@@ -577,7 +576,7 @@ def infos_publiques(attestation):
         if s and s.projet and s.projet.theme:
             infos.append(('Thème', s.projet.theme))
         if s and s.note_finale is not None:
-            infos.append(('Mention', mention(s.note_finale) or '—'))
+            infos.append(('Mention', s.mention or '—'))
     else:
         if attestation.licence:
             semestres = '' if _est_master(attestation) else _semestres(attestation.licence)

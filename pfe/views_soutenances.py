@@ -20,7 +20,7 @@ from .forms import ImportSoutenancesForm, ProjetSoutenanceForm, SoutenanceForm
 from .import_matieres import ImportRefuse
 from .import_soutenances import OBLIGATOIRES, importer_soutenances, modele_soutenances_xlsx
 from .models import Etudiant, Inscription, ProjetSoutenance, Promotion, Resultat, Session, Soutenance
-from .notes import en_note, recalculer, regles
+from .notes import codes_soutenances, en_note, recalculer, regles
 from .roles import gestion_matieres_requise, get_profil, programmes_du_profil, soutenances_lecture_requise
 from .soutenances import (CHAMPS_NOTE, conflits, deverrouiller, enregistrer_notes, filtrer, notes_de,
                           peut_modifier_note, projets_visibles, recherche_projets, recherche_soutenances,
@@ -119,7 +119,7 @@ def soutenances_liste(request):
     if request.GET.get('imprimer') == 'pdf':
         return _imprimer_soutenances(request, f, contexte, qs)
     page = Paginator(qs, 50).get_page(request.GET.get('page'))
-    liste = _avec_resultats(list(page))
+    liste = _avec_resultats(codes_soutenances(page))
     return render(request, 'pfe/soutenances_liste.html', {
         **contexte, 'page': page, 'liste': liste, 'params': _params(request), 'statuts': STATUTS_SOUTENANCE,
         'poids': regles(), 'seuil': regles()['seuil_validation'], 'actif': 'sout_liste',
@@ -164,7 +164,7 @@ def _export_soutenances(qs):
         cell.font, cell.fill = Font(bold=True, color='FFFFFF'), PatternFill('solid', fgColor='41627C')
         ligne.append(cell)
     ws.append(ligne)
-    for s in qs.iterator(chunk_size=2000):
+    for s in codes_soutenances(qs.select_related('etudiant', 'filiere', 'session', 'promotion', 'projet')):
         e, p = s.etudiant, s.projet
         projet = [p.intitule, p.theme, p.encadreur, p.chef_departement, p.maitre_stage, p.entreprise,
                   p.president_jury, p.examinateur, p.rapporteur, p.date, p.heure, p.salle,
@@ -371,7 +371,7 @@ def soutenances_notes(request):
     qs = filtrer(soutenances_visibles(profil), f)
     if f['projet']:
         qs = qs.filter(projet_id=f['projet'])
-    soutenances = list(qs.order_by('projet__intitule', 'etudiant__nom', 'etudiant__prenom'))
+    soutenances = codes_soutenances(qs.order_by('projet__intitule', 'etudiant__nom', 'etudiant__prenom'))
     erreurs, postees, erreur_motif = {}, {}, ''
 
     if request.method == 'POST':
@@ -429,6 +429,7 @@ def soutenances_notes(request):
                      'erreur': erreurs.get((s.pk, c))} for c in CHAMPS_NOTE]
         courant['lignes'].append(s)
     contexte.update({
+        'mentions_reglements': {code: regles(code)['mentions'] for code in {s.reglement for s in soutenances} | {''}},
         'groupes': groupes, 'nb': len(soutenances), 'erreurs': bool(erreurs), 'erreur_motif': erreur_motif,
         'motif': request.POST.get('motif', ''), 'nb_notees': sum(1 for s in soutenances if s.note_finale is not None),
         'nb_verrouillees': sum(1 for s in soutenances if s.verrouillee),

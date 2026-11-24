@@ -434,6 +434,14 @@ GPED_NOTES = {
             'lettres': [(9, 'A+'), (8.5, 'A'), (8, 'A-'), (7.67, 'B+'), (7.34, 'B'), (7, 'B-'), (6.67, 'C+'),
                         (6.34, 'C'), (6, 'C-'), (5.67, 'D+'), (5.34, 'D'), (5, 'D-'), (0, 'E')],      # art. 45
         },
+        'master': {
+            'nom': "Master (mentions du cycle ingénieur)",
+            'cycles': ['Master'],
+            'premiere_session': 0,                   # toutes les sessions
+            # Seules les mentions changent : Excellent, Remarquable, Satisfaisant, Acceptable, comme l'arrêté 877.
+            # Le reste (calcul des notes, rattrapage, moyenne du cycle, lettres) suit les règles générales.
+            'mentions': [(8, 'Excellent'), (7, 'Remarquable'), (6, 'Satisfaisant'), (5, 'Acceptable')],
+        },
     },
 }
 

@@ -43,7 +43,7 @@
             </div>
           </td></tr>
           {% for s in g.lignes %}
-            <tr style="cursor:default" data-ligne class="{% if s.verrouillee %}verrouillee{% endif %}">
+            <tr style="cursor:default" data-ligne data-reglement="{{ s.reglement }}" class="{% if s.verrouillee %}verrouillee{% endif %}">
               <td class="text-secondary">{{ forloop.counter }}</td>
               <td style="min-width:200px"><a href="{% url 'soutenance_modifier' s.pk %}?suivant={{ request.get_full_path|urlencode }}" style="color:var(--encre);font-weight:600">{{ s.etudiant.nom }}</a> {{ s.etudiant.prenom }}
                 <div class="matricule text-secondary">{{ s.etudiant.matricule|default:"" }}{% if s.verrouillee %} · <i class="bi bi-lock-fill" title="Note verrouillée"></i> verrouillée{% endif %}</div></td>
@@ -101,11 +101,13 @@
 {% endblock %}
 {% block scripts %}
 {{ regles|json_script:"regles-notes" }}
+{{ mentions_reglements|json_script:"mentions-reglements" }}
 <script>
   (function () {
     var form = document.getElementById('form-notes');
     if (!form) return;
     var r = JSON.parse(document.getElementById('regles-notes').textContent);
+    var M = JSON.parse(document.getElementById('mentions-reglements').textContent);   // mentions de chaque règlement
     function lire(input) {
       var s = (input.value || '').trim().replace(',', '.').toUpperCase();
       if (s === '') return null;
@@ -113,9 +115,10 @@
       var v = Number(s);
       return isNaN(v) || v < 0 || v > r.note_max ? NaN : v;
     }
-    function mention(m) {
+    function mention(m, code) {
       if (m === null) return '';
-      for (var i = 0; i < r.mentions.length; i++) { if (m >= r.mentions[i][0]) return r.mentions[i][1]; }
+      var liste = M[code || ''] || r.mentions;
+      for (var i = 0; i < liste.length; i++) { if (m >= liste[i][0]) return liste[i][1]; }
       return '';
     }
     function maj(tr) {
@@ -130,7 +133,7 @@
       var span = tr.querySelector('[data-finale]');
       span.textContent = finale === null ? '—' : (Math.round(finale * 100) / 100).toString().replace('.', ',');
       span.className = 'finale ' + (finale === null ? '' : (finale >= r.seuil_validation ? 'ok' : 'ko'));
-      tr.querySelector('[data-mention]').innerHTML = mention(finale) + (session ? ' <span class="pill pill-accent">Session</span>' : '');
+      tr.querySelector('[data-mention]').innerHTML = mention(finale, tr.dataset.reglement) + (session ? ' <span class="pill pill-accent">Session</span>' : '');
     }
     var initial = new Map(), modifs = 0;
     form.querySelectorAll('.note-champ').forEach(function (i) { initial.set(i, i.value); });

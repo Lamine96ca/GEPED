@@ -96,6 +96,25 @@ def code_inscription(inscription, debuts=None):
     return code_reglement(inscription.cycle, inscription.session.annee, debut)
 
 
+def code_soutenance(soutenance, debuts=None):
+    """Règlement d'une soutenance : celui du cycle de l'étudiant pour la session de la soutenance."""
+    debut = None
+    if soutenance.cycle in _cycles_premiere_inscription():
+        if debuts is None:
+            debuts = debuts_cycle([soutenance.etudiant_id])
+        debut = debuts.get((soutenance.etudiant_id, soutenance.cycle))
+    return code_reglement(soutenance.cycle, soutenance.session.annee, debut)
+
+
+def codes_soutenances(soutenances):
+    """Calcule d'un coup le règlement de chaque soutenance (pour leur mention) ; renvoie la liste."""
+    soutenances = list(soutenances)
+    debuts = debuts_cycle({s.etudiant_id for s in soutenances})
+    for s in soutenances:
+        s._reglement = code_soutenance(s, debuts)
+    return soutenances
+
+
 def codes_inscriptions(inscriptions):
     """{inscription.pk: code} pour une liste d'inscriptions (avec leur session), en une requête."""
     inscriptions = list(inscriptions)
