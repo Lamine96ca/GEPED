@@ -34,6 +34,19 @@ def exclusions_en_vigueur(etudiant_ids=None):
     return qs
 
 
+def exclusions_du_document(request, etudiant, filiere_id):
+    """
+    Exclusions en vigueur qui concernent un document pédagogique à enregistrer (programme du document, ou tout
+    programme s'il n'en a pas). Vide si l'utilisateur a choisi « Enregistrer quand même » (forcer=1).
+    """
+    if etudiant is None or request.POST.get('forcer') == '1':
+        return []
+    qs = exclusions_en_vigueur([etudiant.pk]).select_related('etudiant', 'filiere')
+    if filiere_id:
+        qs = qs.filter(filiere_id=filiere_id)
+    return list(qs)
+
+
 def propositions(inscriptions):
     """
     Étudiants à exclure d'après leurs dettes, parmi les `inscriptions` (QuerySet, ex. celles que le profil voit) :

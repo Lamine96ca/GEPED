@@ -39,6 +39,7 @@
         <form method="post" novalidate>
           {% csrf_token %}
           {% if form.non_field_errors %}<div class="alert alert-danger py-2">{{ form.non_field_errors|join:" " }}</div>{% endif %}
+          {% include 'pfe/_alerte_exclusion.html' %}
           <div class="row g-3">
             <div class="{% if type_url == 'orientation' %}col-12{% else %}col-md-6{% endif %}">
               <label class="form-label" for="{{ form.matricule.id_for_label }}">{{ form.matricule.label }} <span class="text-danger">*</span></label>
@@ -141,9 +142,9 @@
       <div class="alert alert-success d-flex flex-wrap align-items-center gap-2">
         <i class="bi bi-check-circle-fill"></i>
         <span class="me-auto">Attestation n° <strong>{{ imprimer.num_ref }}</strong> prête : {{ imprimer.etudiant.prenom }} {{ imprimer.etudiant.nom }}, {% if type_url == 'soutenance' %}soutenance {{ imprimer.cycle }}{% else %}{{ imprimer.licence }}{% endif %} ({{ imprimer.session }}).</span>
-        <a class="btn btn-sm btn-primary" target="_blank" href="{% url 'attestation_pdf' imprimer.pk %}"><i class="bi bi-printer"></i> Imprimer{% if type_url == 'fin-etudes' %} (sans cachet ni signature){% endif %}</a>
+        <a class="btn btn-sm btn-primary" target="_blank" href="{% url 'attestation_pdf' imprimer.pk %}{% if forcer %}?forcer=1{% endif %}"><i class="bi bi-printer"></i> Imprimer{% if type_url == 'fin-etudes' %} (sans cachet ni signature){% endif %}</a>
         {% if type_url == 'fin-etudes' and user.is_superuser %}
-          <a class="btn btn-sm btn-or-plein" target="_blank" href="{% url 'attestation_pdf' imprimer.pk %}?signature=1"><i class="bi bi-pen"></i> Avec cachet et signature</a>
+          <a class="btn btn-sm btn-or-plein" target="_blank" href="{% url 'attestation_pdf' imprimer.pk %}?signature=1{% if forcer %}&amp;forcer=1{% endif %}"><i class="bi bi-pen"></i> Avec cachet et signature</a>
         {% endif %}
       </div>
     {% endif %}

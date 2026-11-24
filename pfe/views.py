@@ -1016,7 +1016,7 @@ def attestations(request, type_url='inscription'):
     instance = None
     if disponible and request.GET.get('modifier'):
         instance = get_object_or_404(visibles, pk=request.GET['modifier'], type=code)
-    form = None
+    form, exclusions_form = None, []
     if disponible:
         if request.method == 'POST':
             form = FORMULAIRES_ATTESTATION[code](request.POST, instance=instance)
@@ -1026,6 +1026,12 @@ def attestations(request, type_url='inscription'):
                     form.add_error(None, "Cet étudiant n'est pas inscrit dans un Master que vous dirigez : "
                                          "adressez-vous à la scolarité.")
             if form.is_valid():
+                # Étudiant exclu du programme : on le dit avant d'enregistrer ; « Enregistrer quand même » possible
+                from .exclusions import exclusions_du_document
+                origine = getattr(form, 'soutenance', None) or getattr(form, 'inscription', None)
+                exclusions_form = exclusions_du_document(request, getattr(form, 'etudiant', None),
+                                                         origine.filiere_id if origine else None)
+            if form.is_valid() and not exclusions_form:
                 attestation = form.save(session_actuelle=liste.session_par_defaut())
                 if getattr(form, 'manquants', None):
                     messages.warning(request, "Informations absentes de la fiche de l'étudiant, imprimées « — » : "
@@ -1033,7 +1039,8 @@ def attestations(request, type_url='inscription'):
                 messages.success(request, f"Attestation n° {attestation.num_ref} "
                                           f"{'modifiée' if instance else 'enregistrée'} pour "
                                           f"{attestation.etudiant.prenom} {attestation.etudiant.nom}.")
-                return redirect(f"{reverse('attestations_type', args=[type_url])}?imprimer={attestation.pk}")
+                forcer = '&forcer=1' if request.POST.get('forcer') == '1' else ''
+                return redirect(f"{reverse('attestations_type', args=[type_url])}?imprimer={attestation.pk}{forcer}")
         else:
             form = FORMULAIRES_ATTESTATION[code](instance=instance, initial={
                 'matricule': request.GET.get('matricule', ''), 'licence': request.GET.get('licence') or None,
@@ -1101,6 +1108,7 @@ def attestations(request, type_url='inscription'):
         imprimer = visibles.filter(pk=request.GET['imprimer'], type=code).first()
 
     return render(request, 'pfe/attestations.html', {
+        'exclusions_form': exclusions_form, 'forcer': request.GET.get('forcer') == '1',
         'types': TYPES_ATTESTATION, 'type_url': type_url, 'libelle': libelle, 'disponible': disponible,
         'complement': COMPLEMENT_ATTESTATION[type_url],
         'form': form, 'instance': instance, 'imprimer': imprimer,

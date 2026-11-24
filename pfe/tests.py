@@ -3376,6 +3376,18 @@ class GpedTests(TestCase):
                                            session=self.session, licence=self.licence)
         self.assertContains(self.client.get(reverse('releve_pdf', args=[releve.pk])), 'Imprimer quand même')
         self.assertContains(self.client.get(reverse('releves') + f'?etudiant={e0.pk}'), 'du programme Informatique')
+        # Attestation : l'exclusion est signalée AVANT l'enregistrement ; « Enregistrer quand même » l'enregistre
+        from .models import Attestation
+        url_att = reverse('attestations_type', args=['inscription'])
+        r = self.client.post(url_att, {'matricule': 'M0', 'licence': self.licence.pk})
+        self.assertContains(r, 'Enregistrer quand même')
+        self.assertFalse(Attestation.objects.filter(etudiant=e0).exists())
+        r = self.client.post(url_att, {'matricule': 'M0', 'licence': self.licence.pk, 'forcer': '1'})
+        a = Attestation.objects.get(etudiant=e0)
+        self.assertRedirects(r, f"{url_att}?imprimer={a.pk}&forcer=1", fetch_redirect_response=False)
+        self.assertContains(self.client.get(f"{url_att}?imprimer={a.pk}&forcer=1"),
+                            f"{reverse('attestation_pdf', args=[a.pk])}?forcer=1")
+        self.assertContains(self.client.get(reverse('attestation_pdf', args=[a.pk])), 'Imprimer quand même')
         autre = Inscription.objects.get(etudiant__matricule='M2', session=self.session)       # pas exclu
         self.assertEqual(self.client.get(reverse('inscription_fiche_pdf', args=[autre.pk]))['Content-Type'],
                          'application/pdf')

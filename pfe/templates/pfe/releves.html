@@ -16,6 +16,7 @@
         <form method="post" novalidate id="form-nouveau-releve">
           {% csrf_token %}
           {% if form.non_field_errors %}<div class="alert alert-danger py-2">{{ form.non_field_errors|join:" " }}</div>{% endif %}
+          {% include 'pfe/_alerte_exclusion.html' %}
           <div class="row g-3">
             <div class="col-md-6">
               <label class="form-label" for="{{ form.matricule.id_for_label }}">{{ form.matricule.label }} <span class="text-danger">*</span></label>
@@ -141,8 +142,8 @@
       <div class="alert alert-success d-flex flex-wrap align-items-center gap-2">
         <i class="bi bi-check-circle-fill"></i>
         <span class="me-auto">Relevé n° <strong>{{ imprimer.num_ref }}</strong> : {{ imprimer.etudiant.prenom }} {{ imprimer.etudiant.nom }}, {{ imprimer.get_type_display|lower }} {% if imprimer.type == 'E' %}({{ imprimer.filiere }}){% elif imprimer.semestre %}({{ imprimer.semestre.nom }}, {{ imprimer.session }}){% else %}({{ imprimer.licence }}, {{ imprimer.session }}){% endif %}.</span>
-        <a class="btn btn-sm btn-primary" target="_blank" href="{% url 'releve_pdf' imprimer.pk %}"><i class="bi bi-printer"></i> Imprimer</a>
-        {% if user.is_superuser %}<a class="btn btn-sm btn-or-plein" target="_blank" href="{% url 'releve_pdf' imprimer.pk %}?signature=1"><i class="bi bi-pen"></i> Avec cachet et signature</a>{% endif %}
+        <a class="btn btn-sm btn-primary" target="_blank" href="{% url 'releve_pdf' imprimer.pk %}{% if forcer %}?forcer=1{% endif %}"><i class="bi bi-printer"></i> Imprimer</a>
+        {% if user.is_superuser %}<a class="btn btn-sm btn-or-plein" target="_blank" href="{% url 'releve_pdf' imprimer.pk %}?signature=1{% if forcer %}&amp;forcer=1{% endif %}"><i class="bi bi-pen"></i> Avec cachet et signature</a>{% endif %}
       </div>
     {% endif %}
     <div class="card carte-gped liste">

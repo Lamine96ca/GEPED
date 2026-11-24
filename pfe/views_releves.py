@@ -47,11 +47,15 @@ def releves(request):
     # Formulaire « Nouveau relevé » : enregistre (ou reprend) le relevé, puis propose de l'imprimer
     profil = get_profil(request)
     masters = _masters(request)
+    exclusions_form = []
     if request.method == 'POST':
         form = ReleveForm(request.POST)
         if form.is_valid() and masters is not None and form.cible['filiere'].pk not in masters:
             form.add_error(None, HORS_MASTER)
         if form.is_valid():
+            from .exclusions import exclusions_du_document
+            exclusions_form = exclusions_du_document(request, form.cible['etudiant'], form.cible['filiere'].pk)
+        if form.is_valid() and not exclusions_form:
             releve, cree = form.save()
             e = releve.etudiant
             if cree:
@@ -59,7 +63,8 @@ def releves(request):
             else:
                 messages.info(request, f"Ce relevé a déjà été délivré à {e.prenom} {e.nom} : n° {releve.num_ref} "
                                        f"(même numéro, notes à jour à l'impression).")
-            return redirect(f"{reverse('releves')}?etudiant={e.pk}&imprimer={releve.pk}")
+            forcer = '&forcer=1' if request.POST.get('forcer') == '1' else ''
+            return redirect(f"{reverse('releves')}?etudiant={e.pk}&imprimer={releve.pk}{forcer}")
     else:
         initial = {}
         if _entier(request.GET.get('etudiant')):
@@ -125,7 +130,8 @@ def releves(request):
         'programmes': programmes, 'page': page, 'sessions': sessions, 'session_id': session_id,
         'prochaine_ref': ReleveNote.prochaine_reference(master=masters is not None),
         'ref_aussi_master': masters is None, 'imprimer': imprimer, 'actif': 'releves',
-        'exclusions_etudiant': exclusions_etudiant,
+        'exclusions_etudiant': exclusions_etudiant, 'exclusions_form': exclusions_form,
+        'forcer': request.GET.get('forcer') == '1',
         'semestres_par_licence': {str(s.pk): str(s.licence_id) for s in Semestre.objects.all()},
     })
 

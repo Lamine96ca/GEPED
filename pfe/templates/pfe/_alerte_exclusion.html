@@ -1,0 +1,18 @@
+{# Avant d'enregistrer un document pédagogique : l'étudiant est exclu du programme. `exclusions_form` : exclusions en vigueur #}
+{% if exclusions_form %}
+  <div class="alert alert-danger py-3 small" role="alert">
+    <div class="d-flex gap-2 align-items-start">
+      <i class="bi bi-slash-circle fs-5"></i>
+      <div>
+        {% with e=exclusions_form.0.etudiant %}
+        <strong>{{ e.prenom }} {{ e.nom }} est exclu{% if e.sexe == 'F' %}e{% endif %} {% if exclusions_form|length == 1 %}du programme {{ exclusions_form.0.filiere }}{% else %}de plusieurs programmes{% endif %}.</strong>
+        {% endwith %}
+        {% for x in exclusions_form %}
+          <div>{{ x.filiere }} · {{ x.get_motif_display }} · depuis le {{ x.date|date:"d/m/Y" }}{% if x.details %} · {{ x.details|truncatechars:120 }}{% endif %}</div>
+        {% endfor %}
+        <div class="mt-2">Le document n'est pas enregistré. Un document pédagogique ne devrait normalement pas être délivré à un étudiant exclu ; vous pouvez quand même l'enregistrer.</div>
+        <button class="btn btn-sm btn-danger mt-2" name="forcer" value="1"><i class="bi bi-exclamation-triangle"></i> Enregistrer quand même</button>
+      </div>
+    </div>
+  </div>
+{% endif %}
