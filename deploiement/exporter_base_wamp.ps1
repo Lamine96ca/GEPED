@@ -1,4 +1,4 @@
-# gePed — export de la base locale (WAMP) pour l'importer chez o2switch (phpMyAdmin ou SSH).
+# GePed — export de la base locale (WAMP) pour l'importer chez o2switch (phpMyAdmin ou SSH).
 # Dans PowerShell, depuis le dossier du projet :   powershell -File deploiement\exporter_base_wamp.ps1
 # Produit sauvegardes\pfe2_pour_o2switch_<date>.sql (fichier exclu de Git : il contient les données des étudiants).
 $ErrorActionPreference = 'Stop'

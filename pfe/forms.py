@@ -316,7 +316,7 @@ class PersonnelForm(BootstrapMixin, forms.ModelForm):
         ajoutes = {s.pk for s in services} - avant
         if ajoutes & self.services_scolarite and not self.editeur.is_superuser:
             raise forms.ValidationError("Seul un super utilisateur peut rattacher quelqu'un au Service Scolarité "
-                                        "(droits complets sur gePed).")
+                                        "(droits complets sur GePed).")
         return services
 
     def clean_chef(self):
@@ -458,7 +458,7 @@ class EnseignantForm(BootstrapMixin, forms.ModelForm):
     def clean(self):
         d = super().clean()
         if self.compte_existant is not None and not d.get('rattacher'):
-            self.add_error('rattacher', "Cette adresse appartient déjà à un compte gePed : cochez la case pour lui "
+            self.add_error('rattacher', "Cette adresse appartient déjà à un compte GePed : cochez la case pour lui "
                                         "rattacher la fiche enseignant (un seul compte par personne).")
         return d
 
@@ -584,7 +584,7 @@ class AttestationInscriptionForm(BootstrapMixin, forms.ModelForm):
     """
     Attestation d'inscription (modèle Attestation) : on saisit le matricule et la licence ;
     la session et le programme viennent de l'inscription de l'étudiant à cette licence.
-    Le n° de référence, la date, le type et la session en cours sont fixés par gePed.
+    Le n° de référence, la date, le type et la session en cours sont fixés par GePed.
     Sert aussi à l'attestation de niveau (même saisie) : voir AttestationNiveauForm.
     """
     TYPE = Attestation.INSCRIPTION
@@ -1066,8 +1066,8 @@ class ImportNotesForm(ImportMatieresForm):
     """
     pdf_enseignant = forms.FileField(label="PDF de l'enseignant (fiche de notes signée)", required=False,
                                      widget=forms.ClearableFileInput(attrs={'accept': '.pdf,application/pdf'}))
-    code_fiche = forms.CharField(label='Code de contrôle (fiche gePed)', required=False, max_length=12,
-                                 help_text="Pour une fiche de notes téléchargée dans gePed : le code imprimé sous le "
+    code_fiche = forms.CharField(label='Code de contrôle (fiche GePed)', required=False, max_length=12,
+                                 help_text="Pour une fiche de notes téléchargée dans GePed : le code imprimé sous le "
                                            "tableau de la fiche signée.",
                                  widget=forms.TextInput(attrs={'placeholder': 'Ex. 482913', 'inputmode': 'numeric',
                                                                'autocomplete': 'off'}))

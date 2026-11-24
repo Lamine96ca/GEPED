@@ -123,7 +123,7 @@ def pdf_fiche_inscription(inscription, photo_privee=None):
     c = Canvas(flux, pagesize=A4)
     titre = titre_fiche(inscription.licence)
     c.setTitle(f"{titre.title()} – {e.prenom} {e.nom}")
-    c.setAuthor('gePed – IST de Mamou')
+    c.setAuthor('GePed – IST de Mamou')
 
     # En-tête : le même que sur les relevés de notes
     from .signataires import signataire_inscription
@@ -221,7 +221,7 @@ def pdf_fiche_inscription(inscription, photo_privee=None):
     # Bas de page
     c.setFont('Helvetica', 7)
     c.setFillColorRGB(0.5, 0.5, 0.5)
-    c.drawString(G, 26, 'gePed · IST de Mamou')
+    c.drawString(G, 26, 'GePed · IST de Mamou')
     c.drawRightString(D, 26, f"{e.matricule or ''} · {inscription.session.annee}")
     c.showPage()
     c.save()

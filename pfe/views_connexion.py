@@ -71,7 +71,7 @@ def _envoyer_code(request, user, email):
     contexte = {'user': user, 'code': code, 'minutes': _minutes(), 'protocol': request.scheme,
                 'domain': request.get_host()}
     message = EmailMultiAlternatives(
-        subject=f'gePed : votre code de connexion {code}',
+        subject=f'GePed : votre code de connexion {code}',
         body=render_to_string('pfe/emails/code_connexion.txt', contexte),
         to=[email])
     message.attach_alternative(render_to_string('pfe/emails/code_connexion.html', contexte), 'text/html')
@@ -182,7 +182,7 @@ def recommencer_connexion(request):
 
 
 def admin_vers_connexion(request):
-    """La page de connexion de l'administration Django passerait outre le code : on la renvoie vers celle de gePed."""
+    """La page de connexion de l'administration Django passerait outre le code : on la renvoie vers celle de GePed."""
     from urllib.parse import urlencode
     suivant = request.GET.get('next') or reverse('admin:index')
     return redirect(f"{reverse('login')}?{urlencode({'next': suivant})}")

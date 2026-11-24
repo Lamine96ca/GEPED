@@ -1218,7 +1218,7 @@ class Enseignant(models.Model):
     @property
     def compte_existant(self):
         """
-        Vrai si la personne avait DÉJÀ un compte gePed (membre du personnel…) quand on l'a enregistrée comme enseignant :
+        Vrai si la personne avait DÉJÀ un compte GePed (membre du personnel…) quand on l'a enregistrée comme enseignant :
         la fiche a été rattachée à ce compte, il ne lui en faut pas d'autre. Faux : compte créé pour l'enseignant seul.
         """
         from datetime import timedelta

@@ -1,5 +1,5 @@
 /*
- * gePed — cadre de signature (espace étudiant) : l'étudiant signe au doigt ou à la souris.
+ * GePed — cadre de signature (espace étudiant) : l'étudiant signe au doigt ou à la souris.
  * Le tracé est copié, à chaque trait, dans le champ caché [data-signature-valeur] (image PNG) ;
  * le serveur la vérifie (pas vide), la rogne et l'enregistre (voir forms.preparer_signature).
  * Bloc attendu : [data-signature] contenant un <canvas>, un bouton [data-signature-effacer]

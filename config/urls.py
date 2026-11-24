@@ -7,7 +7,7 @@ from pfe.views import media_protege
 from pfe import views_connexion, views_espace
 
 urlpatterns = [
-    # La connexion de l'administration Django passe par celle de gePed (code par e-mail)
+    # La connexion de l'administration Django passe par celle de GePed (code par e-mail)
     path('django-admin/login/', views_connexion.admin_vers_connexion),
     path('django-admin/', admin.site.urls),
     # Espace étudiant public (sans compte) : inscription et réinscription en ligne

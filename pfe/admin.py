@@ -3,8 +3,8 @@ from django.contrib import admin
 from .models import (Licence, Personnel, Promotion, Promotion_Licence_Session, ReglageAffichage, Semestre, Service,
                      Session)
 
-admin.site.site_header = "gePed · Paramétrage"
-admin.site.site_title = "gePed"
+admin.site.site_header = "GePed · Paramétrage"
+admin.site.site_title = "GePed"
 
 
 @admin.register(Service)

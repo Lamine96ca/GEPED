@@ -1,5 +1,5 @@
 /*
- * gePed — confort sur une connexion faible ou instable (chargé sur toutes les pages) :
+ * GePed — confort sur une connexion faible ou instable (chargé sur toutes les pages) :
  *  1. barre de progression en haut de l'écran pendant le chargement d'une page (après 0,3 s) ;
  *     au bout de 8 s, message « Connexion lente, merci de patienter… » ;
  *  2. boutons protégés contre le double clic : après l'envoi d'un formulaire, ses boutons se grisent

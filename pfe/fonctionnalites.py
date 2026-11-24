@@ -4,7 +4,7 @@ Recherche des fonctionnalités (champ « Rechercher une fonctionnalité » du ba
 Catalogue : une ligne par fonctionnalité (rubrique, titre, explication, mots-clés, page, icône, droit).
 Le droit reprend celui de la vue (décorateurs de pfe/roles.py) : chacun ne reçoit que les pages
 qu'il peut ouvrir. Le filtrage du texte tapé se fait ensuite dans le navigateur (pfe/js/gped-recherche.js).
-Une nouvelle page dans gePed = une ligne ici (le test vérifie que chaque rôle peut ouvrir ce qu'il voit).
+Une nouvelle page dans GePed = une ligne ici (le test vérifie que chaque rôle peut ouvrir ce qu'il voit).
 """
 from django.urls import reverse
 
@@ -266,7 +266,7 @@ CATALOGUE = [
     ('Administration', "Réglages d'affichage", "Nombre de relevés délivrés affichés dans la liste.",
      ADMIN + " affichage nombre relevés liste", 'admin:pfe_reglageaffichage_changelist', (), 'bi-sliders',
      _admin('reglageaffichage')),
-    ('Administration', 'Espace administration', "Toutes les tables de gePed (administration Django).",
+    ('Administration', 'Espace administration', "Toutes les tables de GePed (administration Django).",
      ADMIN + ' admin django tables', 'admin:index', (), 'bi-sliders', _staff),
 ]
 

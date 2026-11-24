@@ -12,7 +12,7 @@
   <div class="me-auto" style="min-width:0">
     <div class="surtitre">{{ profil.libelle }}{% if profil.a_perimetre %} · {{ profil.structure }}{% endif %}</div>
     <h2>Bonjour {% if profil.personnel %}{{ profil.personnel.prenom }}{% else %}{{ user.first_name|default:user.username }}{% endif %}</h2>
-    <p>Bienvenue sur la plateforme de gestion pédagogique gePed.</p>
+    <p>Bienvenue sur la plateforme de gestion pédagogique GePed.</p>
     {% if session %}<span class="puce"><i class="bi bi-calendar3"></i> Session {{ session }}</span>{% endif %}
     <span class="puce"><i class="bi bi-people"></i> {{ total|intcomma }} étudiant{{ total|pluralize }}</span>
   </div>
@@ -32,7 +32,7 @@
     <span class="tuile {% if guide_nouveau %}tuile-orange{% else %}tuile-bleu{% endif %}"><i class="bi bi-book"></i></span>
     <div class="me-auto" style="min-width:0">
       <div class="fw-semibold" style="color:var(--encre)">Guide d'utilisation · {{ guide.get_public_display }}{% if guide_nouveau %} <span class="pill pill-attention ms-1">Nouvelle version</span>{% endif %}</div>
-      <div class="small text-secondary">Version du {{ guide.date|date:"d/m/Y" }} · tout ce que vous pouvez faire dans gePed, pas à pas, avec des captures d'écran.</div>
+      <div class="small text-secondary">Version du {{ guide.date|date:"d/m/Y" }} · tout ce que vous pouvez faire dans GePed, pas à pas, avec des captures d'écran.</div>
       {% if guide_nouveau and guide.nouveautes %}<div class="small mt-2"><strong>Nouveautés :</strong><div style="white-space:pre-line">{{ guide.nouveautes }}</div></div>{% endif %}
     </div>
     <a class="btn {% if guide_nouveau %}btn-or-plein{% else %}btn-primary{% endif %}" href="{% url 'guide_ouvrir' %}" target="_blank" rel="noopener" {% if guide_nouveau %}onclick="setTimeout(function(){ location.reload(); }, 1500)"{% endif %}><i class="bi bi-file-earmark-pdf"></i> Ouvrir le guide (PDF)</a>

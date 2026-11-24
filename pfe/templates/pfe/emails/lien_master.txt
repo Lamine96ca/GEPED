@@ -13,4 +13,4 @@ Vous avez demandé un lien d'inscription en Master{% if session %} pour {{ sessi
 {% endif %}
 Si vous n'êtes pas à l'origine de cette demande, ignorez ce message.
 
-gePed · Institut Supérieur de Technologie de Mamou · {{ site }}
+GePed · Institut Supérieur de Technologie de Mamou · {{ site }}

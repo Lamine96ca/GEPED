@@ -1,5 +1,5 @@
 """
-Données de démonstration gePed (développement uniquement).
+Données de démonstration GePed (développement uniquement).
 
     python manage.py gped_demo --etudiants 10000
 

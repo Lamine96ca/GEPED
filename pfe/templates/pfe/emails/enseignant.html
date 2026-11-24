@@ -5,7 +5,7 @@
     <tr>
       <td style="background:#41627c;padding:16px 24px;color:#ffffff;font-size:20px;font-weight:bold;">
         <img src="{{ logo }}" width="44" height="44" alt="IST de Mamou"
-             style="vertical-align:middle;background:#ffffff;border-radius:50%;padding:3px;margin-right:10px;">gePed
+             style="vertical-align:middle;background:#ffffff;border-radius:50%;padding:3px;margin-right:10px;">GePed
         <span style="font-size:13px;font-weight:normal;color:#dbe4ec;"> · Direction des Études</span>
       </td>
     </tr>
@@ -13,17 +13,17 @@
       <td style="padding:24px;font-size:15px;line-height:1.55;">
         <p style="margin:0 0 12px;">Bonjour {{ enseignant }},</p>
         {% if quoi == 'reinitialiser' %}
-          <p style="margin:0 0 12px;">{{ expediteur|capfirst }} vous envoie un lien pour choisir un nouveau mot de passe gePed.</p>
+          <p style="margin:0 0 12px;">{{ expediteur|capfirst }} vous envoie un lien pour choisir un nouveau mot de passe GePed.</p>
         {% else %}
           <p style="margin:0 0 12px;">{{ expediteur|capfirst }} vous a enregistré(e) comme <strong>enseignant(e)</strong> du département <strong>{{ enseignant.departement.nom }}</strong>.</p>
           {% if existant %}
             <div style="margin:16px 0;padding:14px 16px;border-left:4px solid #c9a227;background:#fdf8e8;border-radius:6px;">
-              <strong>Vous avez déjà un compte gePed</strong>{% if personnel %} ({{ personnel.fonc }}){% endif %}.<br>
+              <strong>Vous avez déjà un compte GePed</strong>{% if personnel %} ({{ personnel.fonc }}){% endif %}.<br>
               Votre fiche enseignant a été rattachée à <strong>ce compte</strong> : vous n'avez pas besoin d'un autre compte et il ne sert à rien d'en créer un.
               Utilisez le même identifiant et le même mot de passe : l'espace enseignant s'ajoute à votre espace habituel.
             </div>
           {% else %}
-            <p style="margin:0 0 12px;">Un compte <strong>gePed</strong> (gestion pédagogique de l'Institut Supérieur de Technologie de Mamou) a été créé pour vous.</p>
+            <p style="margin:0 0 12px;">Un compte <strong>GePed</strong> (gestion pédagogique de l'Institut Supérieur de Technologie de Mamou) a été créé pour vous.</p>
           {% endif %}
         {% endif %}
         <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;margin:16px 0;background:#f4f7fa;border-radius:8px;">
@@ -33,7 +33,7 @@
         </table>
         <p style="margin:0 0 12px;">{% if quoi == 'activation' %}{% if existant %}Votre compte n'est pas encore activé : choisissez votre mot de passe <strong>une seule fois</strong>, il servira pour toutes vos fonctions.{% else %}Pour activer votre compte, choisissez votre mot de passe :{% endif %}{% elif quoi == 'reinitialiser' %}Cliquez sur le bouton ci-dessous :{% else %}Connectez-vous comme d'habitude :{% endif %}</p>
         <p style="margin:24px 0;text-align:center;">
-          <a href="{{ lien }}" style="background:#41627c;color:#ffffff;text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:bold;display:inline-block;">{% if quoi == 'activation' %}Activer mon compte{% elif quoi == 'reinitialiser' %}Choisir un nouveau mot de passe{% else %}Me connecter à gePed{% endif %}</a>
+          <a href="{{ lien }}" style="background:#41627c;color:#ffffff;text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:bold;display:inline-block;">{% if quoi == 'activation' %}Activer mon compte{% elif quoi == 'reinitialiser' %}Choisir un nouveau mot de passe{% else %}Me connecter à GePed{% endif %}</a>
         </p>
         <p style="margin:0 0 12px;">Vous vous connectez sur <a href="{{ site }}" style="color:#41627c;">{{ site }}</a> avec votre identifiant ou votre adresse e-mail.</p>
         <p style="margin:0 0 12px;color:#6c7a87;font-size:13px;">{% if quoi == 'acces' %}Mot de passe oublié ? Utilisez « Mot de passe oublié » sur la page de connexion.{% else %}Ce lien est personnel, valable {{ validite }} et utilisable une seule fois. Ne le transférez à personne.{% endif %} Si vous n'attendiez pas ce message, ignorez-le ou prévenez {{ expediteur }}.</p>

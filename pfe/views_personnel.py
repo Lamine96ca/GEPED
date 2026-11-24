@@ -173,5 +173,5 @@ class ActivationCompte(auth_views.PasswordResetConfirmView):
 
     def form_valid(self, form):
         reponse = super().form_valid(form)
-        messages.success(self.request, "Bienvenue sur gePed : votre compte est activé.")
+        messages.success(self.request, "Bienvenue sur GePed : votre compte est activé.")
         return reponse

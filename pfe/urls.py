@@ -103,7 +103,7 @@ urlpatterns = [
     path('guide/', views_guides.guide_ouvrir, name='guide_ouvrir'),
     path('scolarite/guides/', views_guides.guides_gestion, name='guides_gestion'),
     path('scolarite/guides/<int:pk>/', views_guides.guide_version, name='guide_version'),
-    # Public (QR code). <path:...> : même un code trafiqué contenant « / » arrive sur la page gePed
+    # Public (QR code). <path:...> : même un code trafiqué contenant « / » arrive sur la page GePed
     path('verifier/<path:code>/', views.verifier_document, name='verifier_document'),
     path('scolarite/attestations/', views.attestations, name='attestations'),
     path('scolarite/attestations/<int:pk>/supprimer/', views.attestation_supprimer, name='attestation_supprimer'),

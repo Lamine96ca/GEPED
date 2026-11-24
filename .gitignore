@@ -1,4 +1,4 @@
-# gePed — fichiers qui ne doivent JAMAIS aller sur Git (même dans un dépôt privé)
+# GePed — fichiers qui ne doivent JAMAIS aller sur Git (même dans un dépôt privé)
 
 # Environnement Python (se réinstalle avec requirements.txt)
 env/

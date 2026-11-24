@@ -423,7 +423,7 @@ class GpedTests(TestCase):
             self.assertContains(r, attendu)
         self.assertNotContains(r, 'e0@t.local')                           # rien d'autre sur l'étudiant
 
-        # Code absent de la base (inventé, trafiqué, trop long, injection…) : page gePed « non reconnu »
+        # Code absent de la base (inventé, trafiqué, trop long, injection…) : page GePed « non reconnu »
         for faux in ['CodeInventeABCDEFGHIJ12', 'faux-code', 'x', 'A' * 300, '<script>alert(1)</script>',
                      "1' OR '1'='1", 'a/b/c', a.code_verification[:-1] + ('A' if a.code_verification[-1] != 'A' else 'B')]:
             r = self.client.get('/verifier/' + quote(faux, safe='') + '/')
@@ -508,7 +508,7 @@ class GpedTests(TestCase):
             self.assertIn(attendu, messages)
         self.assertEqual([n for n, _ in rapport.erreurs], [8, 9, 10, 11, 12, 13, 14])
         # Doublons (en base ou répétés dans le fichier) : ignorés, ce ne sont pas des erreurs
-        self.assertEqual(rapport.doublons, [(5, 'M0 · Licence 1 · 2025-2026 : déjà inscrit(e) dans gePed'),
+        self.assertEqual(rapport.doublons, [(5, 'M0 · Licence 1 · 2025-2026 : déjà inscrit(e) dans GePed'),
                                             (6, '2601 · Licence 1 · 2023-2024 : déjà présente à la ligne 2 du fichier')])
         self.assertFalse(Etudiant.objects.filter(matricule='2601').exists())       # simulation : rien d'écrit
 
@@ -3158,7 +3158,7 @@ class GpedTests(TestCase):
         # E-mail d'invitation : identifiant, rôle, lien d'activation
         self.assertEqual(len(mail.outbox), 1)
         m = mail.outbox[0]
-        self.assertEqual((m.to, m.subject), (['mariam@ist.gn'], 'Votre compte gePed a été créé'))
+        self.assertEqual((m.to, m.subject), (['mariam@ist.gn'], 'Votre compte GePed a été créé'))
         self.assertIn('mariam.camara', m.body)
         self.assertIn('Directeur de programme', m.body)
         lien = re.search(r'https?://\S+/compte/activer/\S+/', m.body).group(0)
@@ -4051,7 +4051,7 @@ class GpedTests(TestCase):
         ws = wb.active
         self.assertEqual([c.value for c in ws[10]][:13], ['N°', 'Matricule', 'Prénom', 'Nom', 'Téléphone', 'Matière',
                                                           'Session', 'Contrôle', 'TP', 'Examen', 'Moyenne',
-                                                          'Rattrapage', 'Clé gePed'])
+                                                          'Rattrapage', 'Clé GePed'])
         self.assertEqual([ws.cell(row=11, column=k).value for k in (6, 7)], ['Algorithmique', '2025-2026'])
         self.assertTrue(ws.column_dimensions['M'].hidden)
         self.assertTrue(ws.protection.sheet)
@@ -4640,7 +4640,7 @@ class EnseignantsTests(TestCase):
         self.connecter('dge')
         nb_comptes = User.objects.count()
         r = self.client.post(reverse('enseignant_creer'), self.fiche(email='INFO@t.local'))   # e-mail du compte « info »
-        self.assertContains(r, 'Cette adresse appartient déjà à un compte gePed')
+        self.assertContains(r, 'Cette adresse appartient déjà à un compte GePed')
         self.assertFalse(Enseignant.objects.exists())
         r = self.client.post(reverse('enseignant_creer'), self.fiche(email='info@t.local', rattacher='on'))
         self.assertRedirects(r, reverse('enseignants_liste'))
@@ -4715,7 +4715,7 @@ class EnseignantsTests(TestCase):
         seul = Enseignant.objects.get(email='aissatou.barry@exemple.org')
         self.assertFalse(seul.compte_existant)
         m = mail.outbox[-1]
-        self.assertEqual(m.subject, "gePed : votre compte enseignant a été créé")
+        self.assertEqual(m.subject, "GePed : votre compte enseignant a été créé")
         self.assertIn('La Direction des Études vous a enregistré(e)', m.body)
         self.assertIn('a été créé pour vous', m.body)
         self.assertIn('/compte/activer/', m.body)
@@ -4728,11 +4728,11 @@ class EnseignantsTests(TestCase):
         self.assertTrue(existant.compte_existant)
         self.assertContains(r, 'inutile d&#x27;en créer un autre')
         m = mail.outbox[-1]
-        self.assertEqual((m.to, m.subject), (['info@t.local'], "gePed : votre accès enseignant, sur votre compte existant"))
+        self.assertEqual((m.to, m.subject), (['info@t.local'], "GePed : votre accès enseignant, sur votre compte existant"))
         self.assertIn('VOUS AVEZ DÉJÀ UN COMPTE', m.body)
         self.assertIn('il ne sert à rien d\'en créer un', m.body)
         self.assertNotIn('/compte/activer/', m.body)
-        self.assertIn('Vous avez déjà un compte gePed', m.alternatives[0][0])
+        self.assertIn('Vous avez déjà un compte GePed', m.alternatives[0][0])
         # La liste distingue les deux et propose « Informer » pour le compte existant
         r = self.client.get(reverse('enseignants_liste'))
         self.assertContains(r, 'Compte existant', count=1)

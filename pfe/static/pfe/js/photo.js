@@ -1,5 +1,5 @@
 /*
- * Fenêtre photo gePed (templates/pfe/_modal_photo.html)
+ * Fenêtre photo GePed (templates/pfe/_modal_photo.html)
  *  - « Prendre une photo » : appareil photo natif sur téléphone ; webcam en direct sur PC
  *    (la webcam exige HTTPS ou localhost : sinon, message et chargement de fichier) ;
  *  - « Charger une photo » : galerie ou fichier ;

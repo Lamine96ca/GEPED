@@ -1,5 +1,5 @@
 """
-Attestations gePed (PDF, A4 paysage) avec ReportLab.
+Attestations GePed (PDF, A4 paysage) avec ReportLab.
 
 Toutes les attestations partagent le même CADRE (bordures, filigrane, logo, en-tête officiel,
 coordonnées, n° de référence, date, mention de bas de page, signature). Chaque type ne
@@ -236,7 +236,7 @@ def generer_pdf(attestation, titre, paragraphes, style=STYLE_TEXTE, url_verifica
     from reportlab.pdfgen.canvas import Canvas
     c = Canvas(flux, pagesize=(LARGEUR, HAUTEUR))
     c.setTitle(f"{' '.join(lignes_titre).title()} – {attestation.num_ref}")
-    c.setAuthor('gePed – IST de Mamou')
+    c.setAuthor('GePed – IST de Mamou')
     dessiner_cadre(c, attestation, url_verification)
     for i, ligne in enumerate(lignes_titre):
         _centre(c, ligne, 206.1 + i * INTERLIGNE_TITRE, 'Times-Bold', 20, 720)
@@ -463,7 +463,7 @@ def pdf_fin_etudes(attestation, url_verification=None, cachet_signature=False):
     from reportlab.pdfgen.canvas import Canvas
     c = Canvas(flux, pagesize=(LARGEUR, HAUTEUR))
     c.setTitle(f"{titre.title()} – {attestation.num_ref}")
-    c.setAuthor('gePed – IST de Mamou')
+    c.setAuthor('GePed – IST de Mamou')
     dessiner_fond(c, haut_filigrane=232)
 
     # En-tête des relevés, en plus grand (bandeau plus large : document solennel)

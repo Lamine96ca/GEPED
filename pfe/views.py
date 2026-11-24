@@ -404,7 +404,7 @@ def piece_supprimer(request, pk):
 def media_protege(request, chemin):
     """
     Fichiers déposés (photos des étudiants et du personnel) : jamais publics. Visibles par le personnel
-    ayant un rôle gePed ; un compte sans rôle (étudiant) ne voit que SA propre photo.
+    ayant un rôle GePed ; un compte sans rôle (étudiant) ne voit que SA propre photo.
     """
     import mimetypes
     from django.http import FileResponse

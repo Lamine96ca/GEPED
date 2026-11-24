@@ -1,9 +1,9 @@
-# Héberger gePed chez o2switch
+# Héberger GePed chez o2switch
 
-Guide pas à pas pour mettre gePed en ligne sur un hébergement **o2switch** (cPanel), puis le mettre à jour.
+Guide pas à pas pour mettre GePed en ligne sur un hébergement **o2switch** (cPanel), puis le mettre à jour.
 Exemples avec le domaine `geped-ist.org` et l'identifiant cPanel `moncompte` : remplacez-les par les vôtres.
 
-## Ce que gePed utilise chez o2switch
+## Ce que GePed utilise chez o2switch
 
 | Besoin | Outil o2switch (cPanel) |
 |---|---|
@@ -21,7 +21,7 @@ Tous les réglages se font dans un fichier **`.env`** sur le serveur (modèle : 
 
 ## 1. Préparer le domaine et le HTTPS
 
-1. cPanel → **Domaines** : vérifiez que `geped-ist.org` est bien rattaché au compte. Son DNS doit pointer vers le serveur du compte (ici `foudre.o2switch.net`). Le dossier public du domaine n'a pas à être modifié : c'est Setup Python App qui relie le domaine à gePed.
+1. cPanel → **Domaines** : vérifiez que `geped-ist.org` est bien rattaché au compte. Son DNS doit pointer vers le serveur du compte (ici `foudre.o2switch.net`). Le dossier public du domaine n'a pas à être modifié : c'est Setup Python App qui relie le domaine à GePed.
 2. cPanel → **SSL/TLS Status** : lancez **AutoSSL** pour `geped-ist.org` **et** `www.geped-ist.org`, et attendez que le cadenas soit vert.
 
 ## 2. Créer la base MySQL
@@ -41,7 +41,7 @@ Tous les réglages se font dans un fichier **`.env`** sur le serveur (modèle : 
 
 1. cPanel → **Comptes de messagerie** : créez `no-reply@geped-ist.org`.
 2. Ouvrez **Connecter des appareils** pour cette boîte, et notez :
-   - le **serveur SMTP** : prenez le **nom du serveur o2switch** indiqué dans les « paramètres SSL/TLS sécurisés », par exemple `foudre.o2switch.net` (il dépend du serveur où est votre compte). N'utilisez pas `mail.geped-ist.org` : son certificat SSL n'est pas valable pour ce nom, et gePed refuse alors la connexion (« Hostname mismatch ») ;
+   - le **serveur SMTP** : prenez le **nom du serveur o2switch** indiqué dans les « paramètres SSL/TLS sécurisés », par exemple `foudre.o2switch.net` (il dépend du serveur où est votre compte). N'utilisez pas `mail.geped-ist.org` : son certificat SSL n'est pas valable pour ce nom, et GePed refuse alors la connexion (« Hostname mismatch ») ;
    - le **port 465 (SSL)** ;
    - l'identifiant (l'adresse complète) et le mot de passe.
 3. cPanel → **Délivrabilité des e-mails** : vérifiez que **SPF** et **DKIM** sont « valides ». Corrigez-les si besoin : c'est ce qui évite que les invitations arrivent dans les indésirables.
@@ -73,7 +73,7 @@ Le dépôt GitHub est privé : le serveur a besoin d'une **clé de déploiement*
    cat ~/.ssh/id_ed25519.pub
    ```
 2. GitHub → dépôt `GEPED` → **Settings → Deploy keys → Add deploy key** : collez cette ligne, **sans** cocher « Allow write access ».
-3. Toujours dans le Terminal, placez le code **dans `pfe2`** (cPanel y a mis un `passenger_wsgi.py` de démonstration : il est remplacé par celui de gePed) :
+3. Toujours dans le Terminal, placez le code **dans `pfe2`** (cPanel y a mis un `passenger_wsgi.py` de démonstration : il est remplacé par celui de GePed) :
    ```bash
    cd ~/pfe2
    git init -b main
@@ -108,7 +108,7 @@ Collez la clé affichée dans `GPED_SECRET_KEY`. Renseignez ensuite :
 - les e-mails : `GPED_EMAIL_*` ;
 - le domaine : `GPED_ALLOWED_HOSTS` et `GPED_URL_PUBLIQUE`.
 
-Les fichiers CSS, JS et images sont servis par gePed lui-même (WhiteNoise), et les photos des étudiants aussi, aux seuls utilisateurs connectés. **Aucun dossier à créer dans le dossier public du domaine.**
+Les fichiers CSS, JS et images sont servis par GePed lui-même (WhiteNoise), et les photos des étudiants aussi, aux seuls utilisateurs connectés. **Aucun dossier à créer dans le dossier public du domaine.**
 
 Puis :
 
@@ -153,7 +153,7 @@ Les images du cadre des attestations et l'en-tête des relevés sont déjà dans
 
 Les sauvegardes (base et photos) vont dans `~/sauvegardes_geped`, hors du dossier public. Les 30 dernières sont gardées. o2switch fait aussi ses propres sauvegardes (cPanel → **JetBackup**).
 
-## 10. Mettre à jour gePed
+## 10. Mettre à jour GePed
 
 Sur le PC : `git push` (ou demandez-le à Claude). Ensuite, dans le Terminal du serveur :
 

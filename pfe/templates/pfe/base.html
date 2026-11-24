@@ -16,7 +16,7 @@
   <a href="{% url 'tableau_de_bord' %}" class="d-flex align-items-center gap-3 lien-marque text-decoration-none">
     <img src="{% static 'pfe/img/logo_ist.png' %}?v={{ version_statique }}" class="logo-ist" width="52" height="52" alt="Institut Supérieur de Technologie de Mamou">
     <span>
-      <span class="nom d-block">gePed</span>
+      <span class="nom d-block">GePed</span>
       <small>IST de Mamou · Gestion pédagogique</small>
     </span>
   </a>
@@ -205,7 +205,7 @@
         <a class="btn btn-or-plein" href="{% url 'admin:index' %}"><i class="bi bi-sliders"></i> Administration</a>
       {% endif %}
     </nav>
-    <div class="menu-pied">gePed · version {{ version_gped }}{% if en_developpement %} (dev){% endif %}</div>
+    <div class="menu-pied">GePed · version {{ version_gped }}{% if en_developpement %} (dev){% endif %}</div>
   </aside>
 
   <main class="gped-main">

@@ -3,7 +3,7 @@ Comptes du personnel : identifiant, invitation par e-mail, statut du compte.
 
 Création d'un compte : le compte est actif mais SANS mot de passe utilisable. L'utilisateur
 reçoit un e-mail avec un lien (valable 7 jours, utilisable une seule fois) pour choisir son
-mot de passe ; il accède ensuite à gePed selon les droits de ses services (voir pfe/roles.py).
+mot de passe ; il accède ensuite à GePed selon les droits de ses services (voir pfe/roles.py).
 L'invitation peut être renvoyée ; un compte peut être désactivé (il ne peut plus se connecter).
 """
 import re
@@ -110,7 +110,7 @@ def envoyer_lien(request, user, invitation=True):
         'validite': f"{VALIDITE_INVITATION_JOURS} jours" if invitation else "2 heures",
         'logo': f"{site}{settings.STATIC_URL}pfe/img/logo_ist.png",
     }
-    sujet = ("Votre compte gePed a été créé" if invitation else "gePed : réinitialisation de votre mot de passe")
+    sujet = ("Votre compte GePed a été créé" if invitation else "GePed : réinitialisation de votre mot de passe")
     message = EmailMultiAlternatives(sujet, render_to_string('pfe/emails/invitation.txt', contexte),
                                      settings.DEFAULT_FROM_EMAIL, [destinataire])
     message.attach_alternative(render_to_string('pfe/emails/invitation.html', contexte), 'text/html')
@@ -154,11 +154,11 @@ def envoyer_mail_enseignant(request, enseignant, quoi='activation'):
         'logo': f"{site}{settings.STATIC_URL}pfe/img/logo_ist.png",
     }
     if quoi == 'reinitialiser':
-        sujet = "gePed : réinitialisation de votre mot de passe"
+        sujet = "GePed : réinitialisation de votre mot de passe"
     elif existant:
-        sujet = "gePed : votre accès enseignant, sur votre compte existant"
+        sujet = "GePed : votre accès enseignant, sur votre compte existant"
     else:
-        sujet = "gePed : votre compte enseignant a été créé"
+        sujet = "GePed : votre compte enseignant a été créé"
     message = EmailMultiAlternatives(sujet, render_to_string('pfe/emails/enseignant.txt', contexte),
                                      settings.DEFAULT_FROM_EMAIL, [destinataire])
     message.attach_alternative(render_to_string('pfe/emails/enseignant.html', contexte), 'text/html')

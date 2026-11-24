@@ -1,5 +1,5 @@
 /*
- * gePed — dépôt d'une pièce du dossier (acte de naissance, bac, relevé…).
+ * GePed — dépôt d'une pièce du dossier (acte de naissance, bac, relevé…).
  * Deux façons : « Scanner » (appareil photo du téléphone ou du PC, une photo par page) ou
  * « Choisir un fichier » (PDF déjà prêt, ou photos).
  * Chaque photo passe par la fenêtre de RECADRAGE (templates/pfe/_modal_recadrage.html) : cadre libre

@@ -175,7 +175,7 @@ def pdf_sections(titre, filtres, sections, utilisateur=None, signataire=None, pa
 
     haut_premiere = 18 + (A4[0] - 2 * MARGE) * RAPPORT_BANDEAU + 30
     doc = SimpleDocTemplate(flux, pagesize=page, leftMargin=g, rightMargin=MARGE, topMargin=MARGE, bottomMargin=40,
-                            title=titre, author='gePed · IST de Mamou')
+                            title=titre, author='GePed · IST de Mamou')
     filtres = [(lib, val) for lib, val in filtres if val not in (None, '')]
     contenu = [Spacer(1, haut_premiere - MARGE + 14), Paragraph(escape(titre), _titre), Spacer(1, 4)]
     if filtres:
@@ -201,7 +201,7 @@ def pdf_sections(titre, filtres, sections, utilisateur=None, signataire=None, pa
     contenu.append(_bloc_signature(signataire, utile))
 
     qui = f" par {utilisateur.get_full_name() or utilisateur.get_username()}" if utilisateur is not None else ''
-    imprime_le = f"gePed · imprimé le {timezone.localtime():%d/%m/%Y à %H:%M}{qui}"
+    imprime_le = f"GePed · imprimé le {timezone.localtime():%d/%m/%Y à %H:%M}{qui}"
     doc.build(contenu, onFirstPage=premiere_page,
               canvasmaker=lambda *a, **k: _CanvasNumerote(*a, imprime_le=imprime_le, **k))
     return flux.getvalue()

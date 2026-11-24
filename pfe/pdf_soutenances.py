@@ -77,7 +77,7 @@ def _bas_de_page(c, doc):
     c.saveState()
     c.setFont('Helvetica', 7.5)
     c.setFillColor(colors.grey)
-    c.drawString(doc.leftMargin, 0.9 * cm, f"gePed · IST de Mamou · imprimé le {timezone.localdate():%d/%m/%Y}")
+    c.drawString(doc.leftMargin, 0.9 * cm, f"GePed · IST de Mamou · imprimé le {timezone.localdate():%d/%m/%Y}")
     c.drawRightString(doc.pagesize[0] - doc.rightMargin, 0.9 * cm, f"Page {doc.page}")
     c.restoreState()
 
@@ -89,7 +89,7 @@ def pdf_pv(projet, membres):
     flux = io.BytesIO()
     doc = SimpleDocTemplate(flux, pagesize=A4, leftMargin=1.6 * cm, rightMargin=1.6 * cm, topMargin=1.3 * cm,
                             bottomMargin=1.6 * cm, title=f"PV de soutenance – {projet.intitule}",
-                            author='gePed – IST de Mamou')
+                            author='GePed – IST de Mamou')
     largeur = A4[0] - doc.leftMargin - doc.rightMargin
     p = projet
     cycle = libelle_cycle(p.cycle, 'texte') or p.cycle or '—'
@@ -145,7 +145,7 @@ def pdf_calendrier(projets, titre=''):
     flux = io.BytesIO()
     page = landscape(A4)
     doc = SimpleDocTemplate(flux, pagesize=page, leftMargin=1.2 * cm, rightMargin=1.2 * cm, topMargin=1.1 * cm,
-                            bottomMargin=1.5 * cm, title='Calendrier des soutenances', author='gePed – IST de Mamou')
+                            bottomMargin=1.5 * cm, title='Calendrier des soutenances', author='GePed – IST de Mamou')
     largeur = page[0] - doc.leftMargin - doc.rightMargin
     histoire = [_entete(largeur), Spacer(1, 6), Paragraph('CALENDRIER DES SOUTENANCES', TITRE)]
     if titre:

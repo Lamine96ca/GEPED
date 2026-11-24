@@ -1,5 +1,5 @@
 """
-Rôles gePed et périmètre de visibilité des étudiants.
+Rôles GePed et périmètre de visibilité des étudiants.
 
 - Scolarité   : superutilisateur, ou personnel rattaché au service de la scolarité
                 (code settings.GPED_SCOLARITE_CODE ou nom dans settings.GPED_SCOLARITE_NOMS).
@@ -456,7 +456,7 @@ chef_scolarite_requis = _exige('est_chef_scolarite', "Réservé au chef de la sc
 
 
 def acces_requis(vue):
-    """L'utilisateur doit avoir un rôle gePed (scolarité, département, programme ou autre service). Un compte
+    """L'utilisateur doit avoir un rôle GePed (scolarité, département, programme ou autre service). Un compte
     seulement enseignant est conduit à son espace."""
     @wraps(vue)
     def wrapper(request, *args, **kwargs):

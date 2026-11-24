@@ -1,5 +1,5 @@
 """
-Point d'entrée de gePed chez o2switch (cPanel → « Setup Python App » → Application startup file).
+Point d'entrée de GePed chez o2switch (cPanel → « Setup Python App » → Application startup file).
 Passenger charge ce fichier et sert l'objet `application` (Django).
 Redémarrer l'application après une mise à jour : `touch tmp/restart.txt` (ou bouton « Restart »).
 """

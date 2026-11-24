@@ -66,7 +66,7 @@ def _pdf_des_pages(pages):
     from reportlab.pdfgen.canvas import Canvas
     flux = io.BytesIO()
     c = Canvas(flux, pagesize=A4)
-    c.setAuthor('gePed – IST de Mamou')
+    c.setAuthor('GePed – IST de Mamou')
     for octets, l, h in pages:
         format_page = landscape(A4) if l > h else A4
         c.setPageSize(format_page)

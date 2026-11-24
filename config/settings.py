@@ -101,7 +101,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
-    # CSS, JS et images servis par gePed lui-même (aucun réglage Apache nécessaire chez l'hébergeur)
+    # CSS, JS et images servis par GePed lui-même (aucun réglage Apache nécessaire chez l'hébergeur)
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -205,7 +205,7 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 # CSS, JS et images : rassemblés par « collectstatic » dans staticfiles/ et servis par WhiteNoise.
-# Photos des étudiants (media/) : servies par gePed aux SEULS utilisateurs connectés (pfe/views.py,
+# Photos des étudiants (media/) : servies par GePed aux SEULS utilisateurs connectés (pfe/views.py,
 # media_protege). Les deux dossiers sont dans le projet : rien à configurer chez l'hébergeur.
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / "staticfiles"
@@ -252,7 +252,7 @@ LOGOUT_REDIRECT_URL = 'login'
 # Production (o2switch) : une boîte e-mail du domaine, créée dans cPanel, ex. no-reply@istmamou.org :
 #   GPED_EMAIL_HOST (serveur SMTP indiqué par cPanel), GPED_EMAIL_PORT=465 et GPED_EMAIL_SSL=1
 #   (ou 587 et GPED_EMAIL_TLS=1), GPED_EMAIL_USER (l'adresse complète), GPED_EMAIL_PASSWORD,
-#   GPED_EMAIL_FROM (ex. « gePed – IST de Mamou <no-reply@istmamou.org> »).
+#   GPED_EMAIL_FROM (ex. « GePed – IST de Mamou <no-reply@istmamou.org> »).
 GPED_MAILHOG_HOST = os.environ.get('GPED_MAILHOG_HOST', 'localhost')
 GPED_MAILHOG_PORT = int(os.environ.get('GPED_MAILHOG_PORT', 1025))
 
@@ -268,7 +268,7 @@ if os.environ.get('GPED_EMAIL_HOST'):
 else:
     EMAIL_BACKEND = 'pfe.email_backend.MailHogBackend'
 EMAIL_FILE_PATH = BASE_DIR / 'emails_dev'
-DEFAULT_FROM_EMAIL = os.environ.get('GPED_EMAIL_FROM', 'gePed <no-reply@gped.local>')
+DEFAULT_FROM_EMAIL = os.environ.get('GPED_EMAIL_FROM', 'GePed <no-reply@gped.local>')
 SERVER_EMAIL = DEFAULT_FROM_EMAIL
 # Administrateurs prévenus par e-mail d'une erreur serveur (500) : GPED_ADMINS=nom@exemple.com,autre@exemple.com
 ADMINS = [(a.split('@')[0], a) for a in _liste('GPED_ADMINS')]
@@ -302,7 +302,7 @@ LOGGING = {
 # Durée de validité d'un lien « mot de passe oublié » (secondes)
 PASSWORD_RESET_TIMEOUT = 2 * 60 * 60
 
-# gePed : code du Service qui représente la Scolarité.
+# GePed : code du Service qui représente la Scolarité.
 # Tout personnel rattaché à ce service (ou superutilisateur) a les droits de la scolarité.
 GPED_SCOLARITE_CODE = 'SCOL'
 # … ou par son nom (les codes des services de l'IST valent « 0000 »)
@@ -342,7 +342,7 @@ GPED_ATTESTATION = {
 # En production : ex. GPED_URL_PUBLIQUE=https://geped.istmamou.org (sinon l'adresse de la requête).
 GPED_URL_PUBLIQUE = os.environ.get('GPED_URL_PUBLIQUE', '').rstrip('/')
 
-# Version de gePed affichée en bas du menu (1.0 : développement ; à augmenter à chaque livraison).
+# Version de GePed affichée en bas du menu (1.0 : développement ; à augmenter à chaque livraison).
 # Le rafraîchissement des CSS/JS dans les navigateurs est automatique (pfe/context_processors.py).
 GPED_VERSION = '1.0'
 

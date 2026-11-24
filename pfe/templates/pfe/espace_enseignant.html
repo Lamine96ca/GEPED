@@ -8,7 +8,7 @@
     <div class="card carte-gped">
       <div class="card-body">
         <div class="entete-carte"><span class="icone-carte"><i class="bi bi-person-video3"></i></span>
-          <div><h3>Bienvenue, {{ enseignant.civilite|default:"" }} {{ enseignant.prenom }} {{ enseignant.nom }}</h3><p>Votre espace enseignant sur gePed</p></div></div>
+          <div><h3>Bienvenue, {{ enseignant.civilite|default:"" }} {{ enseignant.prenom }} {{ enseignant.nom }}</h3><p>Votre espace enseignant sur GePed</p></div></div>
         <ul class="infos-compte">
           <li><i class="bi bi-diagram-3"></i><div><div class="lib">Département</div><div class="val">{{ enseignant.departement.nom }}</div></div></li>
           <li><i class="bi bi-award"></i><div><div class="lib">Grade</div><div class="val">{{ enseignant.get_grade_display|default:"—" }}</div></div></li>

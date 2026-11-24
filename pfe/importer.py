@@ -574,7 +574,7 @@ def importer_etudiants(fichier, simulation=False, cycle=None, preinscription=Fal
                 continue
             if (etu_id, insc['session'].pk, insc['licence'].pk) in deja:
                 rapport.doublons.append((numero, f"{etiquettes[k]} · {insc['licence']} · {insc['session']} : "
-                                                 f"déjà inscrit(e) dans gePed"))
+                                                 f"déjà inscrit(e) dans GePed"))
                 continue
             a_creer.append(Inscription(etudiant_id=etu_id, **insc))
             deja.add((etu_id, insc['session'].pk, insc['licence'].pk))   # même étudiant sur deux lignes

@@ -94,7 +94,7 @@ class RapportNotes:
         self.simulation = False
         self.colonnes_ignorees = []
         self.reparations = 0
-        self.code_fiche = ''                # fiche gePed : code de contrôle vérifié
+        self.code_fiche = ''                # fiche GePed : code de contrôle vérifié
         self.journal = None         # ImportNotes enregistré (import réel)
         self.inscriptions_creees = []  # [(1re ligne, matricule, étudiant, session, licence, programme, promotion)]
         self.reglements = []           # [(nom du règlement appliqué, nombre de lignes)]
@@ -155,8 +155,8 @@ def _nom_court(nom, defaut):
 
 def importer_notes(fichier, profil, utilisateur=None, simulation=False, pdf_enseignant=None, code_fiche=''):
     """
-    `code_fiche` : code de contrôle lu sur la fiche de notes signée (fiche gePed, voir pfe/fiche_notes.py).
-    Pour une fiche gePed, il est obligatoire : s'il diffère du code recalculé depuis le fichier, rien n'est importé.
+    `code_fiche` : code de contrôle lu sur la fiche de notes signée (fiche GePed, voir pfe/fiche_notes.py).
+    Pour une fiche GePed, il est obligatoire : s'il diffère du code recalculé depuis le fichier, rien n'est importé.
     """
     from . import fiche_notes
     rapport = RapportNotes()
@@ -194,7 +194,7 @@ def importer_notes(fichier, profil, utilisateur=None, simulation=False, pdf_ense
 
     # 1) Lecture des lignes ---------------------------------------------------
     brutes = []
-    est_fiche = fiche_notes.COLONNE_MARQUEUR in entetes          # fiche de notes de l'enseignant (gePed)
+    est_fiche = fiche_notes.COLONNE_MARQUEUR in entetes          # fiche de notes de l'enseignant (GePed)
     total_fiche = 0
     for numero, brut in enumerate(lignes, start=premiere):
         if brut is None or all(texte(c) == '' for c in brut):
@@ -237,12 +237,12 @@ def importer_notes(fichier, profil, utilisateur=None, simulation=False, pdf_ense
             continue
         brutes.append((numero, texte(ligne['matricule']), session, programme, texte(ligne['matiere']), valeurs))
 
-    # Fiche gePed : le fichier doit correspondre à la fiche signée (même code de contrôle)
+    # Fiche GePed : le fichier doit correspondre à la fiche signée (même code de contrôle)
     if est_fiche:
         attendu, saisi = fiche_notes.code_fiche(total_fiche), fiche_notes.nettoyer_code(code_fiche)
         rapport.code_fiche = attendu
         if not saisi:
-            raise ValueError("Fiche de notes gePed : saisissez le code de contrôle imprimé sur la fiche signée "
+            raise ValueError("Fiche de notes GePed : saisissez le code de contrôle imprimé sur la fiche signée "
                              "(sous le tableau, à côté de « Code de contrôle »).")
         if saisi != attendu:
             raise ValueError(f"Import annulé : le fichier Excel ne correspond pas à la fiche signée (code de la fiche "

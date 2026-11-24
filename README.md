@@ -1,4 +1,4 @@
-# gePed — Gestion Pédagogique
+# GePed — Gestion Pédagogique
 
 Plateforme Django + Bootstrap 5. Première partie : l'espace administratif (scolarité, départements, programmes).
 

@@ -351,7 +351,7 @@ def pdf_releve(releve, contenu, url_verification=None, cachet_signature=False):
     c = Canvas(flux, pagesize=A4)
     e = releve.etudiant
     c.setTitle(f"{contenu['titre'].title()} – {e.prenom} {e.nom} – {releve.num_ref}")
-    c.setAuthor('gePed – IST de Mamou')
+    c.setAuthor('GePed – IST de Mamou')
     if releve.type == ReleveNote.EXTRAIT:
         _pdf_extrait(c, releve, contenu, url_verification, cachet_signature)
     else:

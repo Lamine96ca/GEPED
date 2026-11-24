@@ -1,5 +1,5 @@
 #!/bin/bash
-# gePed — sauvegarde de la base MySQL (et des fichiers déposés) chez o2switch.
+# GePed — sauvegarde de la base MySQL (et des fichiers déposés) chez o2switch.
 # Manuellement :   bash deploiement/sauvegarde_base.sh
 # Chaque nuit :    cPanel → Tâches Cron, ex. à 2 h :
 #                  0 2 * * * bash $HOME/pfe2/deploiement/sauvegarde_base.sh >/dev/null 2>&1

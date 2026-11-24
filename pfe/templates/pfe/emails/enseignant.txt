@@ -1,13 +1,13 @@
 {% autoescape off %}Bonjour {{ enseignant }},
 
-{% if quoi == 'reinitialiser' %}{{ expediteur|capfirst }} vous envoie un lien pour choisir un nouveau mot de passe gePed.
+{% if quoi == 'reinitialiser' %}{{ expediteur|capfirst }} vous envoie un lien pour choisir un nouveau mot de passe GePed.
 {% elif existant %}{{ expediteur|capfirst }} vous a enregistré(e) comme enseignant(e) du département {{ enseignant.departement.nom }}.
 
-VOUS AVEZ DÉJÀ UN COMPTE gePed{% if personnel %} ({{ personnel.fonc }}){% endif %}.
+VOUS AVEZ DÉJÀ UN COMPTE GePed{% if personnel %} ({{ personnel.fonc }}){% endif %}.
 Votre fiche enseignant a été rattachée à CE compte : vous n'avez pas besoin d'un autre compte et il ne sert à rien d'en créer un.
 Utilisez le même identifiant et le même mot de passe : l'espace enseignant s'ajoute à votre espace habituel.
 {% else %}{{ expediteur|capfirst }} vous a enregistré(e) comme enseignant(e) du département {{ enseignant.departement.nom }}.
-Un compte gePed (gestion pédagogique de l'Institut Supérieur de Technologie de Mamou) a été créé pour vous.
+Un compte GePed (gestion pédagogique de l'Institut Supérieur de Technologie de Mamou) a été créé pour vous.
 {% endif %}
 Identifiant : {{ user.get_username }}
 Rôle : {{ role }}

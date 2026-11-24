@@ -4,22 +4,22 @@ Fiche de notes de l'enseignant (Excel) pour une matière, prête à remplir, à 
 - Colonnes de notes selon le règlement des inscrits : arrêté 877 (Tronc commun et cycle Ingénieur depuis
   2025-2026) → CC, TP, CT, Moyenne, Rattrapage ; autres cycles (en attendant leurs propres règles) → Contrôle,
   TP, Examen, Moyenne, Rattrapage. L'import des notes lit les deux (CC = controle, CT = examen). La moyenne
-  ne se remplit que si l'enseignant la donne directement (sinon gePed la calcule).
+  ne se remplit que si l'enseignant la donne directement (sinon GePed la calcule).
 - Les colonnes Matière et Session sont pré-remplies : le fichier rempli s'importe tel quel.
 - Au-dessus du tableau : établissement, programme, licence, semestre, session, matière, enseignant ;
   en dessous : le CODE DE CONTRÔLE puis la zone de signature (l'import ignore ces lignes).
 - Code de contrôle : calculé par une formule Excel à partir de toutes les notes, imprimé sur la fiche signée.
-  À l'import, gePed le recalcule depuis le fichier : s'il diffère du code lu sur la fiche signée (une note
+  À l'import, GePed le recalcule depuis le fichier : s'il diffère du code lu sur la fiche signée (une note
   changée après la signature), l'import est annulé. Le calcul Python (`valeur_controle`, `code_fiche`)
   reproduit exactement la formule Excel.
-- Une colonne cachée « Clé gePed » (M) repère la fiche à l'import et porte le calcul de chaque ligne.
+- Une colonne cachée « Clé GePed » (M) repère la fiche à l'import et porte le calcul de chaque ligne.
 """
 import io
 import re
 import zlib
 from decimal import Decimal, ROUND_HALF_UP
 
-MARQUEUR = 'Clé gePed'            # en-tête de la colonne cachée (normalisé : « cle_geped »)
+MARQUEUR = 'Clé GePed'            # en-tête de la colonne cachée (normalisé : « cle_geped »)
 COLONNE_MARQUEUR = 'cle_geped'
 DIVISEUR = 999983
 CHAMPS_FICHE = ('controle', 'tp', 'examen', 'moyenne', 'rattrapage')       # colonnes H à L de la fiche

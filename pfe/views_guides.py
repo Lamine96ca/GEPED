@@ -13,7 +13,7 @@ from .views_personnel import superuser_requis
 
 
 def _reponse_pdf(guide):
-    nom = slugify(f"guide gePed {guide.get_public_display()} {guide.date:%Y-%m-%d}") + '.pdf'
+    nom = slugify(f"guide GePed {guide.get_public_display()} {guide.date:%Y-%m-%d}") + '.pdf'
     reponse = FileResponse(guides.ouvrir(guide), content_type='application/pdf', filename=nom)
     reponse['Content-Disposition'] = f'inline; filename="{nom}"'
     reponse['X-Content-Type-Options'] = 'nosniff'

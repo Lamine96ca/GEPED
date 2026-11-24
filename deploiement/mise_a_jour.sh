@@ -1,5 +1,5 @@
 #!/bin/bash
-# gePed — mise à jour sur le serveur o2switch, après un « git push » depuis le poste de développement.
+# GePed — mise à jour sur le serveur o2switch, après un « git push » depuis le poste de développement.
 # À lancer dans le terminal cPanel (ou en SSH), depuis le dossier du projet :
 #     bash deploiement/mise_a_jour.sh
 # Étapes : sauvegarde de la base, récupération du code, dépendances, migrations, fichiers statiques,
@@ -38,4 +38,4 @@ python manage.py collectstatic --noinput --clear
 echo "6/6 Contrôle et redémarrage"
 python manage.py check --deploy --fail-level ERROR
 mkdir -p tmp && touch tmp/restart.txt
-echo "Mise à jour terminée : gePed redémarre (quelques secondes)."
+echo "Mise à jour terminée : GePed redémarre (quelques secondes)."

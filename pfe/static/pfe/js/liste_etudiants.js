@@ -1,5 +1,5 @@
 /*
- * Liste des étudiants gePed : pagination, tri, recherche et filtres côté serveur.
+ * Liste des étudiants GePed : pagination, tri, recherche et filtres côté serveur.
  * Le navigateur ne reçoit qu'une page à la fois (25 à 500 lignes) : la liste reste
  * fluide quel que soit le nombre d'étudiants (10 000 et plus).
  */

@@ -11,7 +11,7 @@
 
       {% if form.compte_existant %}
         <div class="alert alert-info d-flex gap-2"><i class="bi bi-person-check mt-1"></i>
-          <div><strong>Cette adresse appartient déjà à un compte gePed</strong> : {{ form.compte_existant.get_full_name|default:form.compte_existant.username }} (identifiant <strong>{{ form.compte_existant.username }}</strong>{% if form.compte_existant.profil_personnel %}, {{ form.compte_existant.profil_personnel.fonc }}{% endif %}).
+          <div><strong>Cette adresse appartient déjà à un compte GePed</strong> : {{ form.compte_existant.get_full_name|default:form.compte_existant.username }} (identifiant <strong>{{ form.compte_existant.username }}</strong>{% if form.compte_existant.profil_personnel %}, {{ form.compte_existant.profil_personnel.fonc }}{% endif %}).
             La fiche enseignant sera rattachée à ce compte : même identifiant, même mot de passe, même e-mail.
             <label class="form-check mt-2 mb-0">{{ form.rattacher }} <span class="form-check-label fw-semibold">{{ form.rattacher.label }}</span></label>
           </div>

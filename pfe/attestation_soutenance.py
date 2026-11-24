@@ -170,7 +170,7 @@ def pdf_soutenance(attestation, url_verification=None):
     flux = io.BytesIO()
     c = Canvas(flux, pagesize=(LARGEUR, HAUTEUR))
     c.setTitle(f"Attestation de soutenance – {attestation.num_ref}")
-    c.setAuthor('gePed – IST de Mamou')
+    c.setAuthor('GePed – IST de Mamou')
 
     _rosace(c, LARGEUR - 18, HAUTEUR - 12, 128)
     _rosace(c, LARGEUR - 10, 10, 70, couleur=(0.95, 0.93, 0.88))

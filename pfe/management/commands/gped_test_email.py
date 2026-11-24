@@ -1,5 +1,5 @@
 """
-Diagnostic des e-mails gePed (surtout en production) :
+Diagnostic des e-mails GePed (surtout en production) :
 
     python manage.py gped_test_email destinataire@exemple.com
 
@@ -104,14 +104,14 @@ class Command(BaseCommand):
             self.echec(f"identification impossible ({e})", "Vérifiez le chiffrement (SSL/TLS) et les identifiants.")
         smtp.quit()
 
-        self.etape(f"Envoi d'un e-mail de test à {destinataire} (par gePed)")
+        self.etape(f"Envoi d'un e-mail de test à {destinataire} (par GePed)")
         try:
-            EmailMessage("gePed : e-mail de test", "Si vous lisez ce message, l'envoi des e-mails de gePed fonctionne.",
+            EmailMessage("GePed : e-mail de test", "Si vous lisez ce message, l'envoi des e-mails de GePed fonctionne.",
                          settings.DEFAULT_FROM_EMAIL, [destinataire]).send()
         except smtplib.SMTPSenderRefused:
             self.echec("expéditeur refusé",
                        "GPED_EMAIL_FROM doit utiliser la MÊME adresse que GPED_EMAIL_USER "
-                       "(ex. gePed - IST de Mamou <no-reply@gbelya-tech.com>).")
+                       "(ex. GePed - IST de Mamou <no-reply@gbelya-tech.com>).")
         except Exception as e:
             self.echec(f"envoi impossible ({e})", "Vérifiez GPED_EMAIL_FROM et le destinataire.")
         self.ok("e-mail envoyé")

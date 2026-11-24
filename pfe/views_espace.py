@@ -31,7 +31,7 @@ from .signataires import contact_etudes_avancees, signataire
 ENVOI_MAX = 40 * 1024 * 1024           # taille maximale d'un envoi du dossier (photos déjà réduites : ≈ 2 à 5 Mo)
 
 # En-têtes de sécurité des pages publiques de l'espace : rien ne vient d'un autre site, pas de script en
-# ligne, pas d'intégration dans un cadre, formulaires envoyés seulement à gePed, pas de cache.
+# ligne, pas d'intégration dans un cadre, formulaires envoyés seulement à GePed, pas de cache.
 CSP_ESPACE = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
               "img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' blob:; "
               "media-src 'self' blob: mediastream:; object-src 'none'; frame-src 'none'; worker-src 'none'; "
@@ -248,7 +248,7 @@ def _mail_master(request, etudiant, session, lien='', type_demande='', raison=''
                 'logo': f"{site}{settings.STATIC_URL}pfe/img/logo_ist.png"}
     try:
         message = EmailMultiAlternatives(
-            "gePed : votre lien d'inscription en Master" if lien else "gePed : inscription en Master",
+            "GePed : votre lien d'inscription en Master" if lien else "GePed : inscription en Master",
             render_to_string('pfe/emails/lien_master.txt', contexte), settings.DEFAULT_FROM_EMAIL, [etudiant.email])
         message.attach_alternative(render_to_string('pfe/emails/lien_master.html', contexte), 'text/html')
         message.send()
