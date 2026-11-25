@@ -53,9 +53,29 @@ class Personnel(models.Model):
     # Chef du Service Scolarité, ou chef d'un département (programme qui est son propre département) :
     # seul un chef (ou un super utilisateur) modifie les notes d'une année écoulée. Coché par un super utilisateur.
     chef = models.BooleanField(default=False, verbose_name="Chef de service ou de département")
+    # Compte de présentation (démonstration à distance) : rattaché au Service Scolarité, il voit tout comme le chef
+    # de la scolarité et imprime, mais ne modifie rien ; il n'est utilisable que GPED_PRESENTATION_MINUTES après sa
+    # première connexion, puis il est désactivé (le super utilisateur peut le relancer). Voir pfe/lecture_seule.py.
+    presentation = models.BooleanField(default=False, verbose_name="Compte de présentation")
+    presentation_debut = models.DateTimeField(null=True, blank=True, verbose_name="Première connexion (présentation)")
 
     def __str__(self):
         return f"{self.prenom} {self.nom}"
+
+    @property
+    def presentation_fin(self):
+        """Fin d'utilisation du compte de présentation (None : pas encore connecté, ou compte ordinaire)."""
+        if not (self.presentation and self.presentation_debut):
+            return None
+        from datetime import timedelta
+        from django.conf import settings
+        return self.presentation_debut + timedelta(minutes=getattr(settings, 'GPED_PRESENTATION_MINUTES', 60))
+
+    @property
+    def presentation_expiree(self):
+        from django.utils import timezone
+        fin = self.presentation_fin
+        return fin is not None and timezone.now() >= fin
 
     @property
     def nom_signature(self):

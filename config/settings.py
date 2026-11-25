@@ -246,6 +246,8 @@ LOGIN_URL = 'login'
 # GPED_DOUBLE_FACTEUR=0 dans le .env : interrupteur d'urgence (par exemple si les e-mails ne partent plus).
 GPED_DOUBLE_FACTEUR = os.environ.get('GPED_DOUBLE_FACTEUR', '1') != '0'
 GPED_CODE_CONNEXION_MINUTES = int(os.environ.get('GPED_CODE_CONNEXION_MINUTES', '10'))
+# Compte de présentation (démonstration à distance) : utilisable pendant ce temps après sa première connexion
+GPED_PRESENTATION_MINUTES = int(os.environ.get('GPED_PRESENTATION_MINUTES', '60'))
 LOGIN_REDIRECT_URL = 'tableau_de_bord'
 LOGOUT_REDIRECT_URL = 'login'
 

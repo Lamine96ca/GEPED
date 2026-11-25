@@ -40,7 +40,7 @@
         <tr style="cursor:default">
           <td style="min-width:190px">{% if p.gerable %}<a href="{% url 'personnel_modifier' p.pk %}" style="color:var(--encre);font-weight:600">{{ p.nom }} {{ p.prenom }}</a>{% else %}<b style="color:var(--encre);font-weight:600">{{ p.nom }} {{ p.prenom }}</b>{% endif %}
             <div class="small text-secondary">{{ p.utilisateur.username }} · {{ p.email }}</div></td>
-          <td>{{ p.fonc }}{% if p.chef %} <span class="pill pill-accent" title="Son nom est imprimé sur les documents de son service">Chef</span>{% endif %}</td>
+          <td>{{ p.fonc }}{% if p.chef %} <span class="pill pill-accent" title="Son nom est imprimé sur les documents de son service">Chef</span>{% endif %}{% if p.presentation %} <span class="pill pill-attention" title="Consultation seule, une heure après la première connexion">Présentation</span>{% endif %}</td>
           <td style="white-space:normal;max-width:260px"><div class="membres-projet">{% for s in p.service.all %}<span class="pill">{{ s.nom|truncatechars:28 }}</span>{% endfor %}</div></td>
           <td><span class="pill {% if p.role == 'Scolarité' %}pill-accent{% elif p.role == 'Aucun accès' %}pill-attention{% endif %}">{{ p.role }}</span>{% if p.utilisateur.is_superuser %} <span class="pill pill-attention" title="Super utilisateur">Admin</span>{% endif %}</td>
           <td><span class="pill {% if p.statut == 'actif' %}pill-succes{% elif p.statut == 'invite' %}pill-attention{% endif %}">{{ p.statut_libelle }}</span></td>

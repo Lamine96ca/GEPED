@@ -51,6 +51,11 @@
             <div><strong>Chef de service ou de département</strong><span>{{ form.chef.help_text }}</span></div>
           </label>
           {% for err in form.chef.errors %}<div class="invalid-feedback d-block">{{ err }}</div>{% endfor %}
+          <label class="option-import mt-2" for="{{ form.presentation.id_for_label }}">
+            {{ form.presentation }}
+            <div><strong>Compte de présentation</strong><span>{{ form.presentation.help_text }}</span></div>
+          </label>
+          {% for err in form.presentation.errors %}<div class="invalid-feedback d-block">{{ err }}</div>{% endfor %}
           <div class="note-verrou mt-2"><i class="bi bi-info-circle"></i>
             <span><strong>Service Scolarité</strong> : tous les droits (inscriptions, attestations, relevés, personnel…) · <strong>un département + Chef</strong> : chef de département (tous les programmes du département, validation des notes) · <strong>un programme</strong> : directeur de programme (ses étudiants, matières, notes et soutenances) · <strong>département sans Chef, autre service</strong> : consultation · <strong>Chef</strong> (un par service) : son nom est imprimé sur les documents du service.{% if not user.is_superuser %} Seul un super utilisateur peut rattacher quelqu'un au Service Scolarité.{% endif %}</span>
           </div>
@@ -76,8 +81,18 @@
             <li><i class="bi bi-shield-check"></i><div><div class="lib">Statut</div><div class="val"><span class="pill {% if statut == 'actif' %}pill-succes{% elif statut == 'invite' %}pill-attention{% endif %}">{{ statut_libelle }}</span></div></div></li>
             <li><i class="bi bi-person-gear"></i><div><div class="lib">Rôle</div><div class="val">{{ role }}{% if personnel.utilisateur.is_superuser %} · super utilisateur{% endif %}</div></div></li>
             <li><i class="bi bi-clock-history"></i><div><div class="lib">Dernière connexion</div><div class="val">{{ personnel.utilisateur.last_login|date:"d/m/Y à H:i"|default:"Jamais" }}</div></div></li>
+            {% if personnel.presentation %}
+              <li><i class="bi bi-easel"></i><div><div class="lib">Présentation (consultation, 1 h)</div><div class="val">
+                {% if not personnel.presentation_debut %}Pas encore utilisé : l'heure démarre à la première connexion
+                {% elif personnel.presentation_expiree %}<span class="text-danger">Terminée le {{ personnel.presentation_fin|date:"d/m/Y à H:i" }}</span>
+                {% else %}<span class="text-success">En cours jusqu'à {{ personnel.presentation_fin|date:"H:i" }}</span>{% endif %}</div></div></li>
+            {% endif %}
           </ul>
           <div class="d-grid gap-2 mt-3">
+            {% if personnel.presentation and personnel.presentation_debut %}
+              <form method="post" action="{% url 'personnel_action' personnel.pk %}">{% csrf_token %}<input type="hidden" name="action" value="relancer"><input type="hidden" name="suivant" value="{{ request.path }}">
+                <button class="btn btn-primary w-100"><i class="bi bi-arrow-repeat"></i> Relancer la présentation (nouvelle heure)</button></form>
+            {% endif %}
             {% if statut == 'invite' %}
               <form method="post" action="{% url 'personnel_action' personnel.pk %}">{% csrf_token %}<input type="hidden" name="action" value="invitation"><input type="hidden" name="suivant" value="{{ request.path }}">
                 <button class="btn btn-or w-100"><i class="bi bi-envelope-arrow-up"></i> Envoyer l'invitation (nouveau lien)</button></form>

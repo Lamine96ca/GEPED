@@ -85,9 +85,16 @@ class Profil:
         return bool(self.personnel and self.personnel.chef)
 
     @property
+    def est_presentation(self):
+        """Compte de présentation : voit tout comme le chef de la scolarité, imprime, ne modifie rien, et n'est
+        utilisable qu'une heure après sa première connexion (voir Personnel.presentation, pfe/lecture_seule.py)."""
+        return bool(self.personnel and self.personnel.presentation) and not self.superuser
+
+    @property
     def est_chef_scolarite(self):
-        """Super utilisateur, ou chef rattaché au Service Scolarité."""
-        return self.superuser or (self.est_chef and any(est_service_scolarite(s) for s in self.tous_services))
+        """Super utilisateur, ou chef rattaché au Service Scolarité (le compte de présentation voit comme lui)."""
+        return self.superuser or ((self.est_chef or self.est_presentation)
+                                  and any(est_service_scolarite(s) for s in self.tous_services))
 
     @property
     def departements_diriges(self):
@@ -147,6 +154,8 @@ class Profil:
 
     @property
     def libelle(self):
+        if self.est_presentation:
+            return 'Présentation (consultation)'
         if self.lecture_seule:                      # « Service » ne dit rien : on nomme la direction
             return 'Direction Générale' if self.est_dg and not self.est_dge else 'Direction Générale des Études'
         return LIBELLES[self.role]

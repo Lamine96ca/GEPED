@@ -94,12 +94,21 @@ class Connexion(LoginView):
     redirect_authenticated_user = True
     erreur_envoi = False
     sans_email = False
+    presentation_terminee = False
 
     def get_context_data(self, **kwargs):
-        return {**super().get_context_data(**kwargs), 'erreur_envoi': self.erreur_envoi, 'sans_email': self.sans_email}
+        return {**super().get_context_data(**kwargs), 'erreur_envoi': self.erreur_envoi, 'sans_email': self.sans_email,
+                'presentation_terminee': self.presentation_terminee}
 
     def form_valid(self, form):
         user = form.get_user()
+        personnel = getattr(user, 'profil_personnel', None)
+        if personnel is not None and personnel.presentation and personnel.presentation_expiree:
+            user.is_active = False                              # compte de présentation : l'heure est passée
+            user.save(update_fields=['is_active'])
+            form.add_error(None, "Ce compte de présentation est fermé (une heure après sa première connexion).")
+            self.presentation_terminee = True
+            return self.form_invalid(form)
         if not getattr(settings, 'GPED_DOUBLE_FACTEUR', True) or user.is_superuser:
             return super().form_valid(form)                  # super utilisateur : connexion directe
         email = email_utilisable(user)

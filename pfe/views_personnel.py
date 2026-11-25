@@ -127,7 +127,8 @@ def personnel_modifier(request, pk):
 @superuser_requis
 @require_POST
 def personnel_action(request, pk):
-    """Renvoyer l'invitation, envoyer un lien de réinitialisation, désactiver ou réactiver le compte."""
+    """Renvoyer l'invitation, envoyer un lien de réinitialisation, désactiver ou réactiver le compte, relancer une
+    présentation (nouvelle heure à partir de la prochaine connexion)."""
     p = get_object_or_404(Personnel.objects.select_related('utilisateur'), pk=pk)
     if not _peut_gerer(request, p):
         raise PermissionDenied("Ce compte ne peut être géré que par un super utilisateur.")
@@ -138,10 +139,16 @@ def personnel_action(request, pk):
         u.is_active = False
         u.save(update_fields=['is_active'])
         messages.success(request, f"Compte de {p.prenom} {p.nom} désactivé : il ne peut plus se connecter.")
-    elif action == 'reactiver':
+    elif action in ('reactiver', 'relancer'):
         u.is_active = True
         u.save(update_fields=['is_active'])
-        messages.success(request, f"Compte de {p.prenom} {p.nom} réactivé.")
+        if p.presentation:                       # compte de présentation : une nouvelle heure, dès sa connexion
+            p.presentation_debut = None
+            p.save(update_fields=['presentation_debut'])
+            messages.success(request, f"Présentation relancée : le compte de {p.prenom} {p.nom} est utilisable une "
+                                      f"heure à partir de sa prochaine connexion.")
+        else:
+            messages.success(request, f"Compte de {p.prenom} {p.nom} réactivé.")
     elif action in ('invitation', 'reinitialiser'):
         if not u.is_active:
             messages.error(request, "Ce compte est désactivé : réactivez-le avant d'envoyer un e-mail.")

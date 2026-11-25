@@ -5038,6 +5038,86 @@ class DiplomesTests(TestCase):
         self.assertContains(r, 'réessayez dans')
 
 
+class PresentationTests(TestCase):
+    """Compte de présentation : voit comme le chef de la scolarité, imprime, ne modifie rien, fermé après une heure."""
+    setUpTestData = GpedTests.__dict__['setUpTestData']
+    connecter = GpedTests.connecter
+
+    def creer(self, **donnees):
+        admin = User.objects.create_superuser('admin_demo', password='x', email='admin@t.local')
+        self.client.force_login(admin)
+        return self.client.post(reverse('personnel_creer'), {
+            'civilite': '', 'prenom': 'Demo', 'nom': 'Presentation', 'fonc': 'Présentation', 'email': 'demo@t.local',
+            'telephone': '999', 'identifiant': 'presentation', 'service': [self.scol.pk], 'presentation': 'on',
+            **donnees})
+
+    def test_creation_reservee_a_la_scolarite_et_sans_chef(self):
+        r = self.creer(service=[self.dep.pk])
+        self.assertContains(r, 'doit être rattaché au Service Scolarité')
+        r = self.client.post(reverse('personnel_creer'), {
+            'prenom': 'Demo', 'nom': 'P', 'fonc': 'x', 'email': 'demo2@t.local', 'telephone': '998',
+            'identifiant': 'presentation2', 'service': [self.scol.pk], 'presentation': 'on', 'chef': 'on'})
+        self.assertContains(r, 'ne peut pas être chef')
+        self.assertFalse(Personnel.objects.filter(presentation=True).exists())
+
+    def test_consultation_impression_sans_modification_puis_fermeture(self):
+        import datetime
+        from django.utils import timezone
+        self.creer()
+        p = Personnel.objects.get(presentation=True)
+        u = p.utilisateur
+        u.set_password('x')
+        u.save()
+        self.client.logout()
+        # Première connexion : l'heure démarre
+        self.connecter('presentation')
+        p.refresh_from_db()
+        self.assertIsNotNone(p.presentation_debut)
+        r = self.client.get(reverse('etudiants_liste'))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'Compte de présentation')
+        profil = r.context['profil']
+        self.assertTrue(profil.est_presentation and profil.est_chef_scolarite and profil.est_scolarite)
+        self.assertEqual(profil.libelle, 'Présentation (consultation)')
+        # Impression (PDF) : permise
+        r = self.client.get(reverse('statistiques'), {'imprimer': 'pdf'})
+        self.assertEqual(r.content[:4], b'%PDF')
+        # Aucune modification, pas même son propre compte
+        insc = Inscription.objects.get(etudiant__matricule='M0')
+        self.assertEqual(self.client.post(reverse('exclusion_enregistrer', args=[insc.pk]),
+                                          {'motif': 'indiscipline'}).status_code, 403)
+        self.assertEqual(self.client.post(reverse('mon_compte'), {'email': 'autre@t.local'}).status_code, 403)
+        self.assertContains(self.client.post(reverse('personnel_creer'), {}), 'Compte de présentation', status_code=403)
+        # Une seconde connexion ne relance pas l'heure
+        debut = p.presentation_debut
+        self.client.logout()
+        self.connecter('presentation')
+        p.refresh_from_db()
+        self.assertEqual(p.presentation_debut, debut)
+        # Une heure plus tard : déconnecté et désactivé
+        Personnel.objects.filter(pk=p.pk).update(presentation_debut=timezone.now() - datetime.timedelta(minutes=61))
+        r = self.client.get(reverse('etudiants_liste'))
+        self.assertRedirects(r, reverse('login'), fetch_redirect_response=False)
+        u.refresh_from_db()
+        self.assertFalse(u.is_active)
+        # Encore actif mais l'heure passée : la page de connexion le dit (sans envoyer de code)
+        u.is_active = True
+        u.save()
+        r = self.client.post(reverse('login'), {'username': 'presentation', 'password': 'x'})
+        self.assertContains(r, 'Ce compte de présentation est fermé')
+        u.refresh_from_db()
+        self.assertFalse(u.is_active)
+        # Le super utilisateur relance : une nouvelle heure à partir de la prochaine connexion
+        self.client.force_login(User.objects.get(username='admin_demo'))
+        r = self.client.get(reverse('personnel_modifier', args=[p.pk]))
+        self.assertContains(r, 'Terminée le')
+        self.client.post(reverse('personnel_action', args=[p.pk]), {'action': 'relancer'})
+        p.refresh_from_db()
+        u.refresh_from_db()
+        self.assertTrue(u.is_active)
+        self.assertIsNone(p.presentation_debut)
+
+
 class SallesBatimentsTests(TestCase):
     """Salles et bâtiments : gérés par la Direction des Études sur une même page, import Excel / CSV, exports."""
     setUpTestData = EnseignantsTests.__dict__['setUpTestData']

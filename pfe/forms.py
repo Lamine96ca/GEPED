@@ -241,13 +241,16 @@ class PersonnelForm(BootstrapMixin, forms.ModelForm):
 
     class Meta:
         model = Personnel
-        fields = ['civilite', 'prenom', 'nom', 'fonc', 'email', 'telephone', 'service', 'chef']
+        fields = ['civilite', 'prenom', 'nom', 'fonc', 'email', 'telephone', 'service', 'chef', 'presentation']
         labels = {'fonc': 'Fonction', 'service': 'Services'}
         help_texts = {'chef': "Chef de son service (Scolarité, Direction des Études, Direction générale…) ou de son "
                               "département : son nom et sa fonction sont imprimés sous la signature des documents "
                               "du service. Un chef de département valide aussi les notes ; le chef de la scolarité "
                               "délibère ; le directeur d'un Master signe les documents du Master.",
-                      'fonc': "Imprimée au-dessus de la signature (ex. Le Chef Service de la Scolarité)."}
+                      'fonc': "Imprimée au-dessus de la signature (ex. Le Chef Service de la Scolarité).",
+                      'presentation': "Pour une démonstration à distance : rattaché au Service Scolarité, ce compte voit "
+                                      "tout comme le chef de la scolarité et imprime, mais ne modifie rien. Il se ferme "
+                                      "une heure après sa première connexion."}
         widgets = {'service': forms.CheckboxSelectMultiple, 'email': forms.EmailInput()}
 
     def __init__(self, *args, editeur, **kwargs):
@@ -325,9 +328,21 @@ class PersonnelForm(BootstrapMixin, forms.ModelForm):
             raise forms.ValidationError("Seul un super utilisateur peut désigner un chef.")
         return chef
 
+    def clean_presentation(self):
+        presentation = self.cleaned_data.get('presentation')
+        if presentation != bool(self.instance.presentation) and not self.editeur.is_superuser:
+            raise forms.ValidationError("Seul un super utilisateur crée un compte de présentation.")
+        return presentation
+
     def clean(self):
         d = super().clean()
         services = d.get('service')
+        if d.get('presentation'):
+            if services and not any(s.pk in self.services_scolarite for s in services):
+                self.add_error('presentation', "Un compte de présentation doit être rattaché au Service Scolarité.")
+            if d.get('chef'):
+                self.add_error('presentation', "Un compte de présentation ne peut pas être chef (son nom serait "
+                                               "imprimé sur les documents).")
         if d.get('chef') and services:
             # Chaque service peut avoir un chef (même droits que ses agents hors scolarité et départements) : c'est
             # son nom qui est imprimé sur les documents du service. Un seul chef par service.
