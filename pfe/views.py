@@ -715,6 +715,12 @@ def statistiques(request):
         resultats, sout = resultats.filter(session_id=session_id), sout.filter(session_id=session_id)
         conges_annee = conges_annee.filter(session_id=session_id)
     s = st.calculer(base, session_id, resultats, sout)
+    if profil.voit_diplomes:
+        # Diplômés : toutes les années d'obtention (la session ne s'applique pas), filtrés par programme
+        from . import diplomes as dip
+        from .models import Diplome
+        s['diplomes'] = dip.statistiques(Diplome.objects.filter(filiere_id=programme_id) if programme_id
+                                         else Diplome.objects.all())
     session_choisie = next((x for x in sessions if x.pk == session_id), None)
     programme_choisi = next((p for p in programmes if p.pk == programme_id), None)
     filtres_texte = ' · '.join(x for x in (f"Session {session_choisie}" if session_choisie else 'Toutes les sessions',
@@ -724,6 +730,8 @@ def statistiques(request):
         from .pdf_listes import imprimer_sections
         from .pdf_statistiques import ONGLETS, sections_onglet
         onglet = g.get('onglet') if g.get('onglet') in ONGLETS else 'croise'
+        if onglet == 'diplomes' and 'diplomes' not in s:
+            onglet = 'croise'
         t = s['niveaux'][1]
         nb_conges = conges_annee.count()
         chiffres = (f"{t.total} inscription{'s' if t.total > 1 else ''} · {t.h} hommes · {t.f} femmes ({str(t.pct_f).replace('.', ',')} %) · "

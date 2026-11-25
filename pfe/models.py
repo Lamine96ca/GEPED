@@ -606,6 +606,8 @@ class Diplome(models.Model):
     nom = models.CharField('Nom', max_length=100)
     prenoms = models.CharField('Prénoms', max_length=150, blank=True, default='')
     date_naissance = models.DateField('Né(e) le', null=True, blank=True)
+    # « Né(e) en 1988 » : certains anciens diplômes ne portent que l'année (tenue à jour depuis la date sinon)
+    annee_naissance = models.PositiveSmallIntegerField('Né(e) en', null=True, blank=True)
     lieu_naissance = models.CharField('À', max_length=120, blank=True, default='')
     nationalite = models.CharField('Nationalité', max_length=60, blank=True, default='')
     filiere = models.ForeignKey(Service, on_delete=models.SET_NULL, null=True, blank=True, related_name='diplomes',
@@ -652,6 +654,8 @@ class Diplome(models.Model):
         self.numero_cle = self.cle(self.numero)
         self.ine = re.sub(r'\s+', '', self.ine or '').upper()
         self.matricule = re.sub(r'\s+', '', self.matricule or '')
+        if self.date_naissance:
+            self.annee_naissance = self.date_naissance.year
         annee = self.date_delivrance.year if self.date_delivrance else None
         if annee is None:
             fin = re.findall(r'(\d{4})', self.annee_universitaire or '')

@@ -1,0 +1,44 @@
+{% load humanize %}{# Statistiques des diplômés : par année d'obtention et par tranche d'âge. Paramètres : stats, liens #}
+<!-- Statistiques par année d'obtention -->
+<div class="card carte-gped mb-3">
+  <div class="card-header d-flex align-items-center"><h3 class="titre-stat me-auto mb-0">Diplômés par année d'obtention</h3>
+    <span class="small text-secondary">{{ stats.total.total|intcomma }} diplôme{{ stats.total.total|pluralize }} · {{ stats.total.verifications|intcomma }} vérification{{ stats.total.verifications|pluralize }}</span></div>
+  <div class="table-responsive">
+    <table class="table table-etudiants table-stat mb-0">
+      <thead><tr><th>Année d'obtention</th><th class="text-end">Hommes</th><th class="text-end">Femmes</th><th class="text-end">Non précisé</th><th class="text-end">Total</th><th class="text-end">Annulés</th><th class="text-end">Vérifications</th></tr></thead>
+      <tbody>
+        {% for l in stats.annees %}
+          <tr style="cursor:default"><td>{% if liens and l.annee != 'Non précisée' %}<a href="{% url 'diplomes_liste' %}?annee={{ l.annee }}" style="color:var(--encre);font-weight:600">{{ l.annee }}</a>{% else %}{{ l.annee }}{% endif %}</td>
+            <td class="text-end">{{ l.h }}</td><td class="text-end">{{ l.f }}</td><td class="text-end text-secondary">{{ l.x }}</td>
+            <td class="text-end fw-semibold">{{ l.total }}</td><td class="text-end">{% if l.annules %}<span class="text-danger">{{ l.annules }}</span>{% else %}0{% endif %}</td>
+            <td class="text-end">{{ l.verifications }}</td></tr>
+        {% empty %}
+          <tr><td colspan="7"><div class="etat-vide py-3"><i class="bi bi-award"></i>Aucun diplôme enregistré{% if profil.gere_diplomes %} : <a href="{% url 'diplomes_importer' %}">importez la liste des diplômés</a>{% endif %}.</div></td></tr>
+        {% endfor %}
+      </tbody>
+      {% if stats.annees %}<tfoot><tr><th>Total</th><th class="text-end">{{ stats.total.h }}</th><th class="text-end">{{ stats.total.f }}</th><th class="text-end">{{ stats.total.x }}</th><th class="text-end">{{ stats.total.total }}</th><th class="text-end">{{ stats.total.annules }}</th><th class="text-end">{{ stats.total.verifications }}</th></tr></tfoot>{% endif %}
+    </table>
+  </div>
+</div>
+
+<!-- Tranches d'âge actuel -->
+<div class="card carte-gped mb-3">
+  <div class="card-header"><h3 class="titre-stat mb-0">Âge des diplômés en {{ stats.annee_age }}</h3>
+    <p class="small text-secondary mb-0">Âge cette année : {{ stats.annee_age }} − année de naissance (l'année seule suffit : « Né(e) en 1988 ») · âge moyen : <strong>{{ stats.age_moyen|default:"—" }} ans</strong> · âge connu pour {{ stats.ages_connus|intcomma }} diplômé{{ stats.ages_connus|pluralize }} ({{ stats.taux_age }} %){% if stats.ages_incoherents %} · {{ stats.ages_incoherents }} année{{ stats.ages_incoherents|pluralize }} de naissance incohérente{{ stats.ages_incoherents|pluralize }} écartée{{ stats.ages_incoherents|pluralize }}{% endif %}</p></div>
+  <div class="table-responsive">
+    <table class="table table-etudiants table-stat mb-0">
+      <thead><tr><th>Tranche d'âge</th><th class="text-end">Hommes</th><th class="text-end">Femmes</th><th class="text-end">Non précisé</th><th class="text-end">Total</th><th class="text-end">%</th><th class="d-none d-md-table-cell" style="width:24%">Part</th></tr></thead>
+      <tbody>
+        {% for l in stats.ages %}
+          <tr style="cursor:default"{% if l.inconnu %} class="text-secondary"{% endif %}><td>{{ l.tranche }}</td>
+            <td class="text-end">{{ l.h }}</td><td class="text-end">{{ l.f }}</td><td class="text-end text-secondary">{{ l.x }}</td>
+            <td class="text-end fw-semibold">{{ l.total }}</td><td class="text-end">{{ l.pct }} %</td>
+            <td class="d-none d-md-table-cell"><div class="barre-part"><span style="width:{{ l.pct|stringformat:'s' }}%"></span></div></td></tr>
+        {% empty %}
+          <tr><td colspan="7"><div class="etat-vide py-3"><i class="bi bi-person"></i>Aucun diplômé.</div></td></tr>
+        {% endfor %}
+      </tbody>
+      {% if stats.ages %}<tfoot><tr><th>Total</th><th class="text-end">{{ stats.total.h }}</th><th class="text-end">{{ stats.total.f }}</th><th class="text-end">{{ stats.total.x }}</th><th class="text-end">{{ stats.total.total }}</th><th class="text-end">100 %</th><th class="d-none d-md-table-cell"></th></tr></tfoot>{% endif %}
+    </table>
+  </div>
+</div>

@@ -76,7 +76,7 @@ def _export(qs):
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = 'Diplomés'
-    entetes = ['Numéro', 'Format', 'Matricule', 'INE', 'Civilité', 'Nom', 'Prénoms', 'Né(e) le', 'À', 'Nationalité',
+    entetes = ['Numéro', 'Format', 'Matricule', 'INE', 'Civilité', 'Nom', 'Prénoms', 'Né(e) le', 'Né(e) en', 'À', 'Nationalité',
                'Programme', 'Diplôme', 'Grade', 'Finalité', 'Mention', 'Moyenne', 'Année universitaire', 'Promotion',
                'Fait à', 'Délivré le', "Année d'obtention", 'État']
     ws.append(entetes)
@@ -84,7 +84,7 @@ def _export(qs):
         c.font, c.fill = Font(bold=True, color='FFFFFF'), PatternFill('solid', fgColor='41627C')
     for d in qs:
         ws.append([d.numero or '', d.get_format_display(), d.matricule, d.ine, d.civilite, d.nom, d.prenoms,
-                   d.date_naissance, d.lieu_naissance, d.nationalite, d.programme, d.intitule, d.grade, d.finalite,
+                   d.date_naissance, d.annee_naissance, d.lieu_naissance, d.nationalite, d.programme, d.intitule, d.grade, d.finalite,
                    d.mention, d.moyenne, d.annee_universitaire, d.promotion, d.lieu_delivrance, d.date_delivrance,
                    d.annee_obtention, 'Annulé' if d.annule else 'Valide'])
     for col in ws.columns:
@@ -108,17 +108,13 @@ def _imprimer(request, f, qs):
 
 
 def _imprimer_stats(request, f, qs):
-    from .pdf_listes import imprimer_tableau
+    from .pdf_listes import imprimer_sections
     s = diplomes.statistiques(qs)
-    colonnes = [("Année d'obtention", 110), ('Hommes', 60), ('Femmes', 60), ('Non précisé', 70), ('Total', 60),
-                ('Annulés', 60), ('Vérifications', 80)]
-    lignes = [[str(l['annee']), str(l['h']), str(l['f']), str(l['x']), str(l['total']), str(l['annules']),
-               str(l['verifications'])] for l in s['annees']]
     t = s['total']
-    lignes.append(['Total', str(t['h']), str(t['f']), str(t['x']), str(t['total']), str(t['annules']),
-                   str(t['verifications'])])
-    return imprimer_tableau(request, 'statistiques_diplomes', "DIPLÔMÉS PAR ANNÉE D'OBTENTION", _texte_filtres(f),
-                            colonnes, lignes, vide='Aucun diplôme.')
+    return imprimer_sections(request, 'statistiques_diplomes', 'STATISTIQUES DES DIPLÔMÉS', _texte_filtres(f),
+                             diplomes.sections_pdf(s),
+                             total=f"{t['total']} diplômé{'s' if t['total'] > 1 else ''} · {t['h']} hommes · "
+                                   f"{t['f']} femmes · {t['verifications']} vérification{'s' if t['verifications'] > 1 else ''}")
 
 
 @login_required

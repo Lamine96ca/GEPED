@@ -15,7 +15,7 @@ ONGLETS = {
     'croise': 'Programme × niveau', 'evolution': 'Évolution des inscriptions', 'promotions': 'Par promotion',
     'feminisation': 'Taux de féminisation par programme', 'ages': "Tranches d'âge", 'origine': 'Origine scolaire',
     'redoublants': 'Redoublants', 'handicap': 'Situation de handicap', 'reussite': 'Réussite',
-    'soutenances': 'Soutenances',
+    'soutenances': 'Soutenances', 'diplomes': 'Diplômés',
 }
 ROSE = colors.HexColor('#F5B700')
 
@@ -152,4 +152,7 @@ def sections_onglet(onglet, s, largeur_utile):
                              ('Validées', 46), ('Taux', 44), ('Moyenne', 50)],
                         [rang(l) for l in so['lignes']], pied=rang(so['total']) if so['lignes'] else None,
                         vide='Aucune soutenance pour ces filtres.')]
+    if onglet == 'diplomes':
+        from .diplomes import sections_pdf
+        return sections_pdf(s['diplomes'])
     raise ValueError(onglet)

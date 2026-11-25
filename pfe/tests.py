@@ -4426,7 +4426,9 @@ class GpedTests(TestCase):
             r = self.client.get(url, {'session': self.session.pk, 'imprimer': 'pdf', 'onglet': onglet})
             self.assertEqual((r.status_code, r['Content-Type'], r.content[:4]), (200, 'application/pdf', b'%PDF'),
                              onglet)
-            self.assertIn(f'statistiques_{onglet if onglet in ONGLETS else "croise"}', r['Content-Disposition'])
+            # « Diplômés » : réservé à la scolarité et à la Direction ; un chef de programme retombe sur le 1er onglet
+            attendu = onglet if onglet in ONGLETS and onglet != 'diplomes' else 'croise'
+            self.assertIn(f'statistiques_{attendu}', r['Content-Disposition'])
 
     def test_guides_d_utilisation(self):
         """Dépôt par le super utilisateur, guide du compte après la connexion, bandeau « Nouveautés » jusqu'à l'ouverture."""
@@ -4980,6 +4982,48 @@ class DiplomesTests(TestCase):
             self.client.post(pub, {'structure': 'S', 'contact': 'c', 'identifiant': 'XXXX'})
         r = self.client.post(pub, {'structure': 'S', 'contact': 'c', 'identifiant': 'XXXX'})
         self.assertContains(r, 'réessayez dans')
+
+    def test_annee_de_naissance_seule_et_tranches_d_age(self):
+        from .models import Diplome
+        self.connecter('scol')
+        fichier = fichier_xlsx([
+            ['Mat', 'Réf', 'Nom', 'Prénoms', 'Date_Naiss', 'Lieu_naiss', 'Date'],
+            ['1100000001', 'AB/06/14/0001', 'BAH', 'Alpha', 1988, 'Labé', '03/06/2014'],          # année seule (nombre)
+            ['1100000002', 'AB/06/14/0002', 'SOW', 'Binta', 'Né(e) en 1990', 'Mamou', '03/06/2014'],
+            ['1100000003', 'AB/06/14/0003', 'DIALLO', 'Sory', '05/05/1992', 'Pita', '03/06/2014'],
+            ['1100000004', 'AB/06/14/0004', 'CAMARA', 'Fodé', '', '', '03/06/2014'],              # âge inconnu
+        ], 'Diplome P6.xlsx')
+        r = self.client.post(reverse('diplomes_importer'), {'fichier': fichier, 'format': 'auto'})
+        self.assertEqual((r.context['rapport'].crees, len(r.context['rapport'].erreurs)), (4, 0))
+        bah, sow, diallo = (Diplome.objects.get(nom=n) for n in ('BAH', 'SOW', 'DIALLO'))
+        self.assertEqual((bah.date_naissance, bah.annee_naissance), (None, 1988))
+        self.assertEqual((sow.annee_naissance, diallo.annee_naissance), (1990, 1992))
+        # Tranches sur l'âge ACTUEL (année en cours − année de naissance), pas l'âge au diplôme
+        import datetime
+        from .diplomes import TRANCHES_AGE
+        annee = datetime.date.today().year
+        attendu = {}
+        for naissance in (1988, 1990, 1992):
+            lib = next(l for mini, maxi, l in TRANCHES_AGE if mini <= annee - naissance <= maxi)
+            attendu[lib] = attendu.get(lib, 0) + 1
+        stats = self.client.get(reverse('diplomes_liste')).context['stats']
+        ages = {l['tranche']: l['total'] for l in stats['ages'] if l['total']}
+        self.assertEqual(ages, {**attendu, 'Âge inconnu': 1})
+        self.assertEqual((stats['ages_connus'], stats['age_moyen'], stats['annee_age']), (3, annee - 1990.0, annee))
+        self.assertEqual(self.client.get(reverse('diplomes_liste') + '?imprimer=stats').content[:4], b'%PDF')
+        # Page Statistiques : onglet « Diplômés » et son PDF
+        r = self.client.get(reverse('statistiques'))
+        self.assertContains(r, 'data-bs-target="#st-diplomes"')
+        self.assertContains(r, "Âge des diplômés en")
+        self.assertEqual(self.client.get(reverse('statistiques') + '?imprimer=pdf&onglet=diplomes').content[:4], b'%PDF')
+        # Vérification publique : « Né(e) en 1988 »
+        self.client.logout()
+        r = self.client.post(reverse('diplome_verifier'), {'structure': 'S', 'contact': 'c', 'identifiant': '1100000001'})
+        self.assertContains(r, 'Né(e) en')
+        self.assertContains(r, '1988 à Labé')
+        # Département : pas d'onglet Diplômés
+        self.connecter('dep')
+        self.assertNotContains(self.client.get(reverse('statistiques')), 'data-bs-target="#st-diplomes"')
 
     def test_recherches_limitees_par_heure(self):
         from . import diplomes

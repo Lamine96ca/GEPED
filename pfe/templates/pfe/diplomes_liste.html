@@ -30,27 +30,7 @@
   </div>
 </div>
 
-<!-- Statistiques par année d'obtention -->
-<div class="card carte-gped mb-3">
-  <div class="card-header d-flex align-items-center"><h3 class="titre-stat me-auto mb-0">Diplômés par année d'obtention</h3>
-    <span class="small text-secondary">{{ stats.total.total|intcomma }} diplôme{{ stats.total.total|pluralize }} · {{ stats.total.verifications|intcomma }} vérification{{ stats.total.verifications|pluralize }}</span></div>
-  <div class="table-responsive">
-    <table class="table table-etudiants table-stat mb-0">
-      <thead><tr><th>Année d'obtention</th><th class="text-end">Hommes</th><th class="text-end">Femmes</th><th class="text-end">Non précisé</th><th class="text-end">Total</th><th class="text-end">Annulés</th><th class="text-end">Vérifications</th></tr></thead>
-      <tbody>
-        {% for l in stats.annees %}
-          <tr style="cursor:default"><td>{% if l.annee != 'Non précisée' %}<a href="?annee={{ l.annee }}" style="color:var(--encre);font-weight:600">{{ l.annee }}</a>{% else %}{{ l.annee }}{% endif %}</td>
-            <td class="text-end">{{ l.h }}</td><td class="text-end">{{ l.f }}</td><td class="text-end text-secondary">{{ l.x }}</td>
-            <td class="text-end fw-semibold">{{ l.total }}</td><td class="text-end">{% if l.annules %}<span class="text-danger">{{ l.annules }}</span>{% else %}0{% endif %}</td>
-            <td class="text-end">{{ l.verifications }}</td></tr>
-        {% empty %}
-          <tr><td colspan="7"><div class="etat-vide py-3"><i class="bi bi-award"></i>Aucun diplôme enregistré{% if profil.gere_diplomes %} : <a href="{% url 'diplomes_importer' %}">importez la liste des diplômés</a>{% endif %}.</div></td></tr>
-        {% endfor %}
-      </tbody>
-      {% if stats.annees %}<tfoot><tr><th>Total</th><th class="text-end">{{ stats.total.h }}</th><th class="text-end">{{ stats.total.f }}</th><th class="text-end">{{ stats.total.x }}</th><th class="text-end">{{ stats.total.total }}</th><th class="text-end">{{ stats.total.annules }}</th><th class="text-end">{{ stats.total.verifications }}</th></tr></tfoot>{% endif %}
-    </table>
-  </div>
-</div>
+{% include 'pfe/_stats_diplomes.html' with liens=True %}
 
 <!-- Liste -->
 <div class="card carte-gped liste">

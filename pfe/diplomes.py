@@ -25,7 +25,8 @@ from .importer import en_date, reparer_xlsx, texte
 from .models import Diplome, Etudiant, Service, VerificationDiplome
 
 OBLIGATOIRES = ['numero', 'nom']
-COLONNES = ['numero', 'matricule', 'ine', 'civilite', 'sexe', 'nom', 'prenoms', 'date_naissance', 'lieu_naissance',
+COLONNES = ['numero', 'matricule', 'ine', 'civilite', 'sexe', 'nom', 'prenoms', 'date_naissance', 'annee_naissance',
+            'lieu_naissance',
             'nationalite', 'programme', 'intitule', 'grade', 'finalite', 'mention', 'moyenne', 'annee_universitaire',
             'promotion', 'lieu_delivrance', 'date_delivrance', 'date_pv', 'chef_departement', 'directeur_general',
             'format']
@@ -35,7 +36,8 @@ ALIAS = {
     'mat': 'matricule', 'matricules': 'matricule', 'mme_m': 'civilite', 'mme_m_': 'civilite',
     'prenom': 'prenoms', 'noms': 'nom', 'nom_de_famille': 'nom',
     'date_naiss': 'date_naissance', 'date_de_naissance': 'date_naissance', 'ne_le': 'date_naissance',
-    'ne_e_le': 'date_naissance', 'lieu_naiss': 'lieu_naissance', 'lieu_de_naissance': 'lieu_naissance',
+    'ne_e_le': 'date_naissance', 'ne_en': 'annee_naissance', 'ne_e_en': 'annee_naissance',
+    'annee_de_naissance': 'annee_naissance', 'annee_naiss': 'annee_naissance', 'lieu_naiss': 'lieu_naissance', 'lieu_de_naissance': 'lieu_naissance',
     'nationalites': 'nationalite', 'option': 'programme', 'filiere': 'programme', 'specialite': 'programme',
     'diplome': 'intitule', 'mg': 'moyenne', 'moyenne_generale': 'moyenne', 'm_g': 'moyenne',
     'annee': 'annee_universitaire', 'annee_academique': 'annee_universitaire', 'session': 'annee_universitaire',
@@ -108,7 +110,24 @@ class Rapport:
         self.deja, self.erreurs, self.colonnes_ignorees, self.non_rattaches = [], [], [], 0
 
 
+def annee_seule(v):
+    """1988, « 1988 », « vers 1988 », « né(e) en 1988 » → 1988 ; sinon None."""
+    if isinstance(v, (int, float)) and not isinstance(v, bool):
+        return int(v) if 1900 <= v <= 2100 and v == int(v) else None
+    m = re.fullmatch(r'(?:n[ée]+\s*(?:\(e\))?\s*en\s*|vers\s*)?((?:19|20)\d\d)', texte(v).strip().lower())
+    return int(m.group(1)) if m else None
+
+
 def _valeur(champ, v):
+    if champ == 'annee_naissance':
+        if not texte(v):
+            return None
+        a = annee_seule(v)
+        if a is None:
+            raise ValueError(f"année de naissance invalide « {texte(v)} »")
+        return a
+    if champ == 'date_naissance' and annee_seule(v):
+        return None                                                # année seule : voir annee_naissance
     if champ in ('date_naissance', 'date_delivrance', 'date_pv'):
         if isinstance(v, (int, float)) and not isinstance(v, bool) and 1900 <= v <= 2100:
             return None                                            # année seule : date inconnue
@@ -151,6 +170,8 @@ def importer(fichier, defauts, utilisateur, simulation=True):
         if not any(texte(v) for v in ligne.values()):
             continue
         rapport.lignes += 1
+        if annee_seule(ligne.get('date_naissance')) and not texte(ligne.get('annee_naissance')):
+            ligne['annee_naissance'] = annee_seule(ligne['date_naissance'])     # « Né(e) en 1988 »
         try:
             d = {c: _valeur(c, ligne.get(c)) for c in COLONNES if c in ligne}
         except ValueError as e:
@@ -304,9 +325,11 @@ def infos_publiques(d):
         infos.append(('Matricule', d.matricule))
     if d.ine:
         infos.append(('INE', d.ine))
-    if d.date_naissance or d.lieu_naissance:
-        infos.append(('Né(e) le', ' à '.join(x for x in (d.date_naissance.strftime('%d/%m/%Y') if d.date_naissance
-                                                          else '', d.lieu_naissance) if x)))
+    if d.date_naissance or d.annee_naissance or d.lieu_naissance:
+        quand = (d.date_naissance.strftime('%d/%m/%Y') if d.date_naissance
+                 else str(d.annee_naissance) if d.annee_naissance else '')
+        infos.append(('Né(e) le' if d.date_naissance else 'Né(e) en' if d.annee_naissance else 'Né(e) à',
+                      ' à '.join(x for x in (quand, d.lieu_naissance) if x)))
     if d.nationalite:
         infos.append(('Nationalité', d.nationalite))
     for libelle, valeur in (('Diplôme', d.intitule), ('Grade', d.grade), ('Programme', d.programme),
@@ -322,15 +345,43 @@ def infos_publiques(d):
 
 # ------------------------------------------------------------------ statistiques
 
+TRANCHES_AGE = [(0, 24, 'Moins de 25 ans'), (25, 29, '25 à 29 ans'), (30, 34, '30 à 34 ans'),
+                (35, 39, '35 à 39 ans'), (40, 44, '40 à 44 ans'), (45, 200, '45 ans et plus')]
+AGE_MIN, AGE_MAX = 15, 90                 # en dehors : année de naissance incohérente, écartée
+
+
 def statistiques(qs):
-    """Par année d'obtention : diplômés (H, F, non précisé), annulés et vérifications reçues ; puis par programme."""
+    """
+    Par année d'obtention : diplômés (H, F, non précisé), annulés et vérifications reçues ; par programme ;
+    par tranche d'âge ACTUEL (année en cours − année de naissance, même quand seule l'année est connue).
+    """
     annees = defaultdict(lambda: {'h': 0, 'f': 0, 'x': 0, 'annules': 0, 'verifications': 0})
     programmes = defaultdict(int)
-    for annee, sexe, annule, programme in qs.values_list('annee_obtention', 'sexe', 'annule', 'programme'):
+    tranches = {lib: {'h': 0, 'f': 0, 'x': 0} for _, _, lib in TRANCHES_AGE}
+    inconnu = {'h': 0, 'f': 0, 'x': 0}
+    somme_ages, nb_ages, incoherents = 0, 0, 0
+    import datetime
+    cette_annee = datetime.date.today().year
+    for annee, sexe, annule, programme, naissance in qs.values_list('annee_obtention', 'sexe', 'annule', 'programme',
+                                                                     'annee_naissance'):
+        cle_sexe = 'h' if sexe == 'M' else 'f' if sexe == 'F' else 'x'
         a = annees[annee]
-        a['h' if sexe == 'M' else 'f' if sexe == 'F' else 'x'] += 1
+        a[cle_sexe] += 1
         a['annules'] += annule
         programmes[programme or '—'] += 1
+        age = cette_annee - naissance if naissance else None
+        if age is not None and not AGE_MIN <= age <= AGE_MAX:
+            incoherents += 1
+            age = None
+        if age is None:
+            inconnu[cle_sexe] += 1
+            continue
+        somme_ages += age
+        nb_ages += 1
+        for mini, maxi, lib in TRANCHES_AGE:
+            if mini <= age <= maxi:
+                tranches[lib][cle_sexe] += 1
+                break
     from django.db.models import Count
     for annee, n in (VerificationDiplome.objects.filter(diplome__in=qs).values('diplome__annee_obtention')
                      .annotate(n=Count('id')).values_list('diplome__annee_obtention', 'n')):
@@ -340,5 +391,40 @@ def statistiques(qs):
         a = annees[annee]
         lignes.append({'annee': annee or 'Non précisée', **a, 'total': a['h'] + a['f'] + a['x']})
     total = {k: sum(l[k] for l in lignes) for k in ('h', 'f', 'x', 'annules', 'verifications', 'total')}
+    ages = [{'tranche': lib, **t, 'total': sum(t.values())} for lib, t in tranches.items()]
+    if sum(inconnu.values()):
+        ages.append({'tranche': 'Âge inconnu', **inconnu, 'total': sum(inconnu.values()), 'inconnu': True})
+    for l in ages:
+        l['pct'] = round(100 * l['total'] / total['total'], 1) if total['total'] else 0
     return {'annees': lignes, 'total': total,
-            'programmes': sorted(programmes.items(), key=lambda p: (-p[1], p[0]))}
+            'programmes': sorted(programmes.items(), key=lambda p: (-p[1], p[0])),
+            'ages': ages, 'age_moyen': round(somme_ages / nb_ages, 1) if nb_ages else None, 'ages_connus': nb_ages,
+            'ages_incoherents': incoherents, 'annee_age': cette_annee,
+            'taux_age': round(100 * nb_ages / total['total'], 1) if total['total'] else 0}
+
+
+def sections_pdf(s):
+    """Sections PDF des statistiques des diplômés : par année d'obtention, puis par tranche d'âge."""
+    from .pdf_listes import cellule, section
+    n = lambda v: f"{v:,}".replace(',', ' ')                                             # noqa: E731
+
+    def rang(lib, l, extra):
+        return [str(lib), cellule(n(l['h']), align='d'), cellule(n(l['f']), align='d'), cellule(n(l['x']), align='d'),
+                cellule(n(l['total']), align='d', gras=True)] + [cellule(e, align='d') for e in extra]
+    t = s['total']
+    annees = section("Par année d'obtention", [("Année d'obtention", 110), ('Hommes', 55), ('Femmes', 55),
+                                               ('Non précisé', 65), ('Total', 55), ('Annulés', 55),
+                                               ('Vérifications', 70)],
+                     [rang(l['annee'], l, [n(l['annules']), n(l['verifications'])]) for l in s['annees']],
+                     pied=rang('Total', t, [n(t['annules']), n(t['verifications'])]) if s['annees'] else None,
+                     vide='Aucun diplôme.')
+    note = (f"Âge en {s['annee_age']} (année en cours − année de naissance ; l'année seule suffit) · âge moyen : "
+            f"{s['age_moyen'] or '—'} ans"
+            f" · âge connu : {s['ages_connus']} diplômé(s), {str(s['taux_age']).replace('.', ',')} %")
+    if s['ages_incoherents']:
+        note += f" · {s['ages_incoherents']} année(s) de naissance incohérente(s) écartée(s)"
+    ages = section(f"Âge des diplômés en {s['annee_age']}", [("Tranche d'âge", 110), ('Hommes', 55), ('Femmes', 55),
+                                                    ('Non précisé', 65), ('Total', 55), ('%', 55)],
+                   [rang(l['tranche'], l, [f"{l['pct']} %".replace('.', ',')]) for l in s['ages']],
+                   pied=rang('Total', t, ['100 %']) if s['ages'] else None, note=note, vide='Aucun diplôme.')
+    return [annees, ages]

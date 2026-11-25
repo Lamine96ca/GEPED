@@ -1037,3 +1037,7 @@ code { color: var(--encre); background: var(--survol); padding: .05rem .3rem; bo
 .page-verification .form-control:focus, .page-verification .form-select:focus { background-color: #fff; }
 .page-verification form .btn-primary:not(.btn-sm) { min-height: 46px; font-size: 1rem; padding-left: 1.25rem; padding-right: 1.25rem;
   display: inline-flex; align-items: center; justify-content: center; gap: .4rem; }
+
+/* Part d'une ligne dans le total (statistiques des diplômés par tranche d'âge) */
+.barre-part { height: 8px; border-radius: 4px; background: var(--bord); overflow: hidden; }
+.barre-part span { display: block; height: 100%; background: var(--accent); -webkit-print-color-adjust: exact; print-color-adjust: exact; }
