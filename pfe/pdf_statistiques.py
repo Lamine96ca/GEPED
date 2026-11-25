@@ -13,7 +13,7 @@ from .pdf_listes import BLEU, cellule, section
 
 ONGLETS = {
     'croise': 'Programme × niveau', 'evolution': 'Évolution des inscriptions', 'promotions': 'Par promotion',
-    'feminisation': 'Taux de féminisation par programme', 'ages': "Tranches d'âge", 'origine': 'Origine scolaire',
+    'feminisation': 'Taux de féminisation par programme', 'ages': "Tranches d'âge", 'exclusions': 'Étudiants exclus',
     'redoublants': 'Redoublants', 'handicap': 'Situation de handicap', 'reussite': 'Réussite',
     'soutenances': 'Soutenances', 'diplomes': 'Diplômés',
 }
@@ -100,20 +100,13 @@ def sections_onglet(onglet, s, largeur_utile):
         if a['incoherentes']:
             note += f" · {a['incoherentes']} date(s) incohérente(s) écartée(s)"
         return [_hf('', (a['lignes'], a['total']), "Tranche d'âge", note=note)]
-    if onglet == 'origine':
-        o = s['origine']
-        secs = [_hf(titre, (o[cle]['lignes'], o[cle]['total']), colonne, note="Renseigné : " + _pc(o[cle]['taux']))
-                for titre, cle, colonne in (('Option du bac', 'options', 'Option'),
-                                            ('Nationalité', 'nationalites', 'Nationalité'),
-                                            ('Centres du bac (15 premiers)', 'centres', 'Centre'))]
-        secs.append(_hf("Étudiants exclus d'un programme", (o['exclus']['lignes'], o['exclus']['total']), 'Programme',
-                        taux="Taux d'exclusion", note="Exclusions en vigueur ; taux parmi les inscrits du programme"))
-        secs.append(section('Moyenne au bac par programme', [('Programme', 220), ('Moyenne au bac', 70),
-                                                             ('Étudiants renseignés', 80)],
-                            [[b['programme'], cellule(b['moyenne'], align='d', gras=True), cellule(_n(b['n']), align='d')]
-                             for b in o['bac']], note="Renseigné : " + _pc(o['taux_bac']),
-                            vide='Aucune moyenne au bac renseignée.'))
-        return secs
+    if onglet == 'exclusions':
+        ex = s['exclusions']
+        note = "Exclusions en vigueur prononcées par la scolarité ; taux parmi les inscrits du groupe"
+        return [_hf('Par programme', ex['programmes'], 'Programme', taux="Taux d'exclusion", note=note),
+                _hf('Par niveau', ex['niveaux'], 'Niveau', taux="Taux d'exclusion"),
+                _hf('Par motif', ex['motifs'], 'Motif', taux='Part des exclus',
+                    note=f"{ex['nb']} exclu(s), soit {_pc(ex['taux'])} des inscrits")]
     if onglet == 'redoublants':
         r = s['redoublants']
         return [_hf('Redoublants par niveau', r['niveaux'], 'Niveau', taux='Taux de redoublement'),

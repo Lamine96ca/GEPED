@@ -3393,9 +3393,11 @@ class GpedTests(TestCase):
                          'application/pdf')
         # Statistiques : exclus par programme, avec le taux
         r = self.client.get(reverse('statistiques'))
-        exclus = r.context['origine']['exclus']
-        self.assertEqual([(l.libelle, l.total) for l in exclus['lignes']], [(self.info.nom, 1)])
-        self.assertContains(r, "Étudiants exclus d'un programme")
+        ex = r.context['exclusions']
+        self.assertEqual([(l.libelle, l.total) for l in ex['programmes'][0]], [(self.info.nom, 1)])
+        self.assertEqual([(l.libelle, l.total) for l in ex['motifs'][0]], [(dict(Exclusion.MOTIFS)[x.motif], 1)])
+        self.assertContains(r, 'Étudiants exclus par programme')
+        self.assertNotContains(r, 'Origine scolaire')
         # Le chef de la scolarité réintègre, avec un motif
         Personnel.objects.filter(utilisateur__username='scol').update(chef=True)
         self.client.post(reverse('exclusion_reintegrer', args=[x.pk]), {'motif_reintegration': ''})
@@ -3620,8 +3622,7 @@ class GpedTests(TestCase):
         self.assertEqual(r.context['feminisation'][0].libelle, 'Informatique')
         ages = r.context['ages']
         self.assertEqual((ages['renseignees'], ages['incoherentes'], ages['moyenne_f']), (1, 1, 20))     # 2025 - 2005
-        nat = r.context['origine']['nationalites']
-        self.assertEqual(([(l.libelle, l.total) for l in nat['lignes']], nat['taux']), ([('Guinéenne', 2)], 66.7))
+        self.assertEqual(r.context['exclusions']['nb'], 0)
         self.assertEqual(r.context['redoublants']['nb'], 1)
         evo = {l.libelle: l for l in r.context['evolution']}
         self.assertEqual((evo['2025-2026'].total, evo['2025-2026'].extra['nouveaux']), (3, 3))      # tous en Licence 1

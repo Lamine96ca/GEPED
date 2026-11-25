@@ -4,7 +4,7 @@ Statistiques des inscriptions (menu Étudiants → Statistiques).
 Base : les inscriptions visibles par le profil (scolarité et départements : toutes ; chef de
 programme : ses programmes), hors préinscrits, filtrées par session, cycle et programme.
 Chaque tableau donne Hommes / Femmes / Total / % de femmes. Les statistiques dont les données
-sont incomplètes (âge, origine scolaire…) indiquent le taux de fiches renseignées : elles
+sont incomplètes (âge…) indiquent le taux de fiches renseignées : elles
 deviennent plus justes à mesure que les fiches sont complétées.
 
 Rapide même sur toutes les sessions : les inscriptions sont lues UNE fois (charger), puis
@@ -26,16 +26,18 @@ CHAMPS = {                                # attribut de la ligne → champ de l'
     'session_id': 'session_id', 'session': 'session__annee', 'niveau': 'licence__nom', 'programme': 'filiere__nom',
     'promotion': 'promotion__nom', 'redouble': 'redouble', 'sexe': 'etudiant__sexe',
     'naissance': 'etudiant__date_de_naissance', 'nationalite': 'etudiant__nationalite',
-    'option': 'etudiant__option_de_bac', 'centre': 'etudiant__centre_de_bac', 'exclu': 'exclu',
-    'bac': 'etudiant__moyenne_au_bac', 'handicap': 'etudiant__handicap', 'type_handicap': 'etudiant__type_handicap',
+    'exclu': 'exclu', 'motif_exclusion': 'motif_exclusion',
+    'handicap': 'etudiant__handicap', 'type_handicap': 'etudiant__type_handicap',
 }
 
 
 def charger(qs):
-    """Une seule requête : les champs utiles de chaque inscription (et si une exclusion en vigueur y est attachée)."""
-    from django.db.models import Exists, OuterRef
+    """Une seule requête : les champs utiles de chaque inscription (et l'exclusion en vigueur qui y est attachée)."""
+    from django.db.models import Exists, OuterRef, Subquery
     from .models import Exclusion
-    qs = qs.annotate(exclu=Exists(Exclusion.objects.filter(inscription=OuterRef('pk'), reintegre_le__isnull=True)))
+    en_vigueur = Exclusion.objects.filter(inscription=OuterRef('pk'), reintegre_le__isnull=True)
+    qs = qs.annotate(exclu=Exists(en_vigueur),
+                     motif_exclusion=Subquery(en_vigueur.order_by('-date').values('motif')[:1]))
     noms = list(CHAMPS)
     return [SimpleNamespace(**dict(zip(noms, v))) for v in qs.values_list(*CHAMPS.values()).order_by()]
 
@@ -150,68 +152,25 @@ def ages(lignes_insc):
             'moyenne': round((somme[0][0] + somme[1][0]) / renseignees, 1) if renseignees else None}
 
 
-def _nationalite(v):
-    k = cle(v)
-    if not k:
-        return None
-    return 'Guinéenne' if k.startswith('GUIN') else k.title()
-
-
-def _option(v):
-    k = cle(v)
-    if not k or k.isdigit():
-        return None
-    if 'MATH' in k:
-        return 'Sciences mathématiques'
-    if 'EXPERIM' in k:
-        return 'Sciences expérimentales' + (' (franco-arabe)' if 'ARABE' in k else '')
-    if 'SOCIAL' in k:
-        return 'Sciences sociales'
-    return k.capitalize()
-
-
-def _texte(v):
-    s = ' '.join(str(v or '').split()).upper()
-    return s if s and s not in ('/', '-', '.') else None
-
-
-def _par_valeur(lignes_insc, attr, normaliser, limite=None):
-    """Lignes H/F d'un champ texte de la fiche, normalisé ; taux de fiches renseignées."""
-    compte, cache = defaultdict(lambda: [0, 0]), {}
-    for r in lignes_insc:
-        brut = getattr(r, attr)
-        if brut not in cache:
-            cache[brut] = normaliser(brut)
-        if cache[brut]:
-            compte[cache[brut]][_f(r)] += 1
-    lignes = sorted((Ligne(k, *hf) for k, hf in compte.items()), key=lambda l: (-l.total, l.libelle))
-    if limite and len(lignes) > limite:
-        lignes = lignes[:limite] + [_total(lignes[limite:], f"Autres ({len(lignes) - limite})")]
-    total = _total(lignes)
-    return {'lignes': lignes, 'taux': pct(total.total, len(lignes_insc)), 'total': total}
-
-
-def origine(lignes_insc):
-    """Nationalité, option du bac, centres du bac, exclus d'un programme, moyenne au bac par programme."""
-    bac = defaultdict(lambda: [0.0, 0])
-    for r in lignes_insc:
-        if r.bac:                                 # 0 : non renseignée
-            bac[r.programme or '—'][0] += float(r.bac)
-            bac[r.programme or '—'][1] += 1
-    moyennes = [{'programme': p, 'moyenne': round(s / n, 2), 'n': n} for p, (s, n) in sorted(bac.items())]
-    return {
-        'nationalites': _par_valeur(lignes_insc, 'nationalite', _nationalite),
-        'options': _par_valeur(lignes_insc, 'option', _option),
-        'centres': _par_valeur(lignes_insc, 'centre', _texte, limite=15),
-        'exclus': _exclus(lignes_insc),
-        'bac': moyennes, 'taux_bac': pct(sum(m['n'] for m in moyennes), len(lignes_insc)),
-    }
-
-
-def _exclus(lignes_insc):
-    """Étudiants exclus d'un programme (exclusion en vigueur) par programme, H/F, avec le taux d'exclusion."""
-    lignes, total = _avec_taux(lignes_insc, [r for r in lignes_insc if r.exclu], 'programme')
-    return {'lignes': lignes, 'total': total}
+def exclusions(lignes_insc):
+    """
+    Étudiants exclus d'un programme (exclusion en vigueur, prononcée par la scolarité) : par programme et par
+    niveau, avec le taux parmi les inscrits du groupe ; par motif (dettes, indiscipline, abandon…).
+    """
+    from .models import Exclusion
+    motifs = dict(Exclusion.MOTIFS)
+    exclus = [r for r in lignes_insc if r.exclu]
+    par_motif = defaultdict(lambda: [0, 0])
+    for r in exclus:
+        par_motif[motifs.get(r.motif_exclusion, 'Autre motif')][_f(r)] += 1
+    lignes_motif = [Ligne(m, *par_motif[m]) for m in motifs.values() if m in par_motif]
+    total = _total(lignes_motif)
+    total.extra['taux'] = pct(total.total, len(lignes_insc))
+    for l in lignes_motif:
+        l.extra['taux'] = pct(l.total, len(exclus))                # part des exclus
+    return {'nb': len(exclus), 'taux': pct(len(exclus), len(lignes_insc)), 'motifs': (lignes_motif, total),
+            'programmes': _avec_taux(lignes_insc, exclus, 'programme'),
+            'niveaux': _avec_taux(lignes_insc, exclus, 'niveau')}
 
 
 def redoublants(lignes_insc):
@@ -296,7 +255,7 @@ def calculer(base, session_id, resultats, qs_soutenances):
         'niveaux': repartition(lignes_insc, 'niveau'), 'programmes': par_programme,
         'promotions': repartition(lignes_insc, 'promotion'), 'croise': croise(lignes_insc),
         'evolution': evolution(toutes), 'feminisation': feminisation(par_programme[0]),
-        'ages': ages(lignes_insc), 'origine': origine(lignes_insc), 'redoublants': redoublants(lignes_insc),
+        'ages': ages(lignes_insc), 'exclusions': exclusions(lignes_insc), 'redoublants': redoublants(lignes_insc),
         'handicap': handicap(lignes_insc),
         'reussite': reussite(resultats), 'soutenances': soutenances(qs_soutenances),
     }
@@ -345,15 +304,14 @@ def classeur(s, filtres_texte):
     feuille('Âge', ["Tranche d'âge"] + HF, [hf(l) for l in a['lignes']] + [hf(a['total'])]
             + [[], ['Âge moyen', a['moyenne_h'], a['moyenne_f'], a['moyenne']],
                ['Fiches renseignées (%)', a['taux']], ['Dates incohérentes', a['incoherentes']]])
-    o = s['origine']
-    for titre, cle_ in (('Nationalité', 'nationalites'), ('Option du bac', 'options'), ('Centre du bac', 'centres')):
-        feuille(titre, [titre] + HF, [hf(l) for l in o[cle_]['lignes']] + [hf(o[cle_]['total']),
-                                                                             [], ['Renseigné (%)', o[cle_]['taux']]])
-    feuille("Exclus d'un programme", ['Programme'] + HF + ["Taux d'exclusion (%)"],
-            [hf(l) + [l.extra['taux']] for l in o['exclus']['lignes']]
-            + [hf(o['exclus']['total']) + [o['exclus']['total'].extra['taux']]])
-    feuille('Moyenne au bac', ['Programme', 'Moyenne au bac', 'Étudiants renseignés'],
-            [[b['programme'], b['moyenne'], b['n']] for b in o['bac']])
+    ex = s['exclusions']
+    for titre, cle_ in (('Exclus par programme', 'programmes'), ('Exclus par niveau', 'niveaux')):
+        lignes, total = ex[cle_]
+        feuille(titre, ['', 'Hommes', 'Femmes', 'Total', '% femmes', "Taux d'exclusion (%)"],
+                [hf(l) + [l.extra['taux']] for l in lignes] + [hf(total) + [total.extra['taux']]])
+    lignes, total = ex['motifs']
+    feuille('Exclus par motif', ['Motif'] + HF + ['Part des exclus (%)'],
+            [hf(l) + [l.extra['taux']] for l in lignes] + [hf(total), [], ['Part des inscrits (%)', ex['taux']]])
     for titre, cle_ in (('Redoublants par niveau', 'niveaux'), ('Redoublants par programme', 'programmes')):
         lignes, total = s['redoublants'][cle_]
         feuille(titre, ['', 'Hommes', 'Femmes', 'Total', '% femmes', 'Taux de redoublement (%)'],
