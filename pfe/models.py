@@ -587,15 +587,16 @@ class Diplome(models.Model):
       - ancien  : identifié par le MATRICULE et une référence (ex. AB/06/18/0001), avec la nationalité ;
       - nouveau : identifié par l'INE et un numéro (ex. ISTM-1000000001), avec la finalité, l'année universitaire,
                   la date du PV de délibération (le QR code imprimé renvoie à la base du ministère).
-    Une page PUBLIQUE permet à toute structure de vérifier un diplôme (matricule ou INE + numéro), voir
+    Une page PUBLIQUE permet à toute structure de vérifier un diplôme (matricule ou INE du diplômé), voir
     pfe/diplomes.py ; chaque vérification est enregistrée (VerificationDiplome).
     """
     ANCIEN, NOUVEAU = 'ancien', 'nouveau'
     FORMATS = [(ANCIEN, 'Ancien format (matricule)'), (NOUVEAU, 'Nouveau format (INE)')]
     format = models.CharField('Format', max_length=10, choices=FORMATS, default=NOUVEAU)
-    numero = models.CharField('Numéro du diplôme', max_length=60, unique=True,
+    # Facultatif : les diplômés connus seulement par la note de service n'ont pas de numéro (NULL : plusieurs permis)
+    numero = models.CharField('Numéro du diplôme', max_length=60, unique=True, null=True, blank=True,
                               help_text="Référence (ancien format, ex. AB/06/18/0001) ou numéro ISTM-… (nouveau).")
-    numero_cle = models.CharField(max_length=60, db_index=True, editable=False)    # sans espaces, en majuscules
+    numero_cle = models.CharField(max_length=60, db_index=True, editable=False, blank=True, default='')
     etudiant = models.ForeignKey(Etudiant, on_delete=models.SET_NULL, null=True, blank=True, related_name='diplomes',
                                  verbose_name="Fiche de l'étudiant")
     matricule = models.CharField('Matricule', max_length=30, blank=True, default='', db_index=True)
@@ -638,7 +639,7 @@ class Diplome(models.Model):
         verbose_name = 'Diplôme'
 
     def __str__(self):
-        return f"Diplôme {self.numero} · {self.nom} {self.prenoms}"
+        return f"Diplôme {self.numero or 'sans numéro'} · {self.nom} {self.prenoms}"
 
     @staticmethod
     def cle(numero):
@@ -647,6 +648,7 @@ class Diplome(models.Model):
 
     def save(self, *args, **kwargs):
         import re
+        self.numero = ' '.join((self.numero or '').split()) or None
         self.numero_cle = self.cle(self.numero)
         self.ine = re.sub(r'\s+', '', self.ine or '').upper()
         self.matricule = re.sub(r'\s+', '', self.matricule or '')

@@ -22,7 +22,7 @@
     <span class="icone-carte"><i class="bi bi-link-45deg"></i></span>
     <div class="me-auto" style="min-width:0">
       <div class="fw-semibold" style="color:var(--encre)">Lien public de vérification</div>
-      <div class="small text-secondary">À donner à toute structure qui veut vérifier un diplôme : elle indique son nom, le matricule ou l'INE et le numéro du diplôme.</div>
+      <div class="small text-secondary">À donner à toute structure qui veut vérifier un diplôme : elle indique son nom, son contact, puis le matricule ou l'INE du diplômé.</div>
       <code id="lien-verification" class="small">{{ request.scheme }}://{{ request.get_host }}{% url 'diplome_verifier' %}</code>
     </div>
     <button type="button" class="btn btn-sm btn-light" onclick="navigator.clipboard && navigator.clipboard.writeText(document.getElementById('lien-verification').textContent).then(function(){ this.innerHTML='<i class=\'bi bi-check2\'></i> Copié'; }.bind(this))"><i class="bi bi-clipboard"></i> Copier le lien</button>
@@ -87,7 +87,7 @@
         <tr style="cursor:default">
           <td><a href="{% url 'diplome_fiche' d.pk %}" style="color:var(--encre);font-weight:600">{{ d.nom }}</a> {{ d.prenoms }}{% if d.annule %} <span class="pill pill-danger">Annulé</span>{% endif %}</td>
           <td class="small">{% if d.ine %}{{ d.ine }}{% else %}{{ d.matricule }}{% endif %}<div class="text-secondary">{{ d.get_format_display }}</div></td>
-          <td class="text-nowrap">{{ d.numero }}</td>
+          <td class="text-nowrap">{{ d.numero|default:"—" }}</td>
           <td style="white-space:normal;max-width:260px">{{ d.programme|default:"—" }}<div class="small text-secondary">{{ d.intitule|default:d.grade }}</div></td>
           <td>{{ d.mention|default:"—" }}</td>
           <td>{{ d.annee_obtention|default:"—" }}</td>

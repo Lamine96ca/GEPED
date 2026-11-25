@@ -3,12 +3,13 @@ Registre des diplômés (modèle Diplome) : import Excel par la scolarité, vér
 
 Import : une ligne = un diplôme. Les colonnes sont reconnues par leur nom, y compris celles des anciens fichiers
 (« Mat », « Réf », « Nom », « Prénoms », « Date_Naiss », « Lieu_naiss », « Nationalité », « Mention »…). La feuille
-est trouvée seule (la première dont une ligne d'en-tête contient le numéro, le nom et le matricule ou l'INE).
+est trouvée seule (la première dont une ligne d'en-tête contient le nom et le matricule ou l'INE).
 Les valeurs absentes du fichier (programme, diplôme, grade, année, date de délivrance…) peuvent être données une
-fois pour tout le fichier. Un numéro déjà enregistré est ignoré (jamais en double).
+fois pour tout le fichier. Un numéro déjà enregistré est ignoré (jamais en double). Le numéro est facultatif : un
+diplômé connu seulement par la note de service est enregistré sans numéro (une fois par matricule ou INE).
 
-Vérification publique : la structure donne son nom, puis le matricule OU l'INE et le numéro du diplôme. Les deux
-doivent correspondre au même diplôme. 10 échecs depuis un même appareil : 15 minutes d'attente.
+Vérification publique : la structure donne son nom (et un contact), puis le matricule OU l'INE du diplômé ; tous
+ses diplômes sont affichés. 10 échecs depuis un même appareil : 15 minutes d'attente ; 30 recherches par heure.
 """
 import hashlib
 import io
@@ -45,6 +46,7 @@ ALIAS = {
 DEFAUTS = ['programme', 'intitule', 'grade', 'finalite', 'annee_universitaire', 'promotion', 'lieu_delivrance',
            'date_delivrance', 'date_pv', 'chef_departement', 'directeur_general']
 ESSAIS_APPAREIL, ATTENTE = 10, 15 * 60
+RECHERCHES_HEURE = 30                    # recherches par heure et par appareil (page publique)
 
 
 def _sans_accent(t):
@@ -87,13 +89,16 @@ def _lignes(fichier):
         feuilles = [list(ws.iter_rows(values_only=True)) for ws in wb.worksheets]
     else:
         raise ValueError("Format non pris en charge : utilisez un fichier .xlsx ou .csv.")
-    for lignes in feuilles:
-        for k, ligne in enumerate(lignes[:20]):
-            entetes = [entete(c) for c in ligne]
-            if 'numero' in entetes and 'nom' in entetes and ('matricule' in entetes or 'ine' in entetes):
-                return entetes, lignes[k + 1:], k + 2
-    raise ValueError("Aucune feuille ne contient le tableau des diplômés : il faut au moins les colonnes numéro (ou "
-                     "« Réf »), nom, et matricule ou INE.")
+    # d'abord une feuille avec la colonne du numéro ; sinon la première qui a le nom et le matricule ou l'INE
+    for avec_numero in (True, False):
+        for lignes in feuilles:
+            for k, ligne in enumerate(lignes[:20]):
+                entetes = [entete(c) for c in ligne]
+                if ('nom' in entetes and ('matricule' in entetes or 'ine' in entetes)
+                        and ('numero' in entetes or not avec_numero)):
+                    return entetes, lignes[k + 1:], k + 2
+    raise ValueError("Aucune feuille ne contient le tableau des diplômés : il faut au moins les colonnes nom, et "
+                     "matricule ou INE (le numéro du diplôme, « Réf », est facultatif).")
 
 
 class Rapport:
@@ -134,7 +139,12 @@ def importer(fichier, defauts, utilisateur, simulation=True):
     entetes, lignes, premiere = _lignes(fichier)
     rapport.colonnes_ignorees = sorted({e for e in entetes if e and e not in COLONNES and e not in ('n', 'no')})
     programmes = {cle_texte(s.nom): s for s in Service.objects.filter(programme=True)}
-    existants = set(Diplome.objects.values_list('numero_cle', flat=True))
+    existants = set(Diplome.objects.exclude(numero_cle='').values_list('numero_cle', flat=True))
+    # sans numéro (diplômé connu par la note de service) : un seul diplôme par matricule ou INE
+    sans_numero = {('mat', cle_matricule(m)) for m in Diplome.objects.filter(numero__isnull=True).exclude(matricule='')
+                   .values_list('matricule', flat=True)}
+    sans_numero |= {('ine', i) for i in Diplome.objects.filter(numero__isnull=True).exclude(ine='')
+                    .values_list('ine', flat=True)}
     vus, a_creer = set(), []
     for num, brut in enumerate(lignes, start=premiere):
         ligne = {e: v for e, v in zip(entetes, brut) if e in COLONNES}
@@ -149,17 +159,26 @@ def importer(fichier, defauts, utilisateur, simulation=True):
         for c in DEFAUTS:
             if not d.get(c) and defauts.get(c):
                 d[c] = defauts[c]
-        if not d.get('numero') or not d.get('nom'):
-            rapport.erreurs.append((num, "numéro du diplôme ou nom manquant"))
+        if not d.get('nom'):
+            rapport.erreurs.append((num, "nom manquant"))
             continue
         if not d.get('matricule') and not d.get('ine'):
             rapport.erreurs.append((num, "matricule ou INE manquant"))
             continue
-        cle = Diplome.cle(d['numero'])
-        if cle in existants or cle in vus:
-            rapport.deja.append((num, d['numero']))
-            continue
-        vus.add(cle)
+        if d.get('numero'):
+            cle = Diplome.cle(d['numero'])
+            if cle in existants or cle in vus:
+                rapport.deja.append((num, d['numero']))
+                continue
+            vus.add(cle)
+        else:
+            d.pop('numero', None)
+            ids = {('mat', cle_matricule(d['matricule'])) if d.get('matricule') else None,
+                   ('ine', re.sub(r'\s', '', d['ine']).upper()) if d.get('ine') else None} - {None}
+            if ids & sans_numero:
+                rapport.deja.append((num, d.get('matricule') or d.get('ine')))
+                continue
+            sans_numero |= ids
         fmt = cle_texte(d.pop('format', '') or defauts.get('format', ''))
         fmt = fmt if fmt in (Diplome.ANCIEN, Diplome.NOUVEAU) else (Diplome.NOUVEAU if d.get('ine') else Diplome.ANCIEN)
         etudiant = None
@@ -202,7 +221,7 @@ def modele_xlsx():
                'Guinéenne', 'CONCEPTION ET FABRICATION MECANIQUE', 'Licence en ingénierie (premier cycle LMD)', '',
                '', 'Très Bien', 7.43, '2014 - 2015', 'P10', 'Mamou', '18/06/2018', ''])
     for cell in ws[1]:
-        obligatoire = cell.value in ('numero', 'nom', 'matricule', 'ine')
+        obligatoire = cell.value in ('nom', 'matricule', 'ine')
         cell.font = Font(bold=True, color='1F2937' if obligatoire else 'FFFFFF')
         cell.fill = PatternFill('solid', fgColor='FBBD08' if obligatoire else '41627C')
     for col in ws.columns:
@@ -223,7 +242,20 @@ def _appareil(request):
 
 def bloque(request):
     d = cache.get(_appareil(request))
-    return max(0, int(d['depuis'] + ATTENTE - time.time())) if d and d['n'] >= ESSAIS_APPAREIL else 0
+    if d and d['n'] >= ESSAIS_APPAREIL:
+        return max(1, int(d['depuis'] + ATTENTE - time.time()))
+    t = cache.get(_appareil(request) + ':total')
+    if t and t['n'] >= RECHERCHES_HEURE:
+        return max(1, int(t['depuis'] + 3600 - time.time()))
+    return 0
+
+
+def _compter(request):
+    """Toutes les recherches (trouvées ou non) : au plus RECHERCHES_HEURE par heure et par appareil."""
+    cle = _appareil(request) + ':total'
+    t = cache.get(cle) or {'n': 0, 'depuis': time.time()}
+    t['n'] += 1
+    cache.set(cle, t, max(1, int(t['depuis'] + 3600 - time.time())))
 
 
 def _echec(request):
@@ -234,28 +266,35 @@ def _echec(request):
     cache.set(cle, d, ATTENTE)
 
 
-def verifier(request, structure, contact, identifiant, numero):
-    """Cherche le diplôme (matricule OU INE, ET numéro), enregistre la vérification ; renvoie (résultat, diplôme)."""
+def cle_matricule(m):
+    """Matricule sans espaces ni zéros de tête (Excel les perd : 902014402 = 0902014402)."""
+    return re.sub(r'^[0O]+', '', re.sub(r'\s+', '', str(m or '')).upper())
+
+
+def verifier(request, structure, contact, identifiant):
+    """Cherche les diplômes du matricule OU de l'INE, enregistre la vérification ; renvoie (résultat, diplômes)."""
+    _compter(request)
     ident = re.sub(r'\s+', '', identifiant or '').upper()
-    cle = Diplome.cle(numero)
-    diplome = None
-    if ident and cle:
-        diplome = (Diplome.objects.filter(numero_cle=cle).filter(
-            models_q(ident)).select_related('filiere').first())
-    if diplome is None:
+    diplomes = list(Diplome.objects.filter(models_q(ident)).select_related('filiere')
+                    .order_by('annule', '-annee_obtention')) if len(ident) >= 4 else []
+    if not diplomes:
         resultat = VerificationDiplome.INTROUVABLE
         _echec(request)
     else:
-        resultat = VerificationDiplome.ANNULE if diplome.annule else VerificationDiplome.AUTHENTIQUE
+        resultat = (VerificationDiplome.ANNULE if all(d.annule for d in diplomes)
+                    else VerificationDiplome.AUTHENTIQUE)
     VerificationDiplome.objects.create(structure=structure[:150], contact=(contact or '')[:150],
-                                       identifiant=(identifiant or '')[:40], numero=(numero or '')[:60],
-                                       resultat=resultat, diplome=diplome)
-    return resultat, diplome
+                                       identifiant=(identifiant or '')[:40],
+                                       numero=(diplomes[0].numero or '')[:60] if diplomes else '',
+                                       resultat=resultat, diplome=diplomes[0] if diplomes else None)
+    return resultat, diplomes
 
 
 def models_q(ident):
     from django.db.models import Q
-    return Q(ine=ident) | Q(matricule__iexact=ident)
+    m = cle_matricule(ident)
+    variantes = {ident, m, '0' + m, 'O' + m} if m else {ident}
+    return Q(ine=ident) | Q(matricule__in=variantes)
 
 
 def infos_publiques(d):

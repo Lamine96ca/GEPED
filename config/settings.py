@@ -232,6 +232,9 @@ CACHES = {
         'OPTIONS': {'MAX_ENTRIES': 5000},
     }
 }
+# Tests : cache en mémoire, pour ne pas vider ni remplir celui des serveurs en marche (limites d'essais…)
+if len(os.sys.argv) > 1 and os.sys.argv[1] == 'test':
+    CACHES = {'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}}
 
 # Grandes grilles de saisie (notes : 5 champs × plusieurs centaines d'étudiants)
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 20000

@@ -42,30 +42,33 @@
         <div class="verif-statut ko">
           <span class="icone"><i class="bi bi-x-octagon-fill"></i></span>
           <div><h1>Aucun diplôme trouvé</h1>
-            <p>Aucun diplôme de l'IST de Mamou ne correspond à ce matricule (ou INE) et à ce numéro.</p></div>
+            <p>Aucun diplôme de l'IST de Mamou ne correspond à ce matricule (ou INE).</p></div>
         </div>
       {% endif %}
-      {% if diplome %}
+      {% if trouves %}
+        {% for diplome, infos in trouves %}
         <div class="verif-document">
-          <div class="type"><i class="bi bi-award"></i> Diplôme</div>
+          <div class="type"><i class="bi bi-award"></i> Diplôme{% if trouves|length > 1 %} {{ forloop.counter }} / {{ trouves|length }}{% endif %}
+            {% if diplome.annule %}<span class="pill pill-danger ms-1">annulé</span>{% endif %}</div>
           <h2>{{ diplome.intitule|default:diplome.grade|default:"Diplôme" }}{% if diplome.programme %} · {{ diplome.programme }}{% endif %}</h2>
           <div class="verif-reperes">
-            <div><span>N° du diplôme</span><strong>{{ diplome.numero }}</strong></div>
-            {% if diplome.date_delivrance %}<div><span>Délivré le</span><strong>{{ diplome.date_delivrance|date:"j F Y" }}</strong></div>{% endif %}
+            {% if diplome.numero %}<div><span>N° du diplôme</span><strong>{{ diplome.numero }}</strong></div>{% endif %}
+            {% if diplome.date_delivrance %}<div><span>Délivré le</span><strong>{{ diplome.date_delivrance|date:"j F Y" }}</strong></div>
+            {% elif diplome.annee_obtention %}<div><span>Année d'obtention</span><strong>{{ diplome.annee_obtention }}</strong></div>{% endif %}
           </div>
         </div>
         <div class="verif-infos">
           <h3>Informations contenues dans le diplôme</h3>
           <dl>{% for libelle, valeur in infos %}<div class="ligne"><dt>{{ libelle }}</dt><dd>{{ valeur }}</dd></div>{% endfor %}</dl>
         </div>
+        {% endfor %}
         <div class="verif-conseil"><i class="bi bi-eye"></i>
           <span>Comparez ces informations avec le diplôme qui vous a été présenté. <strong>Toute différence</strong> signifie que le document a été modifié : il n'est alors pas valable.</span></div>
       {% else %}
         <div class="verif-infos">
           <h3>Que faire ?</h3>
           <ul class="verif-etapes">
-            <li>Vérifiez le matricule (ancien diplôme) ou l'INE (nouveau diplôme) et le numéro, tels qu'ils sont imprimés.</li>
-            <li>Le numéro est la référence imprimée sur le diplôme (ex. AB/06/18/0001 ou ISTM-1000000001).</li>
+            <li>Vérifiez le matricule (ancien diplôme) ou l'INE (nouveau diplôme), tel qu'il est imprimé sur le diplôme.</li>
             <li>En cas de doute, contactez le Service de la Scolarité avant d'accepter le document.</li>
           </ul>
         </div>
@@ -77,7 +80,7 @@
     <div class="verif-document">
       <div class="type"><i class="bi bi-search"></i> Vérifier un diplôme</div>
       <h2>Authenticité d'un diplôme de l'IST de Mamou</h2>
-      <p class="small text-secondary mb-0">Employeur, administration, université… : indiquez votre structure, puis le <strong>matricule</strong> (anciens diplômes) ou l'<strong>INE</strong> (nouveaux diplômes) et le <strong>numéro du diplôme</strong>.</p>
+      <p class="small text-secondary mb-0">Employeur, administration, université… : indiquez votre structure et votre contact, puis le <strong>matricule</strong> (anciens diplômes) ou l'<strong>INE</strong> (nouveaux diplômes) du diplômé.</p>
     </div>
     <form method="post" class="p-4 pt-3" novalidate>
       {% csrf_token %}
@@ -88,20 +91,16 @@
           <div class="champ-icone"><i class="bi bi-building"></i><input id="v-structure" name="structure" class="form-control" maxlength="150" required value="{{ valeurs.structure }}" placeholder="Ex. Société minière de Boké, ambassade…"></div>
         </div>
         <div class="col-md-5">
-          <label class="form-label" for="v-contact">Contact <span class="small text-secondary">(facultatif)</span></label>
-          <div class="champ-icone"><i class="bi bi-envelope"></i><input id="v-contact" name="contact" class="form-control" maxlength="150" value="{{ valeurs.contact }}" placeholder="E-mail ou téléphone"></div>
+          <label class="form-label" for="v-contact">Votre contact <span class="text-danger">*</span></label>
+          <div class="champ-icone"><i class="bi bi-envelope"></i><input id="v-contact" name="contact" class="form-control" maxlength="150" required value="{{ valeurs.contact }}" placeholder="E-mail ou téléphone"></div>
         </div>
-        <div class="col-md-6">
+        <div class="col-12">
           <label class="form-label" for="v-identifiant">Matricule ou INE du diplômé <span class="text-danger">*</span></label>
           <div class="champ-icone"><i class="bi bi-person-vcard"></i><input id="v-identifiant" name="identifiant" class="form-control" maxlength="40" required value="{{ valeurs.identifiant }}" placeholder="Ex. 1500000001 ou XYZA0101990001" autocomplete="off"></div>
         </div>
-        <div class="col-md-6">
-          <label class="form-label" for="v-numero">Numéro du diplôme <span class="text-danger">*</span></label>
-          <div class="champ-icone"><i class="bi bi-hash"></i><input id="v-numero" name="numero" class="form-control" maxlength="60" required value="{{ valeurs.numero }}" placeholder="Ex. AB/06/18/0001 ou ISTM-1000000001" autocomplete="off"></div>
-        </div>
         <div class="col-12"><button class="btn btn-primary"><i class="bi bi-shield-check"></i> Vérifier</button></div>
       </div>
-      <div class="small text-secondary mt-3"><i class="bi bi-info-circle"></i> Chaque vérification est enregistrée par l'IST de Mamou (structure, date, diplôme demandé).</div>
+      <div class="small text-secondary mt-3"><i class="bi bi-info-circle"></i> Chaque vérification est enregistrée par l'IST de Mamou (structure, contact, date, diplômé recherché).</div>
     </form>
   </section>
 

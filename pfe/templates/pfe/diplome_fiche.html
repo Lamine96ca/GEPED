@@ -1,7 +1,7 @@
 {% extends 'pfe/base.html' %}
-{% block titre %}Diplôme {{ d.numero }}{% endblock %}
+{% block titre %}Diplôme {{ d.numero|default:d.nom }}{% endblock %}
 {% block titre_page %}<a href="{% url 'diplomes_liste' %}" class="text-decoration-none text-secondary me-1" title="Retour aux diplômés"><i class="bi bi-arrow-left"></i></a> {{ d.nom }} {{ d.prenoms }}{% endblock %}
-{% block sous_titre %}<div class="sous-titre">Diplôme n° {{ d.numero }} · {{ d.get_format_display }}{% if d.annee_obtention %} · obtenu en {{ d.annee_obtention }}{% endif %}</div>{% endblock %}
+{% block sous_titre %}<div class="sous-titre">{% if d.numero %}Diplôme n° {{ d.numero }}{% else %}Diplôme sans numéro (note de service){% endif %} · {{ d.get_format_display }}{% if d.annee_obtention %} · obtenu en {{ d.annee_obtention }}{% endif %}</div>{% endblock %}
 {% block contenu %}
 <div class="row g-3">
   <div class="col-xl-7">
@@ -11,7 +11,7 @@
           <div class="me-auto"><h3>Informations du diplôme</h3><p>Celles qu'affiche la page publique de vérification</p></div>
           {% if d.annule %}<span class="pill pill-danger">Annulé</span>{% else %}<span class="pill pill-succes">Valide</span>{% endif %}</div>
         <dl class="row mb-0 small">
-          <dt class="col-sm-4 text-secondary fw-normal">Numéro</dt><dd class="col-sm-8 fw-semibold">{{ d.numero }}</dd>
+          <dt class="col-sm-4 text-secondary fw-normal">Numéro</dt><dd class="col-sm-8 fw-semibold">{{ d.numero|default:"— (note de service)" }}</dd>
           {% for libelle, valeur in infos %}<dt class="col-sm-4 text-secondary fw-normal">{{ libelle }}</dt><dd class="col-sm-8">{{ valeur }}</dd>{% endfor %}
           {% if d.moyenne %}<dt class="col-sm-4 text-secondary fw-normal">Moyenne générale</dt><dd class="col-sm-8">{{ d.moyenne }} <span class="text-secondary">(interne, non publiée)</span></dd>{% endif %}
           {% if d.date_pv %}<dt class="col-sm-4 text-secondary fw-normal">PV de délibération</dt><dd class="col-sm-8">{{ d.date_pv|date:"d/m/Y" }}</dd>{% endif %}

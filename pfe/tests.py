@@ -4913,6 +4913,8 @@ class DiplomesTests(TestCase):
              'XYZA0101990001', '26/03/2026'],
             [3, 'M0', 'AB/06/18/0001', 'Doublon', 'X', '', '', '', '', '', '', ''],                 # numéro déjà vu
             [4, '', 'GN/01', 'SansIdentifiant', 'Y', '', '', '', '', '', '', ''],                  # ni matricule ni INE
+            [5, '0900000001', '', 'CAMARA', 'Note', '', '', '', 6.5, 'Bien', '', ''],             # note de service
+            [6, '900000001', '', 'CAMARA', 'Note', '', '', '', '', '', '', ''],     # même matricule (zéro perdu)
         ], 'Diplome P10 CFM.xlsx')
 
     def test_import_verification_et_droits(self):
@@ -4920,39 +4922,46 @@ class DiplomesTests(TestCase):
         url = reverse('diplomes_importer')
         self.connecter('scol')
         r = self.client.post(url, {'fichier': self.fichier(), 'simulation': 'on', 'programme': 'CFM', 'format': 'auto'})
-        self.assertEqual((r.context['rapport'].crees, Diplome.objects.count()), (2, 0))            # simulation
+        self.assertEqual((r.context['rapport'].crees, Diplome.objects.count()), (3, 0))            # simulation
         r = self.client.post(url, {'fichier': self.fichier(), 'programme': 'CFM', 'format': 'auto'})
         rapport = r.context['rapport']
-        self.assertEqual((rapport.crees, len(rapport.deja), len(rapport.erreurs)), (2, 1, 1))
+        self.assertEqual((rapport.crees, len(rapport.deja), len(rapport.erreurs)), (3, 2, 1))
+        note = Diplome.objects.get(nom='CAMARA')                                # sans numéro : enregistré quand même
+        self.assertEqual((note.numero, note.numero_cle, note.matricule), (None, '', '0900000001'))
         ancien, nouveau = Diplome.objects.get(numero='AB/06/18/0001'), Diplome.objects.get(numero='ISTM-1000000001')
         self.assertEqual((ancien.format, ancien.annee_obtention, ancien.programme, str(ancien.moyenne)),
                          ('ancien', 2018, 'CFM', '7.43'))
         self.assertEqual((nouveau.format, nouveau.ine, nouveau.annee_obtention), ('nouveau', 'XYZA0101990001', 2026))
-        # Page publique : structure + matricule ou INE + numéro (les deux doivent correspondre)
+        # Page publique : structure + contact + matricule ou INE (sans numéro)
         self.client.logout()
         pub = reverse('diplome_verifier')
         self.assertEqual(self.client.get(pub).status_code, 200)
-        r = self.client.post(pub, {'structure': 'Société X', 'identifiant': 'xyza0101990001',
-                                   'numero': 'istm - 1000000001'})
+        r = self.client.post(pub, {'structure': 'Société X', 'contact': 'rh@x.gn', 'identifiant': 'xyza0101990001'})
         self.assertContains(r, 'Diplôme authentique')
         self.assertContains(r, 'SOW')
         self.assertNotContains(r, '7.43')
-        r = self.client.post(pub, {'structure': 'Société X', 'identifiant': '1500000001', 'numero': 'ISTM-1000000001'})
-        self.assertContains(r, 'Aucun diplôme trouvé')                         # matricule d'un autre diplôme
-        r = self.client.post(pub, {'structure': '', 'identifiant': '1500000001', 'numero': 'AB/06/18/0001'})
+        r = self.client.post(pub, {'structure': 'Société X', 'contact': 'rh@x.gn', 'identifiant': '900000001'})
+        self.assertContains(r, 'Diplôme authentique')                          # zéro de tête perdu : retrouvé
+        self.assertContains(r, 'CAMARA')
+        r = self.client.post(pub, {'structure': 'Société X', 'contact': 'rh@x.gn', 'identifiant': '1599999999'})
+        self.assertContains(r, 'Aucun diplôme trouvé')
+        r = self.client.post(pub, {'structure': '', 'contact': 'rh@x.gn', 'identifiant': '1500000001'})
         self.assertContains(r, 'Indiquez le nom de votre structure')
-        self.assertEqual(VerificationDiplome.objects.count(), 2)
+        r = self.client.post(pub, {'structure': 'Société X', 'contact': '', 'identifiant': '1500000001'})
+        self.assertContains(r, 'Indiquez le nom de votre structure')            # contact obligatoire
+        self.assertEqual(VerificationDiplome.objects.count(), 3)
         # Annulation par la scolarité : la vérification l'indique
         self.connecter('scol')
         self.client.post(reverse('diplome_annuler', args=[ancien.pk]), {'motif': 'Fraude'})
         self.client.logout()
-        r = self.client.post(pub, {'structure': 'Banque', 'identifiant': '1500000001', 'numero': 'AB/06/18/0001'})
+        r = self.client.post(pub, {'structure': 'Banque', 'contact': '620000000', 'identifiant': '1500000001'})
         self.assertContains(r, 'Diplôme annulé')
         # Statistiques par année d'obtention
         self.connecter('scol')
         r = self.client.get(reverse('diplomes_liste'))
         annees = {l['annee']: (l['total'], l['annules'], l['verifications']) for l in r.context['stats']['annees']}
-        self.assertEqual(annees, {2026: (1, 0, 1), 2018: (1, 1, 1)})
+        self.assertEqual(annees[2026], (1, 0, 1))
+        self.assertEqual(annees[2018], (1, 1, 1))
         self.assertEqual(self.client.get(reverse('diplomes_liste') + '?imprimer=stats').content[:4], b'%PDF')
         self.assertEqual(self.client.get(reverse('diplomes_liste') + '?export=xlsx').status_code, 200)
         self.assertContains(self.client.get(reverse('diplomes_verifications')), 'Banque')
@@ -4968,8 +4977,19 @@ class DiplomesTests(TestCase):
     def test_essais_limites(self):
         pub = reverse('diplome_verifier')
         for _ in range(10):
-            self.client.post(pub, {'structure': 'S', 'identifiant': 'X', 'numero': 'Y'})
-        r = self.client.post(pub, {'structure': 'S', 'identifiant': 'X', 'numero': 'Y'})
+            self.client.post(pub, {'structure': 'S', 'contact': 'c', 'identifiant': 'XXXX'})
+        r = self.client.post(pub, {'structure': 'S', 'contact': 'c', 'identifiant': 'XXXX'})
+        self.assertContains(r, 'réessayez dans')
+
+    def test_recherches_limitees_par_heure(self):
+        from . import diplomes
+        from .models import Diplome
+        Diplome.objects.create(nom='SOW', matricule='1500000002')
+        pub = reverse('diplome_verifier')
+        for _ in range(diplomes.RECHERCHES_HEURE):              # recherches réussies : comptées aussi
+            self.assertContains(self.client.post(pub, {'structure': 'S', 'contact': 'c', 'identifiant': '1500000002'}),
+                                'Diplôme authentique')
+        r = self.client.post(pub, {'structure': 'S', 'contact': 'c', 'identifiant': '1500000002'})
         self.assertContains(r, 'réessayez dans')
 
 

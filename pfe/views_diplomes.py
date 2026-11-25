@@ -83,7 +83,7 @@ def _export(qs):
     for c in ws[1]:
         c.font, c.fill = Font(bold=True, color='FFFFFF'), PatternFill('solid', fgColor='41627C')
     for d in qs:
-        ws.append([d.numero, d.get_format_display(), d.matricule, d.ine, d.civilite, d.nom, d.prenoms,
+        ws.append([d.numero or '', d.get_format_display(), d.matricule, d.ine, d.civilite, d.nom, d.prenoms,
                    d.date_naissance, d.lieu_naissance, d.nationalite, d.programme, d.intitule, d.grade, d.finalite,
                    d.mention, d.moyenne, d.annee_universitaire, d.promotion, d.lieu_delivrance, d.date_delivrance,
                    d.annee_obtention, 'Annulé' if d.annule else 'Valide'])
@@ -100,7 +100,7 @@ def _imprimer(request, f, qs):
     from .pdf_listes import imprimer_tableau
     colonnes = [('N°', 22), ('Numéro du diplôme', 90), ('Nom et prénoms', 150), ('Matricule / INE', 95),
                 ('Programme', 160), ('Mention', 60), ('Obtenu en', 50)]
-    lignes = [[str(k), d.numero, f"{d.nom} {d.prenoms}", d.ine or d.matricule, d.programme, d.mention,
+    lignes = [[str(k), d.numero or '—', f"{d.nom} {d.prenoms}", d.ine or d.matricule, d.programme, d.mention,
                str(d.annee_obtention or '')] for k, d in enumerate(qs, 1)]
     return imprimer_tableau(request, 'diplomes', 'REGISTRE DES DIPLÔMÉS', _texte_filtres(f), colonnes, lignes,
                             paysage=True, total=f"{len(lignes)} diplôme{'s' if len(lignes) > 1 else ''}",
@@ -138,7 +138,7 @@ def diplome_annuler(request, pk):
     if request.POST.get('action') == 'retablir':
         d.annule, d.motif_annulation, d.annule_le, d.annule_par = False, '', None, None
         d.save()
-        messages.success(request, f"Le diplôme {d.numero} est de nouveau valide.")
+        messages.success(request, f"Le diplôme {d.numero or 'de ' + d.nom} est de nouveau valide.")
     else:
         motif = (request.POST.get('motif') or '').strip()
         if not motif:
@@ -146,7 +146,7 @@ def diplome_annuler(request, pk):
         else:
             d.annule, d.motif_annulation, d.annule_le, d.annule_par = True, motif, timezone.now(), request.user
             d.save()
-            messages.success(request, f"Diplôme {d.numero} annulé : la vérification publique l'indiquera.")
+            messages.success(request, f"Diplôme {d.numero or 'de ' + d.nom} annulé : la vérification publique l'indiquera.")
     return redirect('diplome_fiche', pk=d.pk)
 
 
@@ -202,24 +202,24 @@ def diplomes_verifications(request):
 
 @never_cache
 def diplome_verifier(request):
-    """Page PUBLIQUE : une structure vérifie un diplôme (son nom, matricule ou INE, numéro du diplôme)."""
+    """Page PUBLIQUE : une structure vérifie un diplôme (son nom, son contact, le matricule ou l'INE du diplômé)."""
     from django.conf import settings
     contexte = {'valeurs': {}, 'erreur': '', 'contact': settings.GPED_ATTESTATION}
     if request.method == 'POST':
         p = request.POST
-        valeurs = {k: (p.get(k) or '').strip() for k in ('structure', 'contact', 'identifiant', 'numero')}
+        valeurs = {k: (p.get(k) or '').strip() for k in ('structure', 'contact', 'identifiant')}
         contexte['valeurs'] = valeurs
         attente = diplomes.bloque(request)
         if attente:
             contexte['erreur'] = f"Trop d'essais : réessayez dans {attente // 60 + 1} minute(s)."
-        elif not (valeurs['structure'] and valeurs['identifiant'] and valeurs['numero']):
-            contexte['erreur'] = ("Indiquez le nom de votre structure, le matricule ou l'INE du diplômé et le numéro "
-                                  "du diplôme.")
+        elif not (valeurs['structure'] and valeurs['contact'] and valeurs['identifiant']):
+            contexte['erreur'] = ("Indiquez le nom de votre structure, votre contact (e-mail ou téléphone) et le "
+                                  "matricule ou l'INE du diplômé.")
         else:
-            resultat, d = diplomes.verifier(request, valeurs['structure'], valeurs['contact'],
-                                            valeurs['identifiant'], valeurs['numero'])
-            contexte.update({'resultat': resultat, 'diplome': d,
-                             'infos': diplomes.infos_publiques(d) if d else []})
+            resultat, trouves = diplomes.verifier(request, valeurs['structure'], valeurs['contact'],
+                                                  valeurs['identifiant'])
+            contexte.update({'resultat': resultat,
+                             'trouves': [(d, diplomes.infos_publiques(d)) for d in trouves]})
     reponse = render(request, 'pfe/diplome_verifier.html', contexte)
     reponse['X-Robots-Tag'] = 'noindex, nofollow'
     return reponse
