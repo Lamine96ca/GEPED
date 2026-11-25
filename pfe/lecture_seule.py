@@ -11,7 +11,8 @@ from django.urls import Resolver404, resolve
 from .roles import get_profil
 
 METHODES_SURES = {'GET', 'HEAD', 'OPTIONS', 'TRACE'}
-PERMISES = {'logout', 'login', 'connexion_code', 'connexion_recommencer', 'mon_compte', 'mon_compte_photo'}
+PERMISES = {'logout', 'login', 'connexion_code', 'connexion_recommencer', 'mon_compte', 'mon_compte_photo',
+            'diplome_verifier'}                      # page publique de vérification d'un diplôme
 # Exceptions à la consultation : la Direction Générale des Études gère les enseignants, les salles et les bâtiments
 GESTION_ENSEIGNANTS = {'enseignant_creer', 'enseignant_modifier', 'enseignant_action'}
 GESTION_EMPLOIS = {'seance_enregistrer', 'seance_supprimer'}

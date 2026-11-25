@@ -1,0 +1,119 @@
+{% load static %}<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#41627c">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="referrer" content="same-origin">
+  {% include 'pfe/_icones.html' %}
+  <title>GePed &gt; Vérification d'un diplôme</title>
+  {% include 'pfe/_ressources.html' %}
+  <link rel="stylesheet" href="{% static 'pfe/css/gped.css' %}?v={{ version_statique }}">
+</head>
+<body class="page-verification">
+
+<header class="verif-bandeau">
+  <div class="verif-marque">
+    <img src="{% static 'pfe/img/logo_ist.png' %}?v={{ version_statique }}" class="logo-ist" width="64" height="64" alt="Logo de l'IST de Mamou">
+    <div>
+      <div class="etab">Institut Supérieur de Technologie de Mamou</div>
+      <div class="service">Service de la Scolarité · Vérification d'un diplôme</div>
+    </div>
+  </div>
+</header>
+
+<main class="verif-contenu">
+  {% if resultat %}
+    <section class="verif-carte mb-3">
+      {% if resultat == 'authentique' %}
+        <div class="verif-statut ok">
+          <span class="icone"><i class="bi bi-patch-check-fill"></i></span>
+          <div><h1>Diplôme authentique</h1>
+            <p>Ce diplôme a bien été délivré par l'Institut Supérieur de Technologie de Mamou.</p></div>
+        </div>
+      {% elif resultat == 'annule' %}
+        <div class="verif-statut ko">
+          <span class="icone"><i class="bi bi-x-octagon-fill"></i></span>
+          <div><h1>Diplôme annulé</h1>
+            <p>Ce diplôme a été délivré par l'IST de Mamou puis <strong>annulé</strong> : il n'est plus valable.</p></div>
+        </div>
+      {% else %}
+        <div class="verif-statut ko">
+          <span class="icone"><i class="bi bi-x-octagon-fill"></i></span>
+          <div><h1>Aucun diplôme trouvé</h1>
+            <p>Aucun diplôme de l'IST de Mamou ne correspond à ce matricule (ou INE) et à ce numéro.</p></div>
+        </div>
+      {% endif %}
+      {% if diplome %}
+        <div class="verif-document">
+          <div class="type"><i class="bi bi-award"></i> Diplôme</div>
+          <h2>{{ diplome.intitule|default:diplome.grade|default:"Diplôme" }}{% if diplome.programme %} · {{ diplome.programme }}{% endif %}</h2>
+          <div class="verif-reperes">
+            <div><span>N° du diplôme</span><strong>{{ diplome.numero }}</strong></div>
+            {% if diplome.date_delivrance %}<div><span>Délivré le</span><strong>{{ diplome.date_delivrance|date:"j F Y" }}</strong></div>{% endif %}
+          </div>
+        </div>
+        <div class="verif-infos">
+          <h3>Informations contenues dans le diplôme</h3>
+          <dl>{% for libelle, valeur in infos %}<div class="ligne"><dt>{{ libelle }}</dt><dd>{{ valeur }}</dd></div>{% endfor %}</dl>
+        </div>
+        <div class="verif-conseil"><i class="bi bi-eye"></i>
+          <span>Comparez ces informations avec le diplôme qui vous a été présenté. <strong>Toute différence</strong> signifie que le document a été modifié : il n'est alors pas valable.</span></div>
+      {% else %}
+        <div class="verif-infos">
+          <h3>Que faire ?</h3>
+          <ul class="verif-etapes">
+            <li>Vérifiez le matricule (ancien diplôme) ou l'INE (nouveau diplôme) et le numéro, tels qu'ils sont imprimés.</li>
+            <li>Le numéro est la référence imprimée sur le diplôme (ex. AB/06/18/0001 ou ISTM-1000000001).</li>
+            <li>En cas de doute, contactez le Service de la Scolarité avant d'accepter le document.</li>
+          </ul>
+        </div>
+      {% endif %}
+    </section>
+  {% endif %}
+
+  <section class="verif-carte">
+    <div class="verif-document">
+      <div class="type"><i class="bi bi-search"></i> Vérifier un diplôme</div>
+      <h2>Authenticité d'un diplôme de l'IST de Mamou</h2>
+      <p class="small text-secondary mb-0">Employeur, administration, université… : indiquez votre structure, puis le <strong>matricule</strong> (anciens diplômes) ou l'<strong>INE</strong> (nouveaux diplômes) et le <strong>numéro du diplôme</strong>.</p>
+    </div>
+    <form method="post" class="p-4 pt-3" novalidate>
+      {% csrf_token %}
+      {% if erreur %}<div class="alert alert-danger py-2 small"><i class="bi bi-exclamation-circle"></i> {{ erreur }}</div>{% endif %}
+      <div class="row g-3">
+        <div class="col-md-7">
+          <label class="form-label" for="v-structure">Votre structure <span class="text-danger">*</span></label>
+          <input id="v-structure" name="structure" class="form-control" maxlength="150" required value="{{ valeurs.structure }}" placeholder="Ex. Société minière de Boké, ambassade…">
+        </div>
+        <div class="col-md-5">
+          <label class="form-label" for="v-contact">Contact <span class="small text-secondary">(facultatif)</span></label>
+          <input id="v-contact" name="contact" class="form-control" maxlength="150" value="{{ valeurs.contact }}" placeholder="E-mail ou téléphone">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label" for="v-identifiant">Matricule ou INE du diplômé <span class="text-danger">*</span></label>
+          <input id="v-identifiant" name="identifiant" class="form-control" maxlength="40" required value="{{ valeurs.identifiant }}" placeholder="Ex. 1500000001 ou XYZA0101990001" autocomplete="off">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label" for="v-numero">Numéro du diplôme <span class="text-danger">*</span></label>
+          <input id="v-numero" name="numero" class="form-control" maxlength="60" required value="{{ valeurs.numero }}" placeholder="Ex. AB/06/18/0001 ou ISTM-1000000001" autocomplete="off">
+        </div>
+        <div class="col-12"><button class="btn btn-primary"><i class="bi bi-shield-check"></i> Vérifier</button></div>
+      </div>
+      <div class="small text-secondary mt-3"><i class="bi bi-info-circle"></i> Chaque vérification est enregistrée par l'IST de Mamou (structure, date, diplôme demandé).</div>
+    </form>
+  </section>
+
+  <section class="verif-contact">
+    <h3><i class="bi bi-headset"></i> Service de la Scolarité</h3>
+    <div class="verif-coord">
+      <a href="mailto:{{ contact.email }}"><i class="bi bi-envelope"></i> {{ contact.email }}</a>
+      <a href="tel:{{ contact.telephone }}"><i class="bi bi-telephone"></i> {{ contact.telephone }}</a>
+      <span><i class="bi bi-geo-alt"></i> {{ contact.boite_postale }}</span>
+    </div>
+  </section>
+  <footer class="verif-pied">Vérification du {% now "j F Y à H:i" %} · GePed, IST de Mamou</footer>
+</main>
+</body>
+</html>

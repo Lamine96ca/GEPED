@@ -1,0 +1,55 @@
+{% extends 'pfe/base.html' %}
+{% block titre %}Diplôme {{ d.numero }}{% endblock %}
+{% block titre_page %}<a href="{% url 'diplomes_liste' %}" class="text-decoration-none text-secondary me-1" title="Retour aux diplômés"><i class="bi bi-arrow-left"></i></a> {{ d.nom }} {{ d.prenoms }}{% endblock %}
+{% block sous_titre %}<div class="sous-titre">Diplôme n° {{ d.numero }} · {{ d.get_format_display }}{% if d.annee_obtention %} · obtenu en {{ d.annee_obtention }}{% endif %}</div>{% endblock %}
+{% block contenu %}
+<div class="row g-3">
+  <div class="col-xl-7">
+    <div class="card carte-gped {% if d.annule %}border-danger{% endif %}">
+      <div class="card-body">
+        <div class="entete-carte"><span class="icone-carte"><i class="bi bi-award"></i></span>
+          <div class="me-auto"><h3>Informations du diplôme</h3><p>Celles qu'affiche la page publique de vérification</p></div>
+          {% if d.annule %}<span class="pill pill-danger">Annulé</span>{% else %}<span class="pill pill-succes">Valide</span>{% endif %}</div>
+        <dl class="row mb-0 small">
+          <dt class="col-sm-4 text-secondary fw-normal">Numéro</dt><dd class="col-sm-8 fw-semibold">{{ d.numero }}</dd>
+          {% for libelle, valeur in infos %}<dt class="col-sm-4 text-secondary fw-normal">{{ libelle }}</dt><dd class="col-sm-8">{{ valeur }}</dd>{% endfor %}
+          {% if d.moyenne %}<dt class="col-sm-4 text-secondary fw-normal">Moyenne générale</dt><dd class="col-sm-8">{{ d.moyenne }} <span class="text-secondary">(interne, non publiée)</span></dd>{% endif %}
+          {% if d.date_pv %}<dt class="col-sm-4 text-secondary fw-normal">PV de délibération</dt><dd class="col-sm-8">{{ d.date_pv|date:"d/m/Y" }}</dd>{% endif %}
+          {% if d.chef_departement or d.directeur_general %}<dt class="col-sm-4 text-secondary fw-normal">Signataires</dt><dd class="col-sm-8">{{ d.chef_departement|default:"—" }} · {{ d.directeur_general|default:"—" }}</dd>{% endif %}
+          <dt class="col-sm-4 text-secondary fw-normal">Fiche GePed</dt><dd class="col-sm-8">{% if d.etudiant %}<a href="{% url 'etudiants_liste' %}?q={{ d.etudiant.matricule|default:d.etudiant.ine }}">{{ d.etudiant.prenom }} {{ d.etudiant.nom }}</a>{% else %}<span class="text-secondary">Non rattaché (ancienne promotion)</span>{% endif %}</dd>
+          <dt class="col-sm-4 text-secondary fw-normal">Enregistré</dt><dd class="col-sm-8">{{ d.date_creation|date:"d/m/Y" }}{% if d.importe_par %} · {{ d.importe_par.get_full_name|default:d.importe_par.username }}{% endif %}</dd>
+        </dl>
+        {% if d.annule %}
+          <div class="alert alert-danger small mt-3 mb-0"><strong>Annulé le {{ d.annule_le|date:"d/m/Y" }}</strong>{% if d.annule_par %} par {{ d.annule_par.get_full_name|default:d.annule_par.username }}{% endif %} : {{ d.motif_annulation }}</div>
+        {% endif %}
+        {% if profil.gere_diplomes %}
+          <div class="mt-3">
+            {% if d.annule %}
+              <form method="post" action="{% url 'diplome_annuler' d.pk %}" onsubmit="return confirm('Rendre ce diplôme de nouveau valide ?');">{% csrf_token %}<input type="hidden" name="action" value="retablir">
+                <button class="btn btn-sm btn-primary"><i class="bi bi-arrow-counterclockwise"></i> Rétablir le diplôme</button></form>
+            {% else %}
+              <button class="btn btn-sm btn-danger-doux" type="button" data-bs-toggle="collapse" data-bs-target="#form-annuler"><i class="bi bi-x-octagon"></i> Annuler le diplôme</button>
+              <form method="post" action="{% url 'diplome_annuler' d.pk %}" class="collapse mt-2" id="form-annuler">{% csrf_token %}
+                <textarea name="motif" class="form-control form-control-sm mb-2" rows="2" required maxlength="1000" placeholder="Motif (obligatoire) : erreur, fraude…"></textarea>
+                <button class="btn btn-sm btn-danger" onclick="return confirm('Annuler ce diplôme ? La vérification publique indiquera « Diplôme annulé ».');"><i class="bi bi-x-octagon"></i> Confirmer l'annulation</button></form>
+            {% endif %}
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-xl-5">
+    <div class="card carte-gped">
+      <div class="card-body">
+        <div class="entete-carte"><span class="icone-carte"><i class="bi bi-shield-check"></i></span><div><h3>Vérifications</h3><p>Structures qui ont vérifié ce diplôme</p></div></div>
+        {% for v in verifications %}
+          <div class="border-bottom py-2 small"><div class="fw-semibold" style="color:var(--encre)">{{ v.structure }}</div>
+            <div class="text-secondary">{{ v.date|date:"d/m/Y à H:i" }}{% if v.contact %} · {{ v.contact }}{% endif %} · {{ v.get_resultat_display }}</div></div>
+        {% empty %}
+          <div class="small text-secondary">Aucune vérification pour l'instant.</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

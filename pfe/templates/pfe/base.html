@@ -116,6 +116,9 @@
       {% if profil.gere_etudiants %}
         <a class="nav-link {% if actif == 'releves' %}active{% endif %}" href="{% url 'releves' %}"><i class="bi bi-file-earmark-spreadsheet"></i> Relevés de notes</a>
       {% endif %}
+      {% if profil.voit_diplomes %}
+        <a class="nav-link {% if actif == 'diplomes' %}active{% endif %}" href="{% url 'diplomes_liste' %}"><i class="bi bi-award"></i> Diplômés</a>
+      {% endif %}
       <!-- 3. Matières -->
       {% if profil.voit_matieres %}
       <a class="nav-link {% if actif == 'matieres' %}active{% endif %}" href="{% url 'matieres_liste' %}"><i class="bi bi-journal-bookmark"></i> Matières</a>

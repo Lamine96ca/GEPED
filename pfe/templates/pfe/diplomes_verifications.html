@@ -1,0 +1,48 @@
+{% extends 'pfe/base.html' %}
+{% load humanize %}
+{% block titre %}Vérifications de diplômes{% endblock %}
+{% block titre_page %}<a href="{% url 'diplomes_liste' %}" class="text-decoration-none text-secondary me-1" title="Retour aux diplômés"><i class="bi bi-arrow-left"></i></a> Vérifications de diplômes{% endblock %}
+{% block sous_titre %}<div class="sous-titre">Journal de la page publique : chaque structure qui a vérifié un diplôme</div>{% endblock %}
+{% block contenu %}
+<div class="card carte-gped liste">
+  <div class="card-header">
+    <form method="get" class="d-flex flex-wrap gap-2">
+      <select name="resultat" class="form-select form-select-sm" style="height:38px;width:auto" onchange="this.form.submit()">
+        <option value="">Tous les résultats</option>
+        {% for code, lib in resultats %}<option value="{{ code }}"{% if resultat == code %} selected{% endif %}>{{ lib }}</option>{% endfor %}
+      </select>
+      <div class="champ-icone" style="min-width:260px"><i class="bi bi-search"></i>
+        <input type="search" name="q" value="{{ q }}" class="form-control form-control-sm" style="height:38px" placeholder="Structure, matricule, INE, numéro, nom">
+      </div>
+    </form>
+  </div>
+  <div class="px-4 pt-3 small text-secondary"><i class="bi bi-shield-check text-primary"></i> {{ page.paginator.count|intcomma }} vérification{{ page.paginator.count|pluralize }}</div>
+  <div class="table-responsive mt-2">
+    <table class="table table-etudiants mb-0">
+      <thead><tr><th>Date</th><th>Structure</th><th>Saisi</th><th>Résultat</th><th>Diplôme</th></tr></thead>
+      <tbody>
+      {% for v in page %}
+        <tr style="cursor:default">
+          <td class="text-nowrap small">{{ v.date|date:"d/m/Y H:i" }}</td>
+          <td style="white-space:normal"><strong>{{ v.structure }}</strong>{% if v.contact %}<div class="small text-secondary">{{ v.contact }}</div>{% endif %}</td>
+          <td class="small">{{ v.identifiant }}<div class="text-secondary">{{ v.numero }}</div></td>
+          <td>{% if v.resultat == 'authentique' %}<span class="pill pill-succes">Authentique</span>{% elif v.resultat == 'annule' %}<span class="pill pill-danger">Annulé</span>{% else %}<span class="pill pill-attention">Introuvable</span>{% endif %}</td>
+          <td class="small">{% if v.diplome %}<a href="{% url 'diplome_fiche' v.diplome_id %}">{{ v.diplome.nom }} {{ v.diplome.prenoms }}</a>{% else %}—{% endif %}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="5"><div class="etat-vide"><i class="bi bi-shield-check"></i>Aucune vérification pour l'instant.</div></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if page.has_other_pages %}
+    <div class="pied-tableau d-flex justify-content-end">
+      <ul class="pagination pagination-sm mb-0">
+        {% if page.has_previous %}<li class="page-item"><a class="page-link" href="?q={{ q|urlencode }}&resultat={{ resultat }}&page={{ page.previous_page_number }}"><i class="bi bi-chevron-left"></i></a></li>{% endif %}
+        <li class="page-item active"><span class="page-link">{{ page.number }} / {{ page.paginator.num_pages }}</span></li>
+        {% if page.has_next %}<li class="page-item"><a class="page-link" href="?q={{ q|urlencode }}&resultat={{ resultat }}&page={{ page.next_page_number }}"><i class="bi bi-chevron-right"></i></a></li>{% endif %}
+      </ul>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

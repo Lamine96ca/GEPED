@@ -581,6 +581,100 @@ class CongeAcademique(models.Model):
         return self.levee_le is None
 
 
+class Diplome(models.Model):
+    """
+    Diplôme délivré par l'IST (registre des diplômés), importé depuis Excel par la scolarité. Deux formats :
+      - ancien  : identifié par le MATRICULE et une référence (ex. AB/06/18/0001), avec la nationalité ;
+      - nouveau : identifié par l'INE et un numéro (ex. ISTM-1000000001), avec la finalité, l'année universitaire,
+                  la date du PV de délibération (le QR code imprimé renvoie à la base du ministère).
+    Une page PUBLIQUE permet à toute structure de vérifier un diplôme (matricule ou INE + numéro), voir
+    pfe/diplomes.py ; chaque vérification est enregistrée (VerificationDiplome).
+    """
+    ANCIEN, NOUVEAU = 'ancien', 'nouveau'
+    FORMATS = [(ANCIEN, 'Ancien format (matricule)'), (NOUVEAU, 'Nouveau format (INE)')]
+    format = models.CharField('Format', max_length=10, choices=FORMATS, default=NOUVEAU)
+    numero = models.CharField('Numéro du diplôme', max_length=60, unique=True,
+                              help_text="Référence (ancien format, ex. AB/06/18/0001) ou numéro ISTM-… (nouveau).")
+    numero_cle = models.CharField(max_length=60, db_index=True, editable=False)    # sans espaces, en majuscules
+    etudiant = models.ForeignKey(Etudiant, on_delete=models.SET_NULL, null=True, blank=True, related_name='diplomes',
+                                 verbose_name="Fiche de l'étudiant")
+    matricule = models.CharField('Matricule', max_length=30, blank=True, default='', db_index=True)
+    ine = models.CharField('INE', max_length=30, blank=True, default='', db_index=True)
+    civilite = models.CharField('Civilité', max_length=5, blank=True, default='')
+    sexe = models.CharField('Sexe', max_length=1, blank=True, default='', choices=[('M', 'Masculin'), ('F', 'Féminin')])
+    nom = models.CharField('Nom', max_length=100)
+    prenoms = models.CharField('Prénoms', max_length=150, blank=True, default='')
+    date_naissance = models.DateField('Né(e) le', null=True, blank=True)
+    lieu_naissance = models.CharField('À', max_length=120, blank=True, default='')
+    nationalite = models.CharField('Nationalité', max_length=60, blank=True, default='')
+    filiere = models.ForeignKey(Service, on_delete=models.SET_NULL, null=True, blank=True, related_name='diplomes',
+                                verbose_name='Programme (GePed)')
+    programme = models.CharField('Programme / option', max_length=150, blank=True, default='')
+    intitule = models.CharField('Diplôme', max_length=150, blank=True, default='',
+                                help_text="Ex. Licence en ingénierie (premier cycle LMD).")
+    grade = models.CharField('Grade', max_length=60, blank=True, default='')
+    finalite = models.CharField('Finalité', max_length=60, blank=True, default='')
+    mention = models.CharField('Mention', max_length=40, blank=True, default='')
+    moyenne = models.DecimalField('Moyenne générale', max_digits=5, decimal_places=2, null=True, blank=True)
+    annee_universitaire = models.CharField('Année universitaire', max_length=20, blank=True, default='')
+    promotion = models.CharField('Promotion', max_length=20, blank=True, default='')
+    lieu_delivrance = models.CharField('Fait à', max_length=60, blank=True, default='')
+    date_delivrance = models.DateField('Délivré le', null=True, blank=True)
+    date_pv = models.DateField('Date du PV de délibération', null=True, blank=True)
+    chef_departement = models.CharField('Chef de département (signataire)', max_length=120, blank=True, default='')
+    directeur_general = models.CharField('Directeur général (signataire)', max_length=120, blank=True, default='')
+    annee_obtention = models.PositiveSmallIntegerField("Année d'obtention", null=True, blank=True, db_index=True,
+                                                       editable=False)
+    annule = models.BooleanField('Annulé', default=False)
+    motif_annulation = models.TextField("Motif de l'annulation", blank=True, default='')
+    annule_le = models.DateTimeField('Annulé le', null=True, blank=True)
+    annule_par = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    importe_par = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+                                    verbose_name='Enregistré par')
+    date_creation = models.DateTimeField('Enregistré le', auto_now_add=True)
+
+    class Meta:
+        ordering = ['-annee_obtention', 'nom', 'prenoms']
+        verbose_name = 'Diplôme'
+
+    def __str__(self):
+        return f"Diplôme {self.numero} · {self.nom} {self.prenoms}"
+
+    @staticmethod
+    def cle(numero):
+        import re
+        return re.sub(r'\s+', '', str(numero or '')).upper()
+
+    def save(self, *args, **kwargs):
+        import re
+        self.numero_cle = self.cle(self.numero)
+        self.ine = re.sub(r'\s+', '', self.ine or '').upper()
+        self.matricule = re.sub(r'\s+', '', self.matricule or '')
+        annee = self.date_delivrance.year if self.date_delivrance else None
+        if annee is None:
+            fin = re.findall(r'(\d{4})', self.annee_universitaire or '')
+            annee = int(fin[-1]) if fin else None
+        self.annee_obtention = annee
+        super().save(*args, **kwargs)
+
+
+class VerificationDiplome(models.Model):
+    """Une vérification faite sur la page publique : structure, ce qu'elle a saisi, résultat (journal)."""
+    AUTHENTIQUE, ANNULE, INTROUVABLE = 'authentique', 'annule', 'introuvable'
+    RESULTATS = [(AUTHENTIQUE, 'Authentique'), (ANNULE, 'Diplôme annulé'), (INTROUVABLE, 'Aucun diplôme trouvé')]
+    structure = models.CharField('Structure', max_length=150)
+    contact = models.CharField('Contact', max_length=150, blank=True, default='')
+    identifiant = models.CharField('Matricule ou INE saisi', max_length=40)
+    numero = models.CharField('Numéro saisi', max_length=60)
+    resultat = models.CharField('Résultat', max_length=12, choices=RESULTATS)
+    diplome = models.ForeignKey(Diplome, on_delete=models.SET_NULL, null=True, blank=True,
+                                related_name='verifications')
+    date = models.DateTimeField('Date', auto_now_add=True)
+
+    class Meta:
+        ordering = ['-date']
+
+
 class Exclusion(models.Model):
     """
     Exclusion d'un étudiant d'un programme, prononcée par la scolarité : dettes académiques non résorbées (GePed

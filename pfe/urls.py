@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import (views, views_conges, views_demandes, views_exclusions, views_emplois, views_enseignants, views_guides, views_salles, views_notes, views_personnel, views_releves,
+from . import (views, views_conges, views_demandes, views_diplomes, views_exclusions, views_emplois, views_enseignants, views_guides, views_salles, views_notes, views_personnel, views_releves,
                views_soutenances,
                views_suivi_notes)
 
@@ -34,6 +34,12 @@ urlpatterns = [
     path('scolarite/conges/<int:pk>/annuler/', views_conges.conge_annuler, name='conge_annuler'),
     path('scolarite/conges/<int:pk>/justificatif/', views_conges.conge_justificatif, name='conge_justificatif'),
     path('exclusions/', views_exclusions.exclusions_liste, name='exclusions_liste'),
+    path('diplomes/', views_diplomes.diplomes_liste, name='diplomes_liste'),
+    path('diplomes/importer/', views_diplomes.diplomes_importer, name='diplomes_importer'),
+    path('diplomes/verifications/', views_diplomes.diplomes_verifications, name='diplomes_verifications'),
+    path('diplomes/<int:pk>/', views_diplomes.diplome_fiche, name='diplome_fiche'),
+    path('diplomes/<int:pk>/annuler/', views_diplomes.diplome_annuler, name='diplome_annuler'),
+    path('verifier-diplome/', views_diplomes.diplome_verifier, name='diplome_verifier'),
     path('scolarite/inscriptions/<int:pk>/exclure/', views_exclusions.exclusion_enregistrer, name='exclusion_enregistrer'),
     path('scolarite/exclusions/<int:pk>/reintegrer/', views_exclusions.exclusion_reintegrer,
          name='exclusion_reintegrer'),

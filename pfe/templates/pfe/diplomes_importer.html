@@ -1,0 +1,66 @@
+{% extends 'pfe/base.html' %}
+{% block titre %}Importer des diplômés{% endblock %}
+{% block titre_page %}<a href="{% url 'diplomes_liste' %}" class="text-decoration-none text-secondary me-1" title="Retour aux diplômés"><i class="bi bi-arrow-left"></i></a> Importer des diplômés{% endblock %}
+{% block sous_titre %}<div class="sous-titre">Fichier Excel (.xlsx) ou CSV · une ligne = un diplôme · anciens et nouveaux formats</div>{% endblock %}
+{% block actions %}<a href="?modele=1" class="btn btn-or"><i class="bi bi-file-earmark-excel"></i> Télécharger le modèle</a>{% endblock %}
+{% block contenu %}
+<div class="row g-3">
+  <div class="col-xl-7">
+    <form method="post" enctype="multipart/form-data" class="card carte-gped">
+      <div class="card-body">
+        {% csrf_token %}
+        {% if erreur %}<div class="alert alert-danger py-2"><i class="bi bi-exclamation-circle"></i> {{ erreur }}</div>{% endif %}
+        <div class="entete-carte"><span class="icone-carte"><i class="bi bi-upload"></i></span><div><h3>Le fichier</h3><p>La feuille qui contient le tableau des diplômés est trouvée seule</p></div></div>
+        <input type="file" name="fichier" class="form-control mb-3" accept=".xlsx,.csv" required>
+        <div class="entete-carte mt-2"><span class="icone-carte"><i class="bi bi-ui-checks"></i></span><div><h3>Valeurs pour tout le fichier</h3><p>Utilisées seulement quand la colonne est absente ou vide</p></div></div>
+        <div class="row g-2">
+          <div class="col-md-6"><label class="form-label small mb-1">Format</label>
+            <select name="format" class="form-select form-select-sm">
+              <option value="auto"{% if valeurs.format == 'auto' %} selected{% endif %}>Automatique (INE renseigné : nouveau)</option>
+              {% for code, lib in formats %}<option value="{{ code }}"{% if valeurs.format == code %} selected{% endif %}>{{ lib }}</option>{% endfor %}
+            </select></div>
+          <div class="col-md-6"><label class="form-label small mb-1">Programme / option</label>
+            <input name="programme" class="form-control form-control-sm" list="liste-programmes" value="{{ valeurs.programme }}" placeholder="Ex. CONCEPTION ET FABRICATION MECANIQUE">
+            <datalist id="liste-programmes">{% for p in programmes %}<option value="{{ p.nom }}">{% endfor %}</datalist></div>
+          <div class="col-md-6"><label class="form-label small mb-1">Diplôme (intitulé)</label><input name="intitule" class="form-control form-control-sm" value="{{ valeurs.intitule }}" placeholder="Ex. Licence en ingénierie (premier cycle LMD)"></div>
+          <div class="col-md-3"><label class="form-label small mb-1">Grade</label><input name="grade" class="form-control form-control-sm" value="{{ valeurs.grade }}" placeholder="Ex. LICENCE"></div>
+          <div class="col-md-3"><label class="form-label small mb-1">Finalité</label><input name="finalite" class="form-control form-control-sm" value="{{ valeurs.finalite }}" placeholder="Ex. PROFESSIONNELLE"></div>
+          <div class="col-md-4"><label class="form-label small mb-1">Année universitaire</label><input name="annee_universitaire" class="form-control form-control-sm" value="{{ valeurs.annee_universitaire }}" placeholder="Ex. 2024 - 2025"></div>
+          <div class="col-md-2"><label class="form-label small mb-1">Promotion</label><input name="promotion" class="form-control form-control-sm" value="{{ valeurs.promotion }}" placeholder="P16"></div>
+          <div class="col-md-3"><label class="form-label small mb-1">Fait à</label><input name="lieu_delivrance" class="form-control form-control-sm" value="{{ valeurs.lieu_delivrance }}"></div>
+          <div class="col-md-3"><label class="form-label small mb-1">Délivré le</label><input name="date_delivrance" class="form-control form-control-sm" value="{{ valeurs.date_delivrance }}" placeholder="JJ/MM/AAAA"></div>
+          <div class="col-md-4"><label class="form-label small mb-1">Date du PV de délibération</label><input name="date_pv" class="form-control form-control-sm" value="{{ valeurs.date_pv }}" placeholder="JJ/MM/AAAA"></div>
+          <div class="col-md-4"><label class="form-label small mb-1">Chef de département (signataire)</label><input name="chef_departement" class="form-control form-control-sm" value="{{ valeurs.chef_departement }}"></div>
+          <div class="col-md-4"><label class="form-label small mb-1">Directeur général (signataire)</label><input name="directeur_general" class="form-control form-control-sm" value="{{ valeurs.directeur_general }}"></div>
+        </div>
+        <label class="option-import mt-3"><input type="checkbox" name="simulation" checked>
+          <div><strong>Mode simulation</strong><span>Vérifie le fichier sans rien enregistrer. Conseillé pour un premier essai.</span></div></label>
+        <button class="btn btn-primary mt-3"><i class="bi bi-upload"></i> Lancer l'import</button>
+      </div>
+    </form>
+  </div>
+  <div class="col-xl-5">
+    {% if rapport %}
+      <div class="card carte-gped mb-3"><div class="card-body">
+        <div class="entete-carte"><span class="icone-carte"><i class="bi bi-clipboard-check"></i></span><div><h3>{% if rapport.simulation %}Simulation{% else %}Import terminé{% endif %}</h3><p>{{ rapport.lignes }} ligne{{ rapport.lignes|pluralize }} lue{{ rapport.lignes|pluralize }}</p></div></div>
+        <ul class="small mb-2">
+          <li><strong>{{ rapport.crees }}</strong> diplôme{{ rapport.crees|pluralize }} {% if rapport.simulation %}à enregistrer{% else %}enregistré{{ rapport.crees|pluralize }}{% endif %}{% if rapport.non_rattaches %} ({{ rapport.non_rattaches }} sans fiche GePed : anciennes promotions){% endif %}</li>
+          {% if rapport.deja %}<li><strong>{{ rapport.deja|length }}</strong> déjà enregistré{{ rapport.deja|length|pluralize }} (ignoré{{ rapport.deja|length|pluralize }}) : {% for n, num in rapport.deja|slice:":8" %}{{ num }}{% if not forloop.last %}, {% endif %}{% endfor %}{% if rapport.deja|length > 8 %}…{% endif %}</li>{% endif %}
+          {% if rapport.colonnes_ignorees %}<li class="text-secondary">Colonnes ignorées : {{ rapport.colonnes_ignorees|join:", " }}</li>{% endif %}
+        </ul>
+        {% if rapport.erreurs %}<div class="alert alert-danger small py-2 mb-0"><strong>{{ rapport.erreurs|length }} erreur{{ rapport.erreurs|length|pluralize }}</strong>{% for n, e in rapport.erreurs|slice:":15" %}<div>Ligne {{ n }} : {{ e }}</div>{% endfor %}</div>{% endif %}
+        {% if rapport.simulation and rapport.crees %}<div class="small text-secondary mt-2"><i class="bi bi-info-circle"></i> Décochez « Mode simulation » et relancez pour enregistrer.</div>{% endif %}
+      </div></div>
+    {% endif %}
+    <div class="card carte-gped"><div class="card-body small">
+      <div class="entete-carte"><span class="icone-carte"><i class="bi bi-info-lg"></i></span><div><h3>Comment ça marche</h3><p>Les colonnes sont repérées par leur nom</p></div></div>
+      <ol class="mb-0 d-grid gap-1">
+        <li>Obligatoires : <strong>numéro</strong> du diplôme (ou « Réf »), <strong>nom</strong>, et <strong>matricule</strong> (ancien format) ou <strong>INE</strong> (nouveau).</li>
+        <li>Facultatives : prénoms, civilité, date et lieu de naissance, nationalité, programme, diplôme, grade, finalité, mention, moyenne, année universitaire, promotion, fait à, délivré le, date du PV.</li>
+        <li>Vos anciens fichiers marchent tels quels : « Mat », « Réf », « Date_Naiss », « Lieu_naiss », « MG »…</li>
+        <li>Un numéro déjà enregistré est ignoré. Un diplômé retrouvé par son INE ou son matricule est rattaché à sa fiche.</li>
+      </ol>
+    </div></div>
+  </div>
+</div>
+{% endblock %}

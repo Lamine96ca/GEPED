@@ -1,0 +1,112 @@
+{% extends 'pfe/base.html' %}
+{% load humanize %}
+{% block titre %}Diplômés{% endblock %}
+{% block titre_page %}Diplômés{% endblock %}
+{% block sous_titre %}<div class="sous-titre">Registre des diplômes délivrés · ancien format (matricule) et nouveau format (INE){% if not profil.gere_diplomes %} · consultation{% endif %}</div>{% endblock %}
+{% block actions %}
+  <div class="btn-group">
+    <button type="button" class="btn btn-light dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-download"></i> <span class="d-none d-sm-inline">Exporter</span></button>
+    <ul class="dropdown-menu dropdown-menu-end">
+      <li><a class="dropdown-item" href="?{{ request.GET.urlencode }}{% if request.GET %}&amp;{% endif %}export=xlsx"><i class="bi bi-file-earmark-excel"></i> Excel</a></li>
+      <li><a class="dropdown-item" target="_blank" rel="noopener" href="?{{ request.GET.urlencode }}{% if request.GET %}&amp;{% endif %}imprimer=pdf"><i class="bi bi-printer"></i> Liste (PDF)</a></li>
+      <li><a class="dropdown-item" target="_blank" rel="noopener" href="?{{ request.GET.urlencode }}{% if request.GET %}&amp;{% endif %}imprimer=stats"><i class="bi bi-bar-chart"></i> Statistiques (PDF)</a></li>
+    </ul>
+  </div>
+  <a href="{% url 'diplomes_verifications' %}" class="btn btn-light"><i class="bi bi-shield-check"></i> <span class="d-none d-sm-inline">Vérifications ({{ nb_verifications|intcomma }})</span></a>
+  {% if profil.gere_diplomes %}<a href="{% url 'diplomes_importer' %}" class="btn btn-primary"><i class="bi bi-upload"></i> <span class="d-none d-sm-inline">Importer</span></a>{% endif %}
+{% endblock %}
+{% block contenu %}
+<!-- Lien public de vérification -->
+<div class="card carte-gped mb-3">
+  <div class="card-body d-flex flex-wrap align-items-center gap-3">
+    <span class="icone-carte"><i class="bi bi-link-45deg"></i></span>
+    <div class="me-auto" style="min-width:0">
+      <div class="fw-semibold" style="color:var(--encre)">Lien public de vérification</div>
+      <div class="small text-secondary">À donner à toute structure qui veut vérifier un diplôme : elle indique son nom, le matricule ou l'INE et le numéro du diplôme.</div>
+      <code id="lien-verification" class="small">{{ request.scheme }}://{{ request.get_host }}{% url 'diplome_verifier' %}</code>
+    </div>
+    <button type="button" class="btn btn-sm btn-light" onclick="navigator.clipboard && navigator.clipboard.writeText(document.getElementById('lien-verification').textContent).then(function(){ this.innerHTML='<i class=\'bi bi-check2\'></i> Copié'; }.bind(this))"><i class="bi bi-clipboard"></i> Copier le lien</button>
+    <a class="btn btn-sm btn-light" href="{% url 'diplome_verifier' %}" target="_blank" rel="noopener"><i class="bi bi-box-arrow-up-right"></i> Ouvrir</a>
+  </div>
+</div>
+
+<!-- Statistiques par année d'obtention -->
+<div class="card carte-gped mb-3">
+  <div class="card-header d-flex align-items-center"><h3 class="titre-stat me-auto mb-0">Diplômés par année d'obtention</h3>
+    <span class="small text-secondary">{{ stats.total.total|intcomma }} diplôme{{ stats.total.total|pluralize }} · {{ stats.total.verifications|intcomma }} vérification{{ stats.total.verifications|pluralize }}</span></div>
+  <div class="table-responsive">
+    <table class="table table-etudiants table-stat mb-0">
+      <thead><tr><th>Année d'obtention</th><th class="text-end">Hommes</th><th class="text-end">Femmes</th><th class="text-end">Non précisé</th><th class="text-end">Total</th><th class="text-end">Annulés</th><th class="text-end">Vérifications</th></tr></thead>
+      <tbody>
+        {% for l in stats.annees %}
+          <tr style="cursor:default"><td>{% if l.annee != 'Non précisée' %}<a href="?annee={{ l.annee }}" style="color:var(--encre);font-weight:600">{{ l.annee }}</a>{% else %}{{ l.annee }}{% endif %}</td>
+            <td class="text-end">{{ l.h }}</td><td class="text-end">{{ l.f }}</td><td class="text-end text-secondary">{{ l.x }}</td>
+            <td class="text-end fw-semibold">{{ l.total }}</td><td class="text-end">{% if l.annules %}<span class="text-danger">{{ l.annules }}</span>{% else %}0{% endif %}</td>
+            <td class="text-end">{{ l.verifications }}</td></tr>
+        {% empty %}
+          <tr><td colspan="7"><div class="etat-vide py-3"><i class="bi bi-award"></i>Aucun diplôme enregistré{% if profil.gere_diplomes %} : <a href="{% url 'diplomes_importer' %}">importez la liste des diplômés</a>{% endif %}.</div></td></tr>
+        {% endfor %}
+      </tbody>
+      {% if stats.annees %}<tfoot><tr><th>Total</th><th class="text-end">{{ stats.total.h }}</th><th class="text-end">{{ stats.total.f }}</th><th class="text-end">{{ stats.total.x }}</th><th class="text-end">{{ stats.total.total }}</th><th class="text-end">{{ stats.total.annules }}</th><th class="text-end">{{ stats.total.verifications }}</th></tr></tfoot>{% endif %}
+    </table>
+  </div>
+</div>
+
+<!-- Liste -->
+<div class="card carte-gped liste">
+  <div class="card-header">
+    <form method="get" class="d-flex flex-wrap gap-2">
+      <select name="annee" class="form-select form-select-sm" style="height:38px;width:auto" title="Année d'obtention" onchange="this.form.submit()">
+        <option value="">Toutes les années</option>
+        {% for a in annees %}<option value="{{ a }}"{% if f.annee == a|stringformat:'s' %} selected{% endif %}>{{ a }}</option>{% endfor %}
+      </select>
+      <select name="programme" class="form-select form-select-sm" style="height:38px;width:auto;max-width:260px" title="Programme" onchange="this.form.submit()">
+        <option value="">Tous les programmes</option>
+        {% for p in programmes %}<option value="{{ p }}"{% if f.programme == p %} selected{% endif %}>{{ p }}</option>{% endfor %}
+      </select>
+      <select name="format" class="form-select form-select-sm" style="height:38px;width:auto" title="Format" onchange="this.form.submit()">
+        <option value="">Tous les formats</option>
+        {% for code, lib in formats %}<option value="{{ code }}"{% if f.format == code %} selected{% endif %}>{{ lib }}</option>{% endfor %}
+      </select>
+      <select name="etat" class="form-select form-select-sm" style="height:38px;width:auto" title="État" onchange="this.form.submit()">
+        <option value="">Valides et annulés</option>
+        <option value="valides"{% if f.etat == 'valides' %} selected{% endif %}>Valides</option>
+        <option value="annules"{% if f.etat == 'annules' %} selected{% endif %}>Annulés</option>
+      </select>
+      <div class="champ-icone" style="min-width:240px"><i class="bi bi-search"></i>
+        <input type="search" name="q" value="{{ f.q }}" class="form-control form-control-sm" style="height:38px" placeholder="Nom, matricule, INE, numéro">
+      </div>
+    </form>
+  </div>
+  <div class="px-4 pt-3 small text-secondary"><i class="bi bi-award text-primary"></i> {{ page.paginator.count|intcomma }} diplôme{{ page.paginator.count|pluralize }} avec ces filtres</div>
+  <div class="table-responsive mt-2">
+    <table class="table table-etudiants mb-0">
+      <thead><tr><th>Diplômé</th><th>Matricule / INE</th><th>N° du diplôme</th><th>Programme</th><th>Mention</th><th>Obtenu</th><th></th></tr></thead>
+      <tbody>
+      {% for d in page %}
+        <tr style="cursor:default">
+          <td><a href="{% url 'diplome_fiche' d.pk %}" style="color:var(--encre);font-weight:600">{{ d.nom }}</a> {{ d.prenoms }}{% if d.annule %} <span class="pill pill-danger">Annulé</span>{% endif %}</td>
+          <td class="small">{% if d.ine %}{{ d.ine }}{% else %}{{ d.matricule }}{% endif %}<div class="text-secondary">{{ d.get_format_display }}</div></td>
+          <td class="text-nowrap">{{ d.numero }}</td>
+          <td style="white-space:normal;max-width:260px">{{ d.programme|default:"—" }}<div class="small text-secondary">{{ d.intitule|default:d.grade }}</div></td>
+          <td>{{ d.mention|default:"—" }}</td>
+          <td>{{ d.annee_obtention|default:"—" }}</td>
+          <td class="text-end"><a class="btn btn-icone" href="{% url 'diplome_fiche' d.pk %}" title="Fiche du diplôme"><i class="bi bi-eye"></i></a></td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="7"><div class="etat-vide"><i class="bi bi-award"></i>Aucun diplôme avec ces filtres.</div></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if page.has_other_pages %}
+    <div class="pied-tableau d-flex justify-content-end">
+      <ul class="pagination pagination-sm mb-0">
+        {% if page.has_previous %}<li class="page-item"><a class="page-link" href="?q={{ f.q|urlencode }}&annee={{ f.annee }}&programme={{ f.programme|urlencode }}&format={{ f.format }}&etat={{ f.etat }}&page={{ page.previous_page_number }}"><i class="bi bi-chevron-left"></i></a></li>{% endif %}
+        <li class="page-item active"><span class="page-link">{{ page.number }} / {{ page.paginator.num_pages }}</span></li>
+        {% if page.has_next %}<li class="page-item"><a class="page-link" href="?q={{ f.q|urlencode }}&annee={{ f.annee }}&programme={{ f.programme|urlencode }}&format={{ f.format }}&etat={{ f.etat }}&page={{ page.next_page_number }}"><i class="bi bi-chevron-right"></i></a></li>{% endif %}
+      </ul>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

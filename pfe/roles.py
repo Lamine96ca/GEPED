@@ -156,6 +156,16 @@ class Profil:
         return self.role == SCOLARITE
 
     @property
+    def gere_diplomes(self):
+        """Registre des diplômés (import, annulation) : la scolarité et l'administrateur."""
+        return self.est_scolarite
+
+    @property
+    def voit_diplomes(self):
+        """Registre des diplômés et journal des vérifications : la scolarité et la Direction (consultation)."""
+        return self.est_scolarite or self.est_direction
+
+    @property
     def gere_exclusions(self):
         """Exclure un étudiant d'un programme : la scolarité (agents et chef) et l'administrateur."""
         return self.est_scolarite
@@ -469,6 +479,8 @@ suivi_notes_requis = _exige('voit_suivi_notes', "Réservé à la scolarité, à 
 lecture_conges_requise = _exige('voit_conges', "Congés académiques : réservé à la scolarité et à la Direction.")
 chef_scolarite_requis = _exige('est_chef_scolarite', "Réservé au chef de la scolarité et à l'administrateur.")
 exclusions_lecture_requise = _exige('voit_exclusions', "Exclusions : réservé au personnel.")
+diplomes_lecture_requise = _exige('voit_diplomes', "Diplômés : réservé à la scolarité et à la Direction.")
+diplomes_gestion_requise = _exige('gere_diplomes', "Seule la scolarité gère le registre des diplômés.")
 exclusions_gestion_requise = _exige('gere_exclusions', "Seule la scolarité prononce une exclusion.")
 reintegration_requise = _exige('reintegre_exclus', "Seuls le chef de la scolarité et l'administrateur réintègrent "
                                                    "un étudiant exclu.")

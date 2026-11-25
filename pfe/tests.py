@@ -4892,6 +4892,87 @@ class EnseignantsTests(TestCase):
         self.assertIn('une seule fois', m.body)
 
 
+class DiplomesTests(TestCase):
+    """Registre des diplômés : import Excel (ancien et nouveau format), vérification publique, droits, statistiques."""
+    setUpTestData = EspaceDirectionTests.__dict__['setUpTestData']
+    setUpTestData_base = GpedTests.__dict__['setUpTestData']
+    connecter = GpedTests.connecter
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()                                   # essais limités de la page publique : repartir de zéro
+
+    def fichier(self):
+        return fichier_xlsx([
+            ['Promotion 10 : registre'],                                            # titre avant le tableau
+            ['N°', 'Mat', 'Réf', 'Nom', 'Prénoms', 'Date_Naiss', 'Lieu_naiss', 'Nationalité', 'MG', 'Mention', 'INE',
+             'Date'],
+            [1, '1500000001', 'AB/06/18/0001', 'Diallo', 'Fanta', '11/11/1990', 'Abidjan', 'Guinéenne', 7.43,
+             'Très Bien', '', '18/06/2018'],
+            [2, '', 'ISTM-1000000001', 'SOW', 'Mamadou', '01/01/1999', 'Mamou', '', '', 'Bien',
+             'XYZA0101990001', '26/03/2026'],
+            [3, 'M0', 'AB/06/18/0001', 'Doublon', 'X', '', '', '', '', '', '', ''],                 # numéro déjà vu
+            [4, '', 'GN/01', 'SansIdentifiant', 'Y', '', '', '', '', '', '', ''],                  # ni matricule ni INE
+        ], 'Diplome P10 CFM.xlsx')
+
+    def test_import_verification_et_droits(self):
+        from .models import Diplome, VerificationDiplome
+        url = reverse('diplomes_importer')
+        self.connecter('scol')
+        r = self.client.post(url, {'fichier': self.fichier(), 'simulation': 'on', 'programme': 'CFM', 'format': 'auto'})
+        self.assertEqual((r.context['rapport'].crees, Diplome.objects.count()), (2, 0))            # simulation
+        r = self.client.post(url, {'fichier': self.fichier(), 'programme': 'CFM', 'format': 'auto'})
+        rapport = r.context['rapport']
+        self.assertEqual((rapport.crees, len(rapport.deja), len(rapport.erreurs)), (2, 1, 1))
+        ancien, nouveau = Diplome.objects.get(numero='AB/06/18/0001'), Diplome.objects.get(numero='ISTM-1000000001')
+        self.assertEqual((ancien.format, ancien.annee_obtention, ancien.programme, str(ancien.moyenne)),
+                         ('ancien', 2018, 'CFM', '7.43'))
+        self.assertEqual((nouveau.format, nouveau.ine, nouveau.annee_obtention), ('nouveau', 'XYZA0101990001', 2026))
+        # Page publique : structure + matricule ou INE + numéro (les deux doivent correspondre)
+        self.client.logout()
+        pub = reverse('diplome_verifier')
+        self.assertEqual(self.client.get(pub).status_code, 200)
+        r = self.client.post(pub, {'structure': 'Société X', 'identifiant': 'xyza0101990001',
+                                   'numero': 'istm - 1000000001'})
+        self.assertContains(r, 'Diplôme authentique')
+        self.assertContains(r, 'SOW')
+        self.assertNotContains(r, '7.43')
+        r = self.client.post(pub, {'structure': 'Société X', 'identifiant': '1500000001', 'numero': 'ISTM-1000000001'})
+        self.assertContains(r, 'Aucun diplôme trouvé')                         # matricule d'un autre diplôme
+        r = self.client.post(pub, {'structure': '', 'identifiant': '1500000001', 'numero': 'AB/06/18/0001'})
+        self.assertContains(r, 'Indiquez le nom de votre structure')
+        self.assertEqual(VerificationDiplome.objects.count(), 2)
+        # Annulation par la scolarité : la vérification l'indique
+        self.connecter('scol')
+        self.client.post(reverse('diplome_annuler', args=[ancien.pk]), {'motif': 'Fraude'})
+        self.client.logout()
+        r = self.client.post(pub, {'structure': 'Banque', 'identifiant': '1500000001', 'numero': 'AB/06/18/0001'})
+        self.assertContains(r, 'Diplôme annulé')
+        # Statistiques par année d'obtention
+        self.connecter('scol')
+        r = self.client.get(reverse('diplomes_liste'))
+        annees = {l['annee']: (l['total'], l['annules'], l['verifications']) for l in r.context['stats']['annees']}
+        self.assertEqual(annees, {2026: (1, 0, 1), 2018: (1, 1, 1)})
+        self.assertEqual(self.client.get(reverse('diplomes_liste') + '?imprimer=stats').content[:4], b'%PDF')
+        self.assertEqual(self.client.get(reverse('diplomes_liste') + '?export=xlsx').status_code, 200)
+        self.assertContains(self.client.get(reverse('diplomes_verifications')), 'Banque')
+        # Direction : consultation ; département : rien
+        self.connecter('dge')
+        self.assertEqual(self.client.get(reverse('diplome_fiche', args=[ancien.pk])).status_code, 200)
+        self.assertEqual(self.client.get(url).status_code, 403)
+        self.assertEqual(self.client.post(reverse('diplome_annuler', args=[nouveau.pk]), {'motif': 'x'}).status_code,
+                         403)
+        self.connecter('dep')
+        self.assertEqual(self.client.get(reverse('diplomes_liste')).status_code, 403)
+
+    def test_essais_limites(self):
+        pub = reverse('diplome_verifier')
+        for _ in range(10):
+            self.client.post(pub, {'structure': 'S', 'identifiant': 'X', 'numero': 'Y'})
+        r = self.client.post(pub, {'structure': 'S', 'identifiant': 'X', 'numero': 'Y'})
+        self.assertContains(r, 'réessayez dans')
+
+
 class SallesBatimentsTests(TestCase):
     """Salles et bâtiments : gérés par la Direction des Études sur une même page, import Excel / CSV, exports."""
     setUpTestData = EnseignantsTests.__dict__['setUpTestData']
