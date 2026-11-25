@@ -268,7 +268,7 @@ def _pdf_releve(c, releve, contenu, url, cachet_signature):
 GRIS_BLOC = (0.86, 0.86, 0.86)        # bandeau « SESSION … | LICENCE … »
 BORDEAUX = (0.5, 0.06, 0.06)          # « Moyenne Annuelle »
 TRAIT = (0.25, 0.25, 0.25)            # quadrillage
-ROUGE_NON_VALIDEE = (0.8, 0.05, 0.05)  # matière notée mais non validée
+FOND_NON_VALIDEE = (0.99, 0.85, 0.85)  # fond rouge clair : matière notée mais non validée
 
 
 def _pdf_extrait(c, releve, contenu, url, cachet_signature):
@@ -307,9 +307,11 @@ def _pdf_extrait(c, releve, contenu, url, cachet_signature):
             c.line(x0, yy, x0 + largeur_col, yy)
             for l in b['lignes']:
                 x = x0
-                # Matière notée mais non validée : toute la ligne en rouge, pour la distinguer
-                non_validee = l['note'] is not None and not l['validee']
-                c.setFillColorRGB(*(ROUGE_NON_VALIDEE if non_validee else (0, 0, 0)))
+                # Matière notée mais non validée : fond rouge clair sur toute la ligne, pour la distinguer
+                if l['note'] is not None and not l['validee']:
+                    c.setFillColorRGB(*FOND_NON_VALIDEE)
+                    c.rect(x0, yy - hauteur, largeur_col, hauteur, stroke=0, fill=1)
+                c.setFillColorRGB(0, 0, 0)
                 for (titre, w, align), v in zip(colonnes, [l['matiere'], fmt(l['note']), str(l['credit']),
                                                            l['lettre'] or '—', l['semestre']]):
                     _texte(c, x + (3 if align == 'g' else w / 2), yy - hauteur * 0.74, v,
