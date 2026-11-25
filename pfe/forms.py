@@ -1493,3 +1493,14 @@ def preparer_signature(data_url):
     flux = _io.BytesIO()
     signee.save(flux, 'PNG', optimize=True)
     return flux.getvalue()
+
+
+# Pages publiques : une icône dans le champ, comme sur la page de connexion (voir pfe/_champ.html)
+for _form, _icones in (
+        (IdentificationInscriptionForm, {'ine': 'bi-person-vcard', 'pvbac': 'bi-file-earmark-text'}),
+        (IdentificationReinscriptionForm, {'ine': 'bi-person-vcard', 'matricule': 'bi-upc'}),
+        (IdentificationMasterForm, {'email': 'bi-envelope'}),
+        (DossierEtudiantForm, {'telephone': 'bi-telephone', 'email': 'bi-envelope', 'adresse': 'bi-geo-alt',
+                               'tuteur': 'bi-person', 'contact_de_tuteur': 'bi-telephone-forward'})):
+    for _nom, _icone in _icones.items():
+        _form.base_fields[_nom].widget.icone = _icone

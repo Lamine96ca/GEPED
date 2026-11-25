@@ -5,7 +5,12 @@
     </div>
   {% else %}
     <label class="form-label small mb-1" for="{{ champ.id_for_label }}">{{ champ.label }}{% if champ.field.required %} <span class="text-danger">*</span>{% endif %}</label>
-    {{ champ }}
+    {% if champ.field.widget.icone %}
+      {# pages publiques : icône dans le champ, comme sur la page de connexion #}
+      <div class="champ-icone"><i class="bi {{ champ.field.widget.icone }}"></i>{{ champ }}</div>
+    {% else %}
+      {{ champ }}
+    {% endif %}
   {% endif %}
   {% for err in champ.errors %}<div class="invalid-feedback d-block">{{ err }}</div>{% endfor %}
 </div>

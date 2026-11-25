@@ -1029,3 +1029,11 @@ code { color: var(--encre); background: var(--survol); padding: .05rem .3rem; bo
 .recap-demande span { font-size: .8rem; padding: .25rem .6rem; border-radius: 999px; }
 .recap-demande .fourni { background: #ecfdf3; color: #15803d; }
 .recap-demande .manque { background: #fde2e2; color: #b91c1c; font-weight: 600; }
+
+/* Pages publiques (vérification d'un diplôme, espace étudiant) : champs et boutons comme sur la page de connexion */
+.page-verification .form-label { font-size: .9375rem; color: var(--texte); margin-bottom: .4rem; }
+.page-verification .form-control:not(textarea):not([type="file"]),
+.page-verification .form-select { height: 46px; background-color: #fbfcfd; }
+.page-verification .form-control:focus, .page-verification .form-select:focus { background-color: #fff; }
+.page-verification form .btn-primary:not(.btn-sm) { min-height: 46px; font-size: 1rem; padding-left: 1.25rem; padding-right: 1.25rem;
+  display: inline-flex; align-items: center; justify-content: center; gap: .4rem; }

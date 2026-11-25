@@ -85,19 +85,19 @@
       <div class="row g-3">
         <div class="col-md-7">
           <label class="form-label" for="v-structure">Votre structure <span class="text-danger">*</span></label>
-          <input id="v-structure" name="structure" class="form-control" maxlength="150" required value="{{ valeurs.structure }}" placeholder="Ex. Société minière de Boké, ambassade…">
+          <div class="champ-icone"><i class="bi bi-building"></i><input id="v-structure" name="structure" class="form-control" maxlength="150" required value="{{ valeurs.structure }}" placeholder="Ex. Société minière de Boké, ambassade…"></div>
         </div>
         <div class="col-md-5">
           <label class="form-label" for="v-contact">Contact <span class="small text-secondary">(facultatif)</span></label>
-          <input id="v-contact" name="contact" class="form-control" maxlength="150" value="{{ valeurs.contact }}" placeholder="E-mail ou téléphone">
+          <div class="champ-icone"><i class="bi bi-envelope"></i><input id="v-contact" name="contact" class="form-control" maxlength="150" value="{{ valeurs.contact }}" placeholder="E-mail ou téléphone"></div>
         </div>
         <div class="col-md-6">
           <label class="form-label" for="v-identifiant">Matricule ou INE du diplômé <span class="text-danger">*</span></label>
-          <input id="v-identifiant" name="identifiant" class="form-control" maxlength="40" required value="{{ valeurs.identifiant }}" placeholder="Ex. 1500000001 ou XYZA0101990001" autocomplete="off">
+          <div class="champ-icone"><i class="bi bi-person-vcard"></i><input id="v-identifiant" name="identifiant" class="form-control" maxlength="40" required value="{{ valeurs.identifiant }}" placeholder="Ex. 1500000001 ou XYZA0101990001" autocomplete="off"></div>
         </div>
         <div class="col-md-6">
           <label class="form-label" for="v-numero">Numéro du diplôme <span class="text-danger">*</span></label>
-          <input id="v-numero" name="numero" class="form-control" maxlength="60" required value="{{ valeurs.numero }}" placeholder="Ex. AB/06/18/0001 ou ISTM-1000000001" autocomplete="off">
+          <div class="champ-icone"><i class="bi bi-hash"></i><input id="v-numero" name="numero" class="form-control" maxlength="60" required value="{{ valeurs.numero }}" placeholder="Ex. AB/06/18/0001 ou ISTM-1000000001" autocomplete="off"></div>
         </div>
         <div class="col-12"><button class="btn btn-primary"><i class="bi bi-shield-check"></i> Vérifier</button></div>
       </div>
