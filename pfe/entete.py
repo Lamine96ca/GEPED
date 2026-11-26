@@ -57,8 +57,10 @@ def dessiner_entete(c, largeur_page, hauteur_page, g, d, haut=14, largeur_bandea
     y -= ecart
     c.setFont('Helvetica-Bold', taille_coordonnees)
     c.drawString(g, y, conf['boite_postale'])
-    c.drawCentredString((g + d) / 2, y, f"Email : {s.email}")
-    c.drawRightString(d, y, f"Tél : {s.telephone}")
+    if s.email:
+        c.drawCentredString((g + d) / 2, y, f"Email : {s.email}")
+    if s.telephone:                                   # enseignant sans téléphone : rien plutôt qu'un autre numéro
+        c.drawRightString(d, y, f"Tél : {s.telephone}")
     c.setStrokeColorRGB(*BLEU_TRAIT)
     c.setLineWidth(1.6)
     c.line(g, y - 4, d, y - 4)

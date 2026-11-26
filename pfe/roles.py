@@ -119,8 +119,41 @@ class Profil:
 
     @property
     def telecharge_fiches(self):
-        """Fiche de notes de l'enseignant (Excel) : chef de département et directeur de programme, pas la scolarité."""
-        return self.role in (CHEF_DEPARTEMENT, PROGRAMME)
+        """Fiche de notes de l'enseignant (Excel) : chef de département, directeur de programme et l'enseignant
+        lui-même (ses matières), pas la scolarité."""
+        return self.role in (CHEF_DEPARTEMENT, PROGRAMME) or bool(self.matieres_enseignees_ids)
+
+    @property
+    def matieres_enseignees_ids(self):
+        """Matières où l'enseignant du compte a des séances dans l'emploi du temps (calculé une fois)."""
+        if not hasattr(self, '_matieres_enseignees'):
+            from .models import Seance
+            self._matieres_enseignees = (set(Seance.objects.filter(enseignants=self.enseignant)
+                                             .values_list('matiere_id', flat=True))
+                                         if self.enseignant is not None else set())
+        return self._matieres_enseignees
+
+    @property
+    def saisit_notes(self):
+        """Saisie et import des notes : scolarité, chefs de département, directeurs de programme (leur périmètre), et
+        l'enseignant pour les matières de ses séances."""
+        return self.gere_matieres or bool(self.matieres_enseignees_ids)
+
+    @property
+    def designe_delegues(self):
+        """Délégués de classe : le directeur du programme et le chef de département (et le super utilisateur)."""
+        return self.superuser or self.role in (CHEF_DEPARTEMENT, PROGRAMME)
+
+    @property
+    def approuve_plans(self):
+        """Plans de cours : approuvés par le chef de département ou le directeur du programme (et le super
+        utilisateur)."""
+        return self.superuser or self.role in (CHEF_DEPARTEMENT, PROGRAMME)
+
+    @property
+    def voit_plans(self):
+        """Plans de cours et avancement : ceux qui approuvent, la scolarité et la Direction (consultation)."""
+        return self.approuve_plans or self.est_scolarite or self.est_direction or self.est_ciaq
 
     @property
     def a_perimetre(self):
@@ -185,9 +218,16 @@ class Profil:
         return self.est_chef_scolarite
 
     @property
+    def voit_etudiants(self):
+        """Liste et fiches des étudiants, préinscriptions : tout le personnel, sauf la CIAQ (elle suit les cours et
+        les heures des enseignants, pas les étudiants)."""
+        return self.a_acces and not self.ciaq_seule
+
+    @property
     def voit_exclusions(self):
-        """Liste des exclusions (consultation) : tous les espaces du personnel, chacun pour ses étudiants."""
-        return self.a_acces
+        """Liste des exclusions (consultation) : tous les espaces du personnel (chacun pour ses étudiants), sauf la
+        CIAQ."""
+        return self.voit_etudiants
 
     @property
     def a_acces(self):
@@ -201,7 +241,31 @@ class Profil:
 
     @property
     def gere_enseignants(self):
-        """Ajouter, modifier, désactiver les enseignants : la Direction Générale des Études et le super utilisateur."""
+        """Ajouter, modifier, désactiver les enseignants : le chef de département et le directeur de programme (ceux de
+        leur département) et le super utilisateur (tous)."""
+        return self.superuser or self.role in (CHEF_DEPARTEMENT, PROGRAMME)
+
+    @property
+    def est_ciaq(self):
+        """Cellule interne de contrôle de qualité : consulte les emplois du temps, les plans de cours, l'avancement
+        et les heures des enseignants ; définit les paramètres des heures (seule modification permise)."""
+        return any(est_service_ciaq(s) for s in self.tous_services)
+
+    @property
+    def voit_heures(self):
+        """Avancement des cours et situation des enseignants (heures, heures supplémentaires) : la CIAQ, la Direction
+        et le super utilisateur."""
+        return self.superuser or self.est_ciaq or self.est_direction
+
+    @property
+    def gere_parametres_heures(self):
+        """Paramètres des heures (service par grade, coefficients, plafonds, taux) : la CIAQ et le super utilisateur."""
+        return self.superuser or self.est_ciaq
+
+    @property
+    def reajuste_cours(self):
+        """Dates des semestres, cours dispensés (relance, réajustement des heures après la procédure administrative) :
+        la Direction des Études et le super utilisateur."""
         return self.superuser or self.est_dge
 
     @property
@@ -223,13 +287,13 @@ class Profil:
     def voit_emplois(self):
         """Emplois du temps en consultation : Direction Générale et scolarité (tous), départements et programmes
         (les leurs)."""
-        return self.gere_emplois or self.est_direction or self.est_scolarite or self.a_perimetre
+        return self.gere_emplois or self.est_direction or self.est_scolarite or self.a_perimetre or self.est_ciaq
 
     @property
     def voit_enseignants(self):
-        """Liste des enseignants : la DGE (gestion), la Direction Générale et la scolarité (tous), le chef de
-        département et le directeur de programme (ceux de leur département)."""
-        return (self.gere_enseignants or self.est_direction or self.est_scolarite
+        """Liste des enseignants : la Direction, la scolarité et la CIAQ (tous, en consultation), le chef de
+        département et le directeur de programme (ceux de leur département, qu'ils gèrent)."""
+        return (self.gere_enseignants or self.est_direction or self.est_scolarite or self.est_ciaq
                 or self.role in (CHEF_DEPARTEMENT, PROGRAMME))
 
     @property
@@ -262,14 +326,20 @@ class Profil:
         return self.est_direction and self.role == SERVICE and not self.superuser
 
     @property
+    def ciaq_seule(self):
+        """Compte de la CIAQ (sans autre rôle) : consulte, ne modifie que les paramètres des heures."""
+        return self.est_ciaq and self.role == SERVICE and not self.superuser
+
+    @property
     def consulte_demandes(self):
         """Demandes en ligne : ceux qui les gèrent, et la Direction (lecture). Relevés et attestations : scolarité."""
         return self.gere_etudiants or self.est_direction
 
     @property
     def voit_matieres(self):
-        """Partie « Matières » : tout le personnel, sauf la Direction (elle suit les notes, pas les matières)."""
-        return self.a_acces and not self.lecture_seule
+        """Partie « Matières » : tout le personnel, sauf la Direction (elle suit les notes, pas les matières) et la
+        CIAQ."""
+        return self.a_acces and not self.lecture_seule and not self.ciaq_seule
 
     @property
     def voit_autorisations(self):
@@ -279,8 +349,9 @@ class Profil:
     @property
     def voit_soutenances(self):
         """Liste et calendrier des soutenances : la scolarité et les services voient tout (lecture seule pour les
-        services) ; chef de département, directeur de programme et personnel de département, leurs programmes."""
-        return self.role in (SCOLARITE, SERVICE) or self.a_perimetre
+        services) ; chef de département, directeur de programme et personnel de département, leurs programmes. Pas
+        la CIAQ."""
+        return (self.role in (SCOLARITE, SERVICE) or self.a_perimetre) and not self.ciaq_seule
 
     @property
     def lit_notes(self):
@@ -331,6 +402,17 @@ def est_service_dge(service):
     return _sans_accents(service.nom) in noms
 
 
+def est_service_ciaq(service):
+    """Cellule interne de contrôle de qualité : code CIAQ, ou nom (GPED_CIAQ_NOMS), sans casse ni accents."""
+    if service.programme:
+        return False
+    if (service.code or '').strip().upper() == 'CIAQ':
+        return True
+    noms = {_sans_accents(n) for n in getattr(settings, 'GPED_CIAQ_NOMS',
+                                              ['Cellule Interne de Contrôle de Qualité', 'CIAQ'])}
+    return _sans_accents(service.nom) in noms
+
+
 def est_service_dg(service):
     """Direction Générale : reconnue par son nom (GPED_DIRECTION_GENERALE_NOMS), sans casse ni accents."""
     if service.programme:
@@ -363,11 +445,11 @@ def departements_du_profil(profil):
 
 
 def enseignants_visibles(profil):
-    """Enseignants que le profil voit : tous (DGE, Direction Générale, scolarité, super utilisateur), ceux de son
+    """Enseignants que le profil voit : tous (Direction, scolarité, CIAQ, super utilisateur), ceux de son
     département (chef de département, directeur de programme), sinon aucun."""
     from .models import Enseignant
     qs = Enseignant.objects.select_related('departement', 'utilisateur')
-    if profil.gere_enseignants or profil.est_direction or profil.est_scolarite:
+    if profil.superuser or profil.est_direction or profil.est_scolarite or profil.est_ciaq:
         return qs
     if profil.role in (CHEF_DEPARTEMENT, PROGRAMME):
         return qs.filter(departement_id__in=departements_du_profil(profil))
@@ -413,6 +495,8 @@ def get_profil(request):
 def inscriptions_visibles(profil):
     """QuerySet des inscriptions que le profil a le droit de voir."""
     qs = Inscription.objects.all()
+    if profil.ciaq_seule:
+        return qs.none()
     if profil.role in (SCOLARITE, SERVICE):
         return qs
     if profil.a_perimetre:
@@ -421,13 +505,14 @@ def inscriptions_visibles(profil):
 
 
 def matieres_visibles(profil):
-    """QuerySet des matières que le profil a le droit de voir."""
+    """QuerySet des matières que le profil a le droit de voir (un enseignant : en plus, celles de ses séances)."""
     qs = Matiere.objects.all()
     if profil.role in (SCOLARITE, SERVICE):
         return qs
+    enseignees = profil.matieres_enseignees_ids
     if profil.a_perimetre:
-        return qs.filter(filiere_id__in=profil.programme_ids)
-    return qs.none()
+        return qs.filter(Q(filiere_id__in=profil.programme_ids) | Q(pk__in=enseignees))
+    return qs.filter(pk__in=enseignees) if enseignees else qs.none()
 
 
 def programmes_du_profil(profil):
@@ -469,10 +554,16 @@ autorisations_lecture_requise = _exige('voit_autorisations', "Réservé à la sc
 chef_departement_requis = _exige('est_chef_departement', "Réservé au chef de département.")
 validations_requises = _exige('voit_validations', "Validation des semestres : réservé aux chefs de département et "
                                                   "au super utilisateur.")
-enseignants_lecture_requise = _exige('voit_enseignants', "Enseignants : réservé à la Direction des Études, à la "
-                                                          "Direction Générale, à la scolarité et aux départements.")
-enseignants_gestion_requise = _exige('gere_enseignants', "Gestion des enseignants : réservée à la Direction "
-                                                         "Générale des Études.")
+enseignants_lecture_requise = _exige('voit_enseignants', "Enseignants : réservé à la Direction, à la scolarité, à "
+                                                          "la CIAQ et aux départements.")
+enseignants_gestion_requise = _exige('gere_enseignants', "Gestion des enseignants : réservée aux chefs de "
+                                                         "département, aux directeurs de programme et à "
+                                                         "l'administrateur.")
+etudiants_lecture_requise = _exige('voit_etudiants', "Étudiants : réservé à la scolarité, aux départements, aux "
+                                                         "programmes et à la Direction.")
+heures_lecture_requise = _exige('voit_heures', "Heures des enseignants : réservé à la CIAQ et à la Direction.")
+parametres_heures_requis = _exige('gere_parametres_heures', "Paramètres des heures : définis par la CIAQ.")
+reajustement_requis = _exige('reajuste_cours', "Réservé à la Direction des Études.")
 salles_lecture_requise = _exige('voit_salles', "Salles et bâtiments : réservé à la Direction des Études, à la "
                                                  "Direction Générale et à la scolarité.")
 salles_gestion_requise = _exige('gere_salles', "Gestion des salles et des bâtiments : réservée à la Direction "
@@ -482,8 +573,14 @@ emplois_gestion_requise = _exige('gere_emplois', "Composer les emplois du temps 
                                                  "des Études.")
 espace_enseignant_requis = _exige('est_enseignant', "Espace réservé aux enseignants.")
 soutenances_lecture_requise = _exige('voit_soutenances', "Soutenances : réservé au personnel de l'établissement.")
-fiches_requises = _exige('telecharge_fiches', "Fiche de notes de l'enseignant : réservé aux chefs de département et "
-                                              "aux directeurs de programme.")
+fiches_requises = _exige('telecharge_fiches', "Fiche de notes de l'enseignant : réservé aux chefs de département, "
+                                              "aux directeurs de programme et aux enseignants de la matière.")
+saisie_notes_requise = _exige('saisit_notes', "Saisie des notes : réservée à la scolarité, aux départements, aux "
+                                              "programmes et aux enseignants de la matière.")
+delegues_requis = _exige('designe_delegues', "Délégués de classe : désignés par le directeur du programme ou le chef "
+                                             "de département.")
+plans_lecture_requise = _exige('voit_plans', "Plans de cours : réservé aux départements, aux programmes, à la "
+                                             "scolarité et à la Direction.")
 suivi_notes_requis = _exige('voit_suivi_notes', "Réservé à la scolarité, à l'administrateur et à la Direction.")
 lecture_conges_requise = _exige('voit_conges', "Congés académiques : réservé à la scolarité et à la Direction.")
 chef_scolarite_requis = _exige('est_chef_scolarite', "Réservé au chef de la scolarité et à l'administrateur.")

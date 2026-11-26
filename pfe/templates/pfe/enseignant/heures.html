@@ -1,0 +1,42 @@
+{% extends 'pfe/base.html' %}
+{% block titre %}Mes heures{% endblock %}
+{% block titre_page %}Mes heures{% endblock %}
+{% block sous_titre %}<div class="sous-titre">Heures prévues (emploi du temps) et heures faites (cours validés par un délégué){% if session %} · {{ session.annee }}{% endif %}</div>{% endblock %}
+{% block actions %}{% include 'pfe/enseignant/_session.html' %}{% endblock %}
+{% block contenu %}
+{% for b in blocs %}
+  <h2 class="h6 text-uppercase text-secondary mt-2 mb-2">{{ b.libelle }}</h2>
+  <div class="row g-3 mb-4">
+    <div class="col-12">
+      <div class="card carte-gped h-100">
+        <div class="card-body">
+          <div class="entete-carte"><span class="icone-carte"><i class="bi bi-bar-chart-line"></i></span>
+            <div><h3>Prévu / fait : {{ b.fait_total }} sur {{ b.prevu_total }}</h3>
+              <p>{% if b.semaines is not None %}Prévu à ce jour : {{ b.semaines }} semaine{{ b.semaines|pluralize }} écoulée{{ b.semaines|pluralize }}{% else %}Prévu sur le semestre ({{ semaines_semestre }} semaines) : la Direction des Études n'a pas encore saisi les dates du semestre{% endif %}. Fait : durées (départ − arrivée) validées par le délégué.</p></div></div>
+          {% include 'pfe/_barres_heures.html' with lignes=b.comparaison %}
+        </div>
+      </div>
+    </div>
+    <div class="col-12">
+      <div class="card carte-gped liste h-100">
+        <div class="card-header"><h3 class="titre-stat mb-0">Emploi du temps : {{ b.total }} par semaine</h3></div>
+        <div class="table-responsive">
+          <table class="table table-etudiants mb-0">
+            <thead><tr><th>Matière</th><th>Classe</th><th>Type</th><th class="text-end">Heures / semaine</th></tr></thead>
+            <tbody>
+            {% for d in b.detail %}<tr style="cursor:default"><td>{{ d.matiere.nom }}</td><td class="small">{{ d.classe }}</td><td><span class="pill">{{ d.type }}</span></td><td class="text-end">{{ d.heures }}</td></tr>{% endfor %}
+            </tbody>
+            <tfoot>
+              {% for t, h in b.par_type %}<tr><td colspan="3" class="small">Total {{ t }}</td><td class="text-end small">{{ h }}</td></tr>{% endfor %}
+              <tr><th colspan="3">Total par semaine</th><th class="text-end">{{ b.total }}</th></tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+{% empty %}
+  <div class="card carte-gped"><div class="card-body"><div class="etat-vide py-4"><i class="bi bi-clock"></i>Aucune séance à votre nom dans l'emploi du temps de {{ session.annee|default:"cette session" }}.</div></div></div>
+{% endfor %}
+<div class="small text-secondary mt-1"><i class="bi bi-info-circle"></i> Un cours partagé entre plusieurs enseignants compte entièrement pour chacun. Le service, l'équivalent TD et les heures supplémentaires sont calculés par la CIAQ selon ses paramètres.</div>
+{% endblock %}

@@ -1,0 +1,62 @@
+{% extends 'pfe/base.html' %}
+{% block titre %}Avancement des cours{% endblock %}
+{% block titre_page %}Avancement des cours{% endblock %}
+{% block sous_titre %}<div class="sous-titre">Heures prévues (emploi du temps) et heures faites (cours validés par un délégué){% if session %} · {{ session.annee }}{% endif %}</div>{% endblock %}
+{% block actions %}
+  <a href="?{{ request.GET.urlencode }}{% if request.GET %}&amp;{% endif %}imprimer=pdf" target="_blank" rel="noopener" class="btn btn-light"><i class="bi bi-printer"></i> <span class="d-none d-sm-inline">Imprimer</span></a>
+{% endblock %}
+{% block contenu %}
+<form method="get" class="card carte-gped mb-3">
+  <input type="hidden" name="vue" value="{{ vue }}">
+  <div class="card-body">
+    <div class="row g-2 align-items-end">
+      {% include 'pfe/ciaq/_filtres.html' %}
+      <div class="col-12 col-md-5 col-lg-3">
+        <label class="form-label small text-secondary mb-1" for="f-programme">Programme</label>
+        <select id="f-programme" name="programme" class="form-select" onchange="this.form.submit()">
+          <option value="">Tous</option>
+          {% for p in programmes %}<option value="{{ p.pk }}"{% if programme_id == p.pk %} selected{% endif %}>{{ p.nom }}</option>{% endfor %}
+        </select>
+      </div>
+    </div>
+  </div>
+</form>
+<ul class="nav nav-pills onglets-stat mb-3">
+  {% for code, lib in vues %}<li class="nav-item"><a class="nav-link {% if vue == code %}active{% endif %}" href="?session={{ session.pk }}&amp;periode={{ periode }}&amp;programme={{ programme_id|default_if_none:'' }}&amp;vue={{ code }}">{{ lib }}</a></li>{% endfor %}
+</ul>
+<div class="row g-3">
+  <div class="col-xl-5">
+    <div class="card carte-gped h-100">
+      <div class="card-body">
+        <div class="entete-carte"><span class="icone-carte"><i class="bi bi-bar-chart-line"></i></span>
+          <div><h3>Prévu / fait</h3><p>{% if semaines is not None %}Prévu à ce jour : {{ semaines }} semaine{{ semaines|pluralize }} écoulée{{ semaines|pluralize }}{% else %}Prévu sur le semestre ({{ params.semaines_semestre }} semaines) : dates du semestre non saisies par la Direction des Études{% endif %}.</p></div></div>
+        {% include 'pfe/_barres_heures.html' %}
+      </div>
+    </div>
+  </div>
+  <div class="col-xl-7">
+    <div class="card carte-gped liste h-100">
+      <div class="table-responsive">
+        <table class="table table-etudiants mb-0">
+          <thead><tr><th>{% if vue == 'programme' %}Programme{% elif vue == 'matiere' %}Matière{% else %}Enseignant{% endif %}</th><th class="text-end">Prévu</th><th class="text-end">Fait</th><th class="text-end">%</th><th>Contenus dispensés</th><th class="text-end">Sans plan</th></tr></thead>
+          <tbody>
+          {% for l in lignes %}
+            <tr style="cursor:default">
+              <td style="white-space:normal"><strong style="color:var(--encre)">{{ l.nom }}</strong>{% if l.detail %}<div class="small text-secondary">{{ l.detail }}</div>{% endif %}</td>
+              <td class="text-end text-nowrap">{{ l.reference_txt }}</td>
+              <td class="text-end text-nowrap">{{ l.fait_txt }}{% if l.attente %}<div class="small text-secondary">{{ l.attente }} en attente</div>{% endif %}</td>
+              <td class="text-end">{% if l.pct is not None %}<span class="pill {% if l.pct >= 90 %}pill-succes{% elif l.pct >= 60 %}pill-accent{% else %}pill-attention{% endif %}">{{ l.pct }} %</span>{% else %}—{% endif %}</td>
+              <td style="min-width:130px">{% if l.contenus %}<div class="barre-part"><span style="width:{{ l.pct_contenus }}%"></span></div><div class="small text-secondary">{{ l.faits }}/{{ l.contenus }} · {{ l.pct_contenus }} %</div>{% else %}<span class="small text-secondary">aucun plan approuvé</span>{% endif %}</td>
+              <td class="text-end">{% if l.sans_plan %}<span class="pill pill-attention">{{ l.sans_plan }}</span>{% else %}0{% endif %}</td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="6"><div class="etat-vide py-4"><i class="bi bi-calendar-x"></i>Aucun cours dans l'emploi du temps pour ces filtres.</div></td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="small text-secondary mt-3"><i class="bi bi-info-circle"></i> « Sans plan » : couples matière – enseignant de l'emploi du temps sans plan de cours déposé. Contenus : ceux des plans approuvés, dispensés dans des cours validés.</div>
+{% endblock %}

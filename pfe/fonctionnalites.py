@@ -35,6 +35,10 @@ def _matieres(profil, user):         # @gestion_matieres_requise : scolarité, c
     return profil.gere_matieres
 
 
+def _voit_etudiants(profil, user):  # @etudiants_lecture_requise : tout le personnel sauf la CIAQ
+    return profil.voit_etudiants
+
+
 def _soutenances(profil, user):      # @soutenances_lecture_requise : + autres services et départements (lecture)
     return profil.voit_soutenances
 
@@ -55,7 +59,7 @@ def _voit_enseignants(profil, user):   # @enseignants_lecture_requise
     return profil.voit_enseignants
 
 
-def _gere_enseignants(profil, user):   # @enseignants_gestion_requise : Direction des Études, super utilisateur
+def _gere_enseignants(profil, user):   # @enseignants_gestion_requise : chefs de département, directeurs, admin
     return profil.gere_enseignants
 
 
@@ -124,10 +128,10 @@ CATALOGUE = [
     ('Étudiants', 'Liste des étudiants',
      "Rechercher un étudiant, ouvrir sa fiche, modifier ou supprimer une inscription, exporter la liste.",
      'étudiant fiche chercher rechercher matricule INE modifier supprimer inscription exporter Excel CSV',
-     'etudiants_liste', (), 'bi-people', _acces),
+     'etudiants_liste', (), 'bi-people', _voit_etudiants),
     ('Étudiants', 'Préinscriptions', "Préinscrits de la session (nouveaux bacheliers orientés) : les inscrire.",
      'préinscrit préinscription nouveau bachelier orienté inscrire', 'preinscriptions_liste', (), 'bi-person-plus',
-     _acces),
+     _voit_etudiants),
     ('Étudiants', 'Inscrire un étudiant', "Inscription d'un nouvel étudiant, ou réinscription d'un ancien, pour une session.",
      'inscription réinscription inscrire ajouter nouvel étudiant', 'inscription_creer', (), 'bi-person-add',
      _etudiants),
@@ -164,7 +168,7 @@ CATALOGUE = [
      'conges_liste', (), 'bi-pause-circle', _conges),
     ('Étudiants', 'Statistiques', "Effectifs par niveau, programme, sexe et âge, redoublants, export Excel.",
      'statistiques effectifs chiffres graphique redoublants filles garçons hommes femmes âge', 'statistiques', (),
-     'bi-bar-chart', _acces),
+     'bi-bar-chart', _voit_etudiants),
 
     ('Documents', "Attestation d'inscription", "Délivrer ou réimprimer une attestation d'inscription.",
      ATTESTATION + ' inscription', 'attestations_type', ('inscription',), 'bi-file-earmark-text', _attestations),
@@ -224,8 +228,34 @@ CATALOGUE = [
     ('Enseignants', 'Ajouter un enseignant', "Enregistrer un enseignant et son compte (ou le rattacher au compte "
      "existant d'un membre du personnel).", 'enseignant ajouter nouveau enregistrer compte',
      'enseignant_creer', (), 'bi-person-plus', _gere_enseignants),
-    ('Enseignants', 'Espace enseignant', "Votre espace enseignant.", 'espace enseignant mon espace emploi du temps',
-     'espace_enseignant', (), 'bi-person-video3', _enseignant),
+    ('Enseignants', 'Espace enseignant', "Votre emploi du temps, vos matières, vos heures, vos étudiants, vos notes "
+     "et vos plans de cours.", 'espace enseignant mon espace emploi du temps mes matières mes heures liste d\'appel '
+     'mes étudiants', 'espace_enseignant', (), 'bi-person-video3', _enseignant),
+    ('Enseignants', 'Plans de cours', "Plans de cours déposés par les enseignants (chapitres et contenus) : "
+     "approbation, et cours dispensés signés par l'enseignant et validés par un délégué.",
+     'plan de cours plans avancement progression approuver approbation syllabus chapitre',
+     'plans_liste', (), 'bi-list-check', lambda p, u: p.voit_plans),
+    ('Suivi des cours', 'Avancement des cours', "Par programme, matière ou enseignant : heures prévues (emploi du "
+     "temps) et heures faites (cours validés), contenus des plans dispensés.",
+     'avancement cours heures prévues faites comparaison graphique ciaq qualité', 'ciaq_avancement', (),
+     'bi-bar-chart-line', lambda p, u: p.voit_heures),
+    ('Suivi des cours', 'Situation des enseignants', "Permanents (service, équivalent TD, heures supplémentaires, "
+     "montant) et vacataires (heures de l'emploi du temps, montant).",
+     'situation heures supplémentaires vacation vacataires permanents service montant paiement ciaq',
+     'ciaq_situation', (), 'bi-cash-coin', lambda p, u: p.voit_heures),
+    ('Suivi des cours', 'Paramètres des heures', "Définis par la CIAQ : semaines, coefficients CM / TD / TP, service "
+     "et taux par grade, plafonds des heures supplémentaires.",
+     'paramètres heures coefficients équivalent td taux grade plafond ciaq', 'ciaq_parametres', (), 'bi-sliders',
+     lambda p, u: p.voit_heures),
+    ('Suivi des cours', 'Cours dispensés', "Cours déclarés et validés ; relance d'un délai dépassé et réajustement des "
+     "heures par la Direction des Études.", 'cours dispensés validation délégué réajustement relance heures',
+     'cours_dispenses', (), 'bi-journal-check', lambda p, u: p.voit_heures or p.reajuste_cours),
+    ('Suivi des cours', 'Dates des semestres', "Début et fin des semestres impairs et pairs de la session.",
+     'dates semestres début fin calendrier', 'dates_semestres', (), 'bi-calendar-range',
+     lambda p, u: p.reajuste_cours),
+    ('Étudiants', 'Délégués de classe', "Désigner les délégués (deux par classe) qui valident les cours dispensés "
+     "(contenus, heures d'arrivée et de départ).", 'délégué délégués classe représentant responsable', 'delegues', (), 'bi-person-badge',
+     lambda p, u: p.designe_delegues),
     ('Emplois du temps', 'Emploi du temps', "Semaine type d'une classe, d'un enseignant ou d'une salle : cours, "
      "salles, enseignants et conflits.", 'emploi du temps planning horaire cours semaine créneau grille séance',
      'emploi_du_temps', (), 'bi-calendar-week', _voit_emplois),

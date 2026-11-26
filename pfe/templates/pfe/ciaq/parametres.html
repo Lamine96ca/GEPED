@@ -1,0 +1,63 @@
+{% extends 'pfe/base.html' %}
+{% block titre %}Paramètres des heures{% endblock %}
+{% block titre_page %}Paramètres des heures{% endblock %}
+{% block sous_titre %}<div class="sous-titre">Définis par la CIAQ{% if params.modifie_par %} · modifiés le {{ params.modifie_le|date:"d/m/Y à H:i" }} par {{ params.modifie_par.get_full_name|default:params.modifie_par.username }}{% endif %}{% if not modifiable %} · consultation{% endif %}</div>{% endblock %}
+{% block contenu %}
+{% if form.errors %}<div class="alert alert-danger py-2"><i class="bi bi-exclamation-circle"></i> Vérifiez les champs en rouge.</div>{% endif %}
+<div class="alert alert-light border small"><i class="bi bi-journal-text"></i> Valeurs de départ : arrêté A/2024/108/MESRSI (15 semaines par semestre, équivalent TD : 1 h de CM = 1,5 h, 1 h de TP = 2/3 h ; service annuel 150 / 180 / 210 / 240 h, soit par semestre 75 / 90 / 105 / 120 h ; moitié du service pour une fonction administrative ; heures supplémentaires au plus égales à la moitié du service) et décret D/2024/0027 (6 h supplémentaires par semaine au plus ; taux horaires par grade). Tout reste modifiable. Les vacataires n'ont ni service ni plafond.</div>
+<form method="post">{% csrf_token %}
+  <div class="row g-3">
+    <div class="col-xl-6">
+      <div class="card carte-gped h-100">
+        <div class="card-body">
+          <div class="entete-carte"><span class="icone-carte"><i class="bi bi-calculator"></i></span><div><h3>Calcul des heures</h3><p>Semaines, équivalent TD (coefficient de chaque type de cours)</p></div></div>
+          <div class="row g-3">
+            {% include 'pfe/_champ.html' with champ=form.semaines_semestre col='col-md-6' %}
+            {% include 'pfe/_champ.html' with champ=form.equivalent_td col='col-md-6' %}
+            {% include 'pfe/_champ.html' with champ=form.coef_cm col='col-md-4' %}
+            {% include 'pfe/_champ.html' with champ=form.coef_td col='col-md-4' %}
+            {% include 'pfe/_champ.html' with champ=form.coef_tp col='col-md-4' %}
+            {% include 'pfe/_champ.html' with champ=form.coef_controle col='col-md-6' %}
+            {% include 'pfe/_champ.html' with champ=form.coef_tout col='col-md-6' %}
+            <div class="col-12 small text-secondary">Sans l'équivalent TD, chaque heure compte pour une heure. Un contrôle compte comme une heure de cours.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-xl-6">
+      <div class="card carte-gped h-100">
+        <div class="card-body">
+          <div class="entete-carte"><span class="icone-carte"><i class="bi bi-speedometer2"></i></span><div><h3>Plafonds et règles</h3><p>Heures supplémentaires, fonction administrative, rang A, heures normales par type</p></div></div>
+          <div class="row g-3">
+            {% include 'pfe/_champ.html' with champ=form.hs_plafond_hebdo col='col-md-6' %}
+            {% include 'pfe/_champ.html' with champ=form.hs_plafond_pct col='col-md-6' %}
+            {% include 'pfe/_champ.html' with champ=form.reduction_fonction col='col-md-6' %}
+            {% include 'pfe/_champ.html' with champ=form.cm_rang_a_pct col='col-md-6' %}
+            {% include 'pfe/_champ.html' with champ=form.plafonds_par_type col='col-12' %}
+            {% include 'pfe/_champ.html' with champ=form.plafond_cm col='col-md-4' %}
+            {% include 'pfe/_champ.html' with champ=form.plafond_td col='col-md-4' %}
+            {% include 'pfe/_champ.html' with champ=form.plafond_tp col='col-md-4' %}
+            <div class="col-12 small text-secondary">Un champ vide : pas de plafond. Les heures normales par type, si la case est cochée, signalent un dépassement dans la situation des enseignants.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-12">
+      <div class="card carte-gped liste">
+        <div class="card-header"><h3 class="titre-stat mb-0">Service et taux horaire par grade</h3><p class="small text-secondary mb-0">Service : heures par semestre (équivalent TD) des permanents. Taux : GNF par heure supplémentaire ou de vacation. Vide : non défini.</p></div>
+        <div class="table-responsive">
+          <table class="table table-etudiants mb-0">
+            <thead><tr><th>Grade</th><th style="width:220px">Service (h / semestre)</th><th style="width:240px">Taux (GNF / heure)</th></tr></thead>
+            <tbody>
+            {% for libelle, service, taux in form.lignes_grades %}
+              <tr style="cursor:default"><td>{{ libelle }}</td><td>{{ service }}{% for e in service.errors %}<div class="invalid-feedback d-block">{{ e }}</div>{% endfor %}</td><td>{{ taux }}{% for e in taux.errors %}<div class="invalid-feedback d-block">{{ e }}</div>{% endfor %}</td></tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% if modifiable %}<div class="mt-3"><button class="btn btn-primary"><i class="bi bi-check-lg"></i> Enregistrer les paramètres</button></div>{% endif %}
+</form>
+{% endblock %}

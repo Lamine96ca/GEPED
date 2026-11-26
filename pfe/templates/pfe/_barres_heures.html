@@ -1,0 +1,16 @@
+{# Graphique « prévu (emploi du temps) / fait (cours validés) ». Paramètre : lignes (heures.avec_barres), chaque ligne avec nom et detail #}
+<div class="legende-heures mb-2"><span>Prévu (emploi du temps)</span><span class="fait">Fait (cours validés)</span></div>
+<div class="barres-heures">
+  {% for l in lignes %}
+    <div class="ligne" title="{{ l.nom }} : prévu {{ l.reference_txt }}, fait {{ l.fait_txt }}{% if l.pct is not None %} ({{ l.pct }} %){% endif %}{% if l.attente %}, {{ l.attente }} cours en attente{% endif %}">
+      <div class="nom">{{ l.nom }}{% if l.detail %}<small>{{ l.detail }}</small>{% endif %}</div>
+      <div class="barres">
+        <div class="barre prevu" style="width:{{ l.barre_prevu|stringformat:'s' }}%"></div>
+        <div class="barre fait" style="width:{{ l.barre_fait|stringformat:'s' }}%"></div>
+      </div>
+      <div class="valeurs">{{ l.fait_txt }} / {{ l.reference_txt }}<small>{% if l.pct is not None %}{{ l.pct }} %{% else %}—{% endif %}{% if l.attente %} · {{ l.attente }} en attente{% endif %}</small></div>
+    </div>
+  {% empty %}
+    <div class="etat-vide py-3"><i class="bi bi-bar-chart"></i>Aucune heure prévue ni faite.</div>
+  {% endfor %}
+</div>

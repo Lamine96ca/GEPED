@@ -1,0 +1,52 @@
+{% extends 'pfe/base.html' %}
+{% block titre %}Plan de cours · {{ plan.matiere.nom }}{% endblock %}
+{% block titre_page %}Plan de cours · {{ plan.matiere.nom }}{% endblock %}
+{% block sous_titre %}<div class="sous-titre">{{ plan.matiere.filiere.nom }} · {{ plan.matiere.licence.nom }} · {{ plan.matiere.semestre.nom }} · {{ plan.matiere.session.annee }} · {{ plan.enseignant.civilite|default:"" }} {{ plan.enseignant.prenom }} {{ plan.enseignant.nom }}</div>{% endblock %}
+{% block actions %}
+  {% if not proprietaire or profil.voit_plans %}<a class="btn btn-light" href="{% url 'plans_liste' %}?session={{ plan.matiere.session_id }}"><i class="bi bi-arrow-left"></i> <span class="d-none d-sm-inline">Plans de cours</span></a>{% endif %}
+  {% if plan.fichier %}<a class="btn btn-light" href="{% url 'plan_document' plan.pk %}"><i class="bi bi-file-earmark-word"></i> <span class="d-none d-sm-inline">Document Word</span></a>{% endif %}
+{% endblock %}
+{% block contenu %}
+<div class="row g-3 mb-3">
+  <div class="col-xl-8">
+    <div class="card carte-gped h-100">
+      <div class="card-body">
+        <div class="entete-carte"><span class="icone-carte"><i class="bi bi-list-check"></i></span>
+          <div><h3>
+            <span class="pill {% if plan.statut == 'approuve' %}pill-succes{% elif plan.statut == 'soumis' %}pill-accent{% elif plan.statut == 'refuse' %}pill-danger{% else %}pill-attention{% endif %}">{{ plan.get_statut_display }}</span>
+            {{ chapitres|length }} chapitre{{ chapitres|length|pluralize }} · {{ avancement.total }} contenu{{ avancement.total|pluralize }}</h3>
+            <p>{% if plan.soumis_le %}Soumis le {{ plan.soumis_le|date:"d/m/Y à H:i" }}{% endif %}{% if plan.decide_le %} · {% if plan.statut == 'approuve' %}approuvé{% else %}renvoyé{% endif %} le {{ plan.decide_le|date:"d/m/Y" }}{% if plan.decide_par %} par {{ plan.decide_par.get_full_name|default:plan.decide_par.username }}{% endif %}{% endif %}</p></div></div>
+        {% if plan.statut == 'approuve' %}
+          <div class="barre-part"><span style="width:{{ avancement.pct }}%"></span></div>
+          <div class="small text-secondary mt-1">{{ avancement.confirmees }} contenu{{ avancement.confirmees|pluralize }} dispensé{{ avancement.confirmees|pluralize }} et validé{{ avancement.confirmees|pluralize }} par un délégué · {{ seances|length }} cours déclaré{{ seances|length|pluralize }}{% if avancement.attente %} · {{ avancement.attente }} en attente{% endif %} · {{ avancement.pct }} %</div>
+        {% endif %}
+        {% if plan.statut == 'refuse' %}<div class="alert alert-danger py-2 mt-2 mb-0 small"><strong>À corriger :</strong> {{ plan.motif_refus }}</div>{% endif %}
+        <div class="small mt-2">{% if delegues %}<i class="bi bi-people"></i> Délégués de la classe : {% for d in delegues %}<strong>{{ d.etudiant.prenom }} {{ d.etudiant.nom }}</strong>{% if not forloop.last %}, {% endif %}{% endfor %}{% else %}<span class="text-danger"><i class="bi bi-exclamation-triangle"></i> Aucun délégué désigné pour cette classe.</span>{% if profil.designe_delegues %} <a href="{% url 'delegues' %}?session={{ plan.matiere.session_id }}">Désigner les délégués</a>{% endif %}{% endif %}</div>
+      </div>
+    </div>
+  </div>
+  {% if decide and plan.statut == 'soumis' %}
+  <div class="col-xl-4">
+    <div class="card carte-gped h-100">
+      <div class="card-body">
+        <div class="entete-carte"><span class="icone-carte"><i class="bi bi-check2-square"></i></span><div><h3>Décision</h3><p>Lisez le plan (et le document Word), puis approuvez-le ou renvoyez-le à l'enseignant.</p></div></div>
+        <form method="post" class="mb-2">{% csrf_token %}<input type="hidden" name="action" value="approuver"><button class="btn btn-primary w-100"><i class="bi bi-check2-circle"></i> Approuver le plan</button></form>
+        <form method="post">{% csrf_token %}<input type="hidden" name="action" value="refuser">
+          <textarea name="motif" class="form-control mb-2" rows="3" placeholder="Ce que l'enseignant doit corriger" required></textarea>
+          <button class="btn btn-danger-doux w-100"><i class="bi bi-arrow-return-left"></i> Renvoyer pour correction</button></form>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+<div class="card carte-gped liste mb-3">
+  <div class="card-header"><h3 class="titre-stat mb-0">Chapitres du plan</h3></div>
+  {% include 'pfe/_plan_parties.html' %}
+</div>
+{% if plan.statut == 'approuve' %}
+<div class="card carte-gped liste">
+  <div class="card-header"><h3 class="titre-stat mb-0">Cours dispensés ({{ seances|length }})</h3></div>
+  {% include 'pfe/_seances_cours.html' with enseignant_actions=False %}
+</div>
+{% endif %}
+{% endblock %}

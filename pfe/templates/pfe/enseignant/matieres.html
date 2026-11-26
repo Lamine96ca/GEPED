@@ -1,0 +1,35 @@
+{% extends 'pfe/base.html' %}
+{% block titre %}Mes matières{% endblock %}
+{% block titre_page %}Mes matières{% endblock %}
+{% block sous_titre %}<div class="sous-titre">{{ lignes|length }} matière{{ lignes|length|pluralize }} · celles de vos séances dans l'emploi du temps{% if session %} ({{ session.annee }}){% endif %}</div>{% endblock %}
+{% block actions %}{% include 'pfe/enseignant/_session.html' %}{% endblock %}
+{% block contenu %}
+<div class="card carte-gped liste">
+  <div class="table-responsive">
+    <table class="table table-etudiants mb-0">
+      <thead><tr><th>Matière</th><th>Classe</th><th>Semestre</th><th class="text-end">Crédits</th><th class="text-end">Étudiants</th><th class="text-end">Actions</th></tr></thead>
+      <tbody>
+      {% for l in lignes %}
+        {% with m=l.matiere %}
+        <tr style="cursor:default">
+          <td><strong style="color:var(--encre)">{{ m.nom }}</strong>{% if m.code %}<div class="small text-secondary">{{ m.code }}</div>{% endif %}</td>
+          <td class="small">{{ m.filiere.nom }}<div class="text-secondary">{{ m.licence.nom }}</div></td>
+          <td class="small">{{ m.semestre.nom }}</td>
+          <td class="text-end">{{ m.credit }}</td>
+          <td class="text-end">{{ l.effectif }}</td>
+          <td class="text-end text-nowrap">
+            <a class="btn btn-sm btn-light" href="{% url 'enseignant_etudiants' m.pk %}" title="Étudiants et liste d'appel"><i class="bi bi-people"></i></a>
+            <a class="btn btn-sm btn-light" href="{% url 'notes_saisie' m.pk %}?espace=enseignant" title="Saisir les notes"><i class="bi bi-pencil-square"></i></a>
+            <a class="btn btn-sm btn-or" href="{% url 'notes_fiche_enseignant' m.pk %}" title="Fiche de notes (Excel)"><i class="bi bi-file-earmark-excel"></i></a>
+            <a class="btn btn-sm btn-primary" href="{% url 'plan_cours' m.pk %}" title="Plan de cours"><i class="bi bi-list-check"></i></a>
+          </td>
+        </tr>
+        {% endwith %}
+      {% empty %}
+        <tr><td colspan="6"><div class="etat-vide py-3"><i class="bi bi-journal-x"></i>Aucune séance à votre nom dans l'emploi du temps de {{ session.annee|default:"cette session" }}.</div></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

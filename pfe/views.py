@@ -30,7 +30,7 @@ from .importer import OBLIGATOIRES, importer_etudiants, modele_import_xlsx
 from .models import (Attestation, Etudiant, Inscription, Licence, Promotion, Promotion_Licence_Session, Semestre,
                      Service, Session)
 from .photos import compresser, enregistrer_photo, retirer_photo, url_photo
-from .roles import (acces_requis, matieres_lecture_requise, attestations_requise, attestations_visibles, etudiants_geres, etudiants_requise,
+from .roles import (acces_requis, etudiants_lecture_requise, matieres_lecture_requise, attestations_requise, attestations_visibles, etudiants_geres, etudiants_requise,
                     gestion_matieres_requise, get_profil, inscriptions_gerees, inscriptions_visibles, matieres_visibles,
                     programmes_du_profil, scolarite_requise)
 
@@ -70,6 +70,8 @@ def _repartition_par_sexe(qs, champ, defaut, trier_par_effectif=False, limite=No
 @acces_requis
 def tableau_de_bord(request):
     profil = get_profil(request)
+    if profil.ciaq_seule:                      # la CIAQ ne suit pas les étudiants : son tableau de bord, l'avancement
+        return redirect('ciaq_avancement')
     session = liste.session_par_defaut()
     qs = inscriptions_visibles(profil).filter(conge__isnull=True)      # congés académiques : hors des effectifs
     if session:
@@ -133,12 +135,14 @@ def _page_liste(request, mode):
 
 @login_required
 @acces_requis
+@etudiants_lecture_requise
 def etudiants_liste(request):
     return _page_liste(request, 'etudiants')
 
 
 @login_required
 @acces_requis
+@etudiants_lecture_requise
 def preinscriptions_liste(request):
     """Même liste que « Étudiants », limitée aux préinscrits ; la scolarité peut les inscrire."""
     return _page_liste(request, 'preinscriptions')
@@ -302,6 +306,7 @@ def _inscription_visible(request, pk):
 
 @login_required
 @acces_requis
+@etudiants_lecture_requise
 def etudiant_fiche(request, pk):
     inscription = _inscription_visible(request, pk)
     historique = inscriptions_visibles(get_profil(request)).filter(
@@ -678,6 +683,7 @@ def modele_import(request):
 
 @login_required
 @acces_requis
+@etudiants_lecture_requise
 def statistiques(request):
     """Statistiques des inscriptions (H/F par niveau, programme… voir pfe/statistiques.py)."""
     from . import statistiques as st

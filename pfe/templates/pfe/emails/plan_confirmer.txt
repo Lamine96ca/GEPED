@@ -1,0 +1,15 @@
+{% autoescape off %}Bonjour {{ etudiant.prenom }} {{ etudiant.nom }},
+
+Vous êtes délégué(e) de votre classe ({{ matiere.filiere.nom }}, {{ matiere.licence.nom }}).
+{% if reajuste %}La Direction des Études a réajusté les heures du cours « {{ matiere.nom }} » du {{ seance.date|date:"d/m/Y" }} ({{ enseignant.civilite|default:"" }} {{ enseignant.prenom }} {{ enseignant.nom }}) : {{ seance.heure_arrivee|time:"H:i" }} – {{ seance.heure_depart|time:"H:i" }}. L'enseignant les a signées ; signez-les à votre tour.
+{% else %}{{ enseignant.civilite|default:"" }} {{ enseignant.prenom }} {{ enseignant.nom }} a déclaré le cours « {{ matiere.nom }} » du {{ seance.date|date:"d/m/Y" }} ({{ seance.get_type_display }}) :
+{% for e in elements %}
+  - {{ e.partie.titre }} : {{ e.texte }}{% endfor %}
+
+Vérifiez les contenus, indiquez l'heure d'arrivée et l'heure de départ de l'enseignant, puis validez :{% endif %}
+{{ lien }}
+
+À valider avant le {{ limite|date:"d/m/Y à H:i" }} ({{ delai }}). Ce lien est personnel : ne le transférez à personne.
+
+GePed · Institut Supérieur de Technologie de Mamou
+{% endautoescape %}

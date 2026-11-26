@@ -1,0 +1,44 @@
+{% extends 'pfe/base.html' %}
+{% block titre %}Notes{% endblock %}
+{% block titre_page %}Notes de mes matières{% endblock %}
+{% block sous_titre %}<div class="sous-titre">Saisie dans GePed, ou fiche Excel à remplir, signer puis importer{% if session %} · {{ session.annee }}{% endif %}</div>{% endblock %}
+{% block actions %}
+  {% include 'pfe/enseignant/_session.html' %}
+  <a class="btn btn-primary" href="{% url 'notes_importer' %}?espace=enseignant"><i class="bi bi-upload"></i> <span class="d-none d-sm-inline">Importer une fiche</span></a>
+{% endblock %}
+{% block contenu %}
+<div class="card carte-gped liste mb-3">
+  <div class="table-responsive">
+    <table class="table table-etudiants mb-0">
+      <thead><tr><th>Matière</th><th>Classe</th><th style="min-width:170px">Notes saisies</th><th class="text-end">Actions</th></tr></thead>
+      <tbody>
+      {% for l in lignes %}
+        {% with m=l.matiere %}
+        <tr style="cursor:default">
+          <td><strong style="color:var(--encre)">{{ m.nom }}</strong><div class="small text-secondary">{{ m.semestre.nom }} · {{ m.credit }} crédits</div></td>
+          <td class="small">{{ m.filiere.nom }}<div class="text-secondary">{{ m.licence.nom }}</div></td>
+          <td><div class="barre-part"><span style="width:{{ l.pct_notes }}%"></span></div><div class="small text-secondary">{{ l.notes }} / {{ l.effectif }} étudiant{{ l.effectif|pluralize }}</div></td>
+          <td class="text-end text-nowrap">
+            <a class="btn btn-sm btn-primary" href="{% url 'notes_saisie' m.pk %}?espace=enseignant"><i class="bi bi-pencil-square"></i> Saisir</a>
+            <a class="btn btn-sm btn-or" href="{% url 'notes_fiche_enseignant' m.pk %}" title="Fiche de notes (Excel) pré-remplie avec vos étudiants"><i class="bi bi-file-earmark-excel"></i> Fiche</a>
+          </td>
+        </tr>
+        {% endwith %}
+      {% empty %}
+        <tr><td colspan="4"><div class="etat-vide py-3"><i class="bi bi-123"></i>Aucune matière : vous n'avez pas de séance dans l'emploi du temps de {{ session.annee|default:"cette session" }}.</div></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+<div class="card carte-gped">
+  <div class="card-body small">
+    <div class="entete-carte"><span class="icone-carte"><i class="bi bi-info-circle"></i></span><div><h3>Comment ça marche</h3><p>Deux façons de déposer vos notes</p></div></div>
+    <ol class="mb-0">
+      <li><strong>Saisir</strong> directement dans GePed, matière par matière. Modifier une note déjà enregistrée demande le motif et le justificatif PDF.</li>
+      <li><strong>Fiche Excel</strong> : téléchargez-la (vos étudiants y sont déjà), remplissez-la, imprimez-la et signez-la, puis <a href="{% url 'notes_importer' %}?espace=enseignant">importez-la</a> avec le PDF signé et le code de contrôle imprimé sur la fiche.</li>
+      <li>Une fois le semestre <strong>validé par le chef de département</strong> (ou délibéré), vos notes ne se modifient plus.</li>
+    </ol>
+  </div>
+</div>
+{% endblock %}

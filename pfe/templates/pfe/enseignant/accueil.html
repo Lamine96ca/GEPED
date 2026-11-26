@@ -1,0 +1,72 @@
+{% extends 'pfe/base.html' %}
+{% block titre %}Tableau de bord{% endblock %}
+{% block titre_page %}Tableau de bord{% endblock %}
+{% block actions %}{% include 'pfe/enseignant/_session.html' %}{% endblock %}
+{% block contenu %}
+<div class="bandeau-accueil">
+  <div class="me-auto" style="min-width:0">
+    <div class="surtitre">Espace enseignant · {{ enseignant.departement.nom }}</div>
+    <h2>Bonjour {{ enseignant.civilite|default:"" }} {{ enseignant.prenom }} {{ enseignant.nom }}</h2>
+    <p>{% if enseignant.get_grade_display %}{{ enseignant.get_grade_display }} · {% endif %}{{ enseignant.get_statut_display }}</p>
+    {% if session %}<span class="puce"><i class="bi bi-calendar3"></i> Session {{ session.annee }}</span>{% endif %}
+    <span class="puce"><i class="bi bi-journal-bookmark"></i> {{ chiffres.matieres }} matière{{ chiffres.matieres|pluralize }}</span>
+  </div>
+  <div class="actions d-flex flex-wrap gap-2">
+    <a href="{% url 'enseignant_emploi' %}?session={{ session.pk }}" class="btn btn-verre"><i class="bi bi-calendar-week"></i> Emploi du temps</a>
+    <a href="{% url 'enseignant_notes' %}?session={{ session.pk }}" class="btn btn-or-plein"><i class="bi bi-123"></i> Saisir des notes</a>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  {% with c=chiffres %}
+  <div class="col-6 col-xl-3"><a class="card carte-gped stat-carte text-decoration-none" href="{% url 'enseignant_matieres' %}?session={{ session.pk }}"><div class="libelle"><i class="bi bi-journal-bookmark"></i> Mes matières</div><div class="valeur">{{ c.matieres }}</div><div class="pied">Voir mes matières</div></a></div>
+  <div class="col-6 col-xl-3"><a class="card carte-gped stat-carte text-decoration-none" href="{% url 'enseignant_classes' %}?session={{ session.pk }}"><div class="libelle"><i class="bi bi-people"></i> Étudiants</div><div class="valeur">{{ c.etudiants }}</div><div class="pied">Listes d'appel</div></a></div>
+  <div class="col-6 col-xl-3"><a class="card carte-gped stat-carte text-decoration-none" href="{% url 'enseignant_heures' %}?session={{ session.pk }}"><div class="libelle"><i class="bi bi-clock-history"></i> Heures par semaine</div><div class="valeur">{{ c.heures }}</div><div class="pied">D'après l'emploi du temps</div></a></div>
+  <div class="col-6 col-xl-3"><a class="card carte-gped stat-carte text-decoration-none" href="{% url 'enseignant_notes' %}?session={{ session.pk }}"><div class="libelle"><i class="bi bi-123"></i> Notes à saisir</div><div class="valeur"{% if c.notes_manquantes %} style="color:var(--danger)"{% endif %}>{{ c.notes_manquantes }}</div><div class="pied">Saisie et fiches Excel</div></a></div>
+  {% endwith %}
+</div>
+
+<div class="row g-3">
+  <div class="col-xl-7">
+    <div class="card carte-gped liste h-100">
+      <div class="card-header d-flex align-items-center"><h3 class="titre-stat me-auto mb-0">Mes matières</h3><a class="small" href="{% url 'enseignant_matieres' %}?session={{ session.pk }}">Tout voir <i class="bi bi-arrow-right"></i></a></div>
+      <div class="table-responsive">
+        <table class="table table-etudiants mb-0">
+          <thead><tr><th>Matière</th><th>Classe</th><th class="text-end">Notes</th><th>Plan</th></tr></thead>
+          <tbody>
+          {% for l in lignes %}
+            <tr style="cursor:default">
+              <td><a href="{% url 'notes_saisie' l.matiere.pk %}?espace=enseignant" style="color:var(--encre);font-weight:600">{{ l.matiere.nom }}</a><div class="small text-secondary">{{ l.matiere.semestre.nom }}</div></td>
+              <td class="small">{{ l.matiere.filiere.nom }}<div class="text-secondary">{{ l.matiere.licence.nom }}</div></td>
+              <td class="text-end small">{{ l.notes }}/{{ l.effectif }}</td>
+              <td>{% if l.plan %}<span class="pill {% if l.plan.statut == 'approuve' %}pill-succes{% elif l.plan.statut == 'soumis' %}pill-accent{% elif l.plan.statut == 'refuse' %}pill-danger{% else %}pill-attention{% endif %}">{{ l.plan.get_statut_display }}{% if l.plan.statut == 'approuve' %} · {{ l.avancement.pct }} %{% endif %}</span>{% else %}<span class="pill">À déposer</span>{% endif %}</td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="4"><div class="etat-vide py-3"><i class="bi bi-journal-x"></i>Aucune séance à votre nom dans l'emploi du temps de {{ session.annee|default:"cette session" }}.</div></td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div class="col-xl-5">
+    <div class="card carte-gped h-100">
+      <div class="card-body">
+        <div class="entete-carte"><span class="icone-carte"><i class="bi bi-list-check"></i></span><div><h3>Plans de cours</h3><p>Dépôt, approbation et avancement</p></div></div>
+        {% with c=chiffres %}
+        <ul class="infos-compte">
+          <li><i class="bi bi-file-earmark-word"></i><div><div class="lib">À déposer ou à corriger</div><div class="val">{{ c.plans_a_deposer }}</div></div></li>
+          <li><i class="bi bi-hourglass-split"></i><div><div class="lib">En attente d'approbation</div><div class="val">{{ c.plans_soumis }}</div></div></li>
+          <li><i class="bi bi-check2-circle"></i><div><div class="lib">Approuvés</div><div class="val">{{ c.plans_approuves }}</div></div></li>
+          <li><i class="bi bi-person-check"></i><div><div class="lib">Cours signés, en attente du délégué</div><div class="val">{{ c.parties_attente }}</div></div></li>
+        </ul>
+        {% if c.a_resigner %}<div class="alert alert-warning py-2 small mt-3 mb-0"><i class="bi bi-arrow-repeat"></i> {{ c.a_resigner }} cours réajusté{{ c.a_resigner|pluralize }} par la Direction des Études : à signer de nouveau (ouvrez le plan de cours).</div>{% endif %}
+        {% endwith %}
+        {% for l in refuses %}<div class="alert alert-danger py-2 small mt-3 mb-0"><i class="bi bi-arrow-return-left"></i> Plan de <a href="{% url 'plan_cours' l.matiere.pk %}">{{ l.matiere.nom }}</a> renvoyé pour correction.</div>{% endfor %}
+        <a class="btn btn-primary mt-3" href="{% url 'enseignant_plans' %}?session={{ session.pk }}"><i class="bi bi-list-check"></i> Mes plans de cours</a>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="small text-secondary mt-3"><i class="bi bi-info-circle"></i> Une information à corriger (grade, département, séances) ? Adressez-vous à la Direction des Études.{% if profil.a_acces %} · <a href="{% url 'tableau_de_bord' %}">Retour à mon espace {{ profil.libelle|lower }}</a>{% endif %}</div>
+{% endblock %}

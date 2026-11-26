@@ -1,0 +1,27 @@
+{% extends 'pfe/base.html' %}
+{% block titre %}Étudiants · {{ matiere.nom }}{% endblock %}
+{% block titre_page %}{{ matiere.nom }}{% endblock %}
+{% block sous_titre %}<div class="sous-titre">{{ matiere.filiere.nom }} · {{ matiere.licence.nom }} · {{ matiere.semestre.nom }} · {{ matiere.session.annee }} · {{ inscrits|length }} étudiant{{ inscrits|length|pluralize }}</div>{% endblock %}
+{% block actions %}
+  <a class="btn btn-light" href="{% url 'enseignant_classes' %}?session={{ matiere.session_id }}"><i class="bi bi-arrow-left"></i> <span class="d-none d-sm-inline">Mes étudiants</span></a>
+  <a class="btn btn-light" target="_blank" rel="noopener" href="?imprimer=pdf"><i class="bi bi-printer"></i> <span class="d-none d-sm-inline">Liste d'appel (PDF)</span></a>
+  <a class="btn btn-primary" href="{% url 'notes_saisie' matiere.pk %}?espace=enseignant"><i class="bi bi-pencil-square"></i> <span class="d-none d-sm-inline">Saisir les notes</span></a>
+{% endblock %}
+{% block contenu %}
+<div class="card carte-gped liste">
+  <div class="table-responsive">
+    <table class="table table-etudiants mb-0">
+      <thead><tr><th>#</th><th>Matricule</th><th>Nom</th><th>Prénoms</th><th>Promotion</th><th>Contact</th></tr></thead>
+      <tbody>
+      {% for i in inscrits %}
+        <tr style="cursor:default"><td class="text-secondary">{{ forloop.counter }}</td><td>{{ i.etudiant.matricule|default:"—" }}</td>
+          <td class="fw-semibold" style="color:var(--encre)">{{ i.etudiant.nom }}</td><td>{{ i.etudiant.prenom }}</td>
+          <td>{{ i.promotion|default:"—" }}</td><td class="small text-secondary">{{ i.etudiant.email|default:"" }}</td></tr>
+      {% empty %}
+        <tr><td colspan="6"><div class="etat-vide py-3"><i class="bi bi-people"></i>Aucun étudiant inscrit dans cette classe.</div></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

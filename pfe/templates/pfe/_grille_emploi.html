@@ -1,5 +1,5 @@
-{# Grille d'emploi du temps dessinée côté serveur (lecture) : `dispo` vient de emplois.disposition() #}
-<div class="edt-grille compacte">
+{# Grille d'emploi du temps dessinée côté serveur (lecture) : `dispo` vient de emplois.disposition() ; `grande` : pas compacte #}
+<div class="edt-grille{% if not grande %} compacte{% endif %}">
   <div class="edt-heures">
     <div class="edt-entete"></div>
     {% for m, lib in creneaux %}<div class="edt-heure {% if m|divisibleby:60 %}pleine{% endif %}">{% if m|divisibleby:60 %}{{ lib }}{% endif %}</div>{% endfor %}

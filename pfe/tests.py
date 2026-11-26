@@ -4702,7 +4702,8 @@ class EspaceDirectionTests(TestCase):
 
 
 class EnseignantsTests(TestCase):
-    """Enseignants : gérés par la Direction des Études, un seul compte par personne, espace enseignant."""
+    """Enseignants : gérés par le chef de département et le directeur de programme (leur département),
+    un seul compte par personne, espace enseignant."""
     setUpTestData_base = GpedTests.__dict__['setUpTestData']
     connecter = GpedTests.connecter
 
@@ -4725,7 +4726,7 @@ class EnseignantsTests(TestCase):
         from django.core import mail
         from .models import Enseignant
         from .roles import ENSEIGNANT, _calculer_profil
-        self.connecter('dge')
+        self.connecter('info')
         r = self.client.post(reverse('enseignant_creer'), self.fiche())
         self.assertRedirects(r, reverse('enseignants_liste'))
         e = Enseignant.objects.get()
@@ -4759,14 +4760,14 @@ class EnseignantsTests(TestCase):
 
     def test_avec_envoi_coche(self):
         from django.core import mail
-        self.connecter('dge')
+        self.connecter('info')
         self.client.post(reverse('enseignant_creer'), self.fiche(envoyer_invitation='on'))
         self.assertEqual(len(mail.outbox), 1)
 
     def test_un_seul_compte_par_personne(self):
         from .models import Enseignant
         from .roles import _calculer_profil
-        self.connecter('dge')
+        self.client.force_login(User.objects.create_superuser('admin_ens', 'admin@t.local', 'x'))
         nb_comptes = User.objects.count()
         r = self.client.post(reverse('enseignant_creer'), self.fiche(email='INFO@t.local'))   # e-mail du compte « info »
         self.assertContains(r, 'Cette adresse appartient déjà à un compte GePed')
@@ -4782,7 +4783,7 @@ class EnseignantsTests(TestCase):
         r = self.client.get(reverse('espace_enseignant'))
         self.assertContains(r, 'Retour à mon espace')
         # Déjà enseignant : refus d'une seconde fiche
-        self.connecter('dge')
+        self.client.force_login(User.objects.get(username='admin_ens'))
         r = self.client.post(reverse('enseignant_creer'), self.fiche(email='info@t.local', rattacher='on'))
         self.assertContains(r, 'déjà enregistrée comme enseignant')
         # L'e-mail reste le même partout (compte, personnel, enseignant)
@@ -4806,8 +4807,9 @@ class EnseignantsTests(TestCase):
             self.assertEqual(r.status_code, 200, login)
             self.assertEqual({e.nom for e in r.context['page']}, noms, login)
             self.assertEqual(self.client.get(reverse('enseignants_liste') + '?export=xlsx').status_code, 200, login)
-        # Gestion : la Direction des Études seulement (et le super utilisateur)
-        for login in ('dg', 'scol', 'info'):
+        # Gestion : le chef de département et le directeur de programme (leur département), le super utilisateur ;
+        # plus la Direction des Études
+        for login in ('dg', 'dge', 'scol'):
             self.connecter(login)
             self.assertEqual(self.client.get(reverse('enseignant_creer')).status_code, 403, login)
             self.assertEqual(self.client.post(reverse('enseignant_creer'), self.fiche()).status_code, 403, login)
@@ -4815,16 +4817,27 @@ class EnseignantsTests(TestCase):
         self.assertFalse(Enseignant.objects.filter(email='aissatou.barry@exemple.org').exists())
         self.connecter('dep')                                    # autre service : pas de liste
         self.assertEqual(self.client.get(reverse('enseignants_liste')).status_code, 403)
-        # La Direction des Études reste en consultation ailleurs, mais n'a pas la gestion du personnel
+        # Le directeur de programme : son département seulement (liste de départements, fiches)
+        self.connecter('info')
+        r = self.client.get(reverse('enseignant_creer'))
+        self.assertEqual([d.pk for d in r.context['form'].fields['departement'].queryset], [self.info.pk])
+        r = self.client.post(reverse('enseignant_creer'), self.fiche(departement=self.gc.pk))
+        self.assertEqual(r.status_code, 200)                          # Génie civil : refusé par le formulaire
+        gc = Enseignant.objects.get(nom='ENS_GC')
+        self.assertEqual(self.client.get(reverse('enseignant_modifier', args=[gc.pk])).status_code, 404)
+        self.assertEqual(self.client.post(reverse('enseignant_action', args=[gc.pk]),
+                                          {'action': 'desactiver'}).status_code, 404)
+        self.assertEqual(self.client.get(reverse('enseignant_modifier',
+                                                 args=[Enseignant.objects.get(nom='ENS_INFO').pk])).status_code, 200)
+        # La Direction des Études reste en consultation
         self.connecter('dge')
-        self.assertEqual(self.client.get(reverse('enseignant_creer')).status_code, 200)
         self.assertEqual(self.client.get(reverse('personnel_liste')).status_code, 403)
         self.assertEqual(self.client.post(reverse('demandes_liste'), {}).status_code, 403)
 
     def test_desactiver(self):
         from .models import Enseignant
         from .roles import AUCUN, _calculer_profil
-        self.connecter('dge')
+        self.connecter('info')
         self.client.post(reverse('enseignant_creer'), self.fiche())
         e = Enseignant.objects.get()
         self.client.post(reverse('enseignant_action', args=[e.pk]), {'action': 'desactiver'})
@@ -4849,29 +4862,29 @@ class EnseignantsTests(TestCase):
         self.assertEqual((r.status_code, r['Content-Type']), (200, 'application/pdf'))
 
     def test_emails_nouveau_compte_ou_compte_existant(self):
-        """L'e-mail vient de la Direction des Études et dit si l'enseignant avait déjà un compte (inutile d'en créer)."""
+        """L'e-mail vient du département et dit si l'enseignant avait déjà un compte (inutile d'en créer)."""
         from django.core import mail
         from .models import Enseignant
-        self.connecter('dge')
+        self.connecter('info')
         # Enseignant seul : nouveau compte, lien d'activation
         self.client.post(reverse('enseignant_creer'), self.fiche(envoyer_invitation='on'))
         seul = Enseignant.objects.get(email='aissatou.barry@exemple.org')
         self.assertFalse(seul.compte_existant)
         m = mail.outbox[-1]
         self.assertEqual(m.subject, "GePed : votre compte enseignant a été créé")
-        self.assertIn('La Direction des Études vous a enregistré(e)', m.body)
+        self.assertIn('Le département Informatique vous a enregistré(e)', m.body)
         self.assertIn('a été créé pour vous', m.body)
         self.assertIn('/compte/activer/', m.body)
         self.assertNotIn('DÉJÀ UN COMPTE', m.body)
         self.assertNotIn('Scolarité', m.body + m.alternatives[0][0])
         # Membre du personnel (compte actif) : rattaché, e-mail d'information sans lien d'activation
-        r = self.client.post(reverse('enseignant_creer'), self.fiche(email='info@t.local', rattacher='on',
+        r = self.client.post(reverse('enseignant_creer'), self.fiche(email='dep@t.local', rattacher='on',
                                                                      envoyer_invitation='on'), follow=True)
-        existant = Enseignant.objects.get(email='info@t.local')
+        existant = Enseignant.objects.get(email='dep@t.local')
         self.assertTrue(existant.compte_existant)
         self.assertContains(r, 'inutile d&#x27;en créer un autre')
         m = mail.outbox[-1]
-        self.assertEqual((m.to, m.subject), (['info@t.local'], "GePed : votre accès enseignant, sur votre compte existant"))
+        self.assertEqual((m.to, m.subject), (['dep@t.local'], "GePed : votre accès enseignant, sur votre compte existant"))
         self.assertIn('VOUS AVEZ DÉJÀ UN COMPTE', m.body)
         self.assertIn('il ne sert à rien d\'en créer un', m.body)
         self.assertNotIn('/compte/activer/', m.body)
@@ -5116,6 +5129,414 @@ class PresentationTests(TestCase):
         u.refresh_from_db()
         self.assertTrue(u.is_active)
         self.assertIsNone(p.presentation_debut)
+
+
+def docx_plan(paragraphes, tableau=None):
+    """Document Word minimal : paragraphes [(style ou '', texte)] puis, si donné, un tableau (liste de lignes)."""
+    from xml.sax.saxutils import escape
+    import zipfile as _zip
+    corps = []
+    for style, texte in paragraphes:
+        ppr = f'<w:pPr><w:pStyle w:val="{style}"/></w:pPr>' if style else ''
+        corps.append(f'<w:p>{ppr}<w:r><w:t xml:space="preserve">{escape(texte)}</w:t></w:r></w:p>')
+    if tableau:
+        lignes = ''.join('<w:tr>' + ''.join(f'<w:tc><w:p><w:r><w:t>{escape(c)}</w:t></w:r></w:p></w:tc>' for c in l)
+                         + '</w:tr>' for l in tableau)
+        corps.append(f'<w:tbl>{lignes}</w:tbl>')
+    doc = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.'
+           'org/wordprocessingml/2006/main"><w:body>' + ''.join(corps) + '</w:body></w:document>')
+    flux = io.BytesIO()
+    with _zip.ZipFile(flux, 'w') as z:
+        z.writestr('[Content_Types].xml', '<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/'
+                                          'package/2006/content-types"/>')
+        z.writestr('word/document.xml', doc)
+    return SimpleUploadedFile('plan.docx', flux.getvalue(),
+                              'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+
+
+class EspaceEnseignantTests(TestCase):
+    """Espace enseignant : ses matières (séances), notes, liste d'appel ; plan de cours, délégués, avancement signé."""
+    setUpTestData_base = GpedTests.__dict__['setUpTestData']
+    connecter = GpedTests.connecter
+
+    @classmethod
+    def setUpTestData(cls):
+        from .models import Enseignant, Matiere, Seance, Semestre
+        cls.setUpTestData_base.__func__(cls)
+        cls.s1 = Semestre.objects.create(nom='SEMESTRE 1', licence=cls.licence)
+        cls.algo = Matiere.objects.create(nom='Algorithmique', filiere=cls.info, semestre=cls.s1, licence=cls.licence,
+                                          session=cls.session, credit=6)
+        cls.autre = Matiere.objects.create(nom='Réseaux', filiere=cls.info, semestre=cls.s1, licence=cls.licence,
+                                           session=cls.session, credit=6)
+        u = User.objects.create_user('prof', password='x', email='prof@t.local')
+        cls.prof = Enseignant.objects.create(utilisateur=u, prenom='Awa', nom='PROF', email='prof@t.local',
+                                             departement=cls.info)
+        s = Seance.objects.create(matiere=cls.algo, type='CM', jour=1, debut=480, fin=600)
+        s.enseignants.add(cls.prof)
+        Seance.objects.create(matiere=cls.algo, type='TD', jour=3, debut=600, fin=660).enseignants.add(cls.prof)
+
+    def test_espace_matieres_notes_et_liste_d_appel(self):
+        from .models import Note
+        self.connecter('prof')
+        r = self.client.get(reverse('espace_enseignant'))
+        self.assertContains(r, 'Algorithmique')
+        self.assertNotContains(r, 'Réseaux')
+        self.assertContains(r, '3 h')                                  # 2 h de CM + 1 h de TD par semaine
+        self.assertContains(r, reverse('enseignant_heures'))           # menu de l'espace enseignant
+        # Une page par entrée du menu
+        for nom, texte in (('enseignant_emploi', '08h00–10h00'), ('enseignant_matieres', 'Algorithmique'),
+                           ('enseignant_classes', 'Informatique · Licence 1'), ('enseignant_notes', '0 / 2'),
+                           ('enseignant_plans', 'À déposer'), ('enseignant_heures', '3 h')):
+            self.assertContains(self.client.get(reverse(nom)), texte, msg_prefix=nom)
+        self.assertEqual(self.client.get(reverse('enseignant_emploi'), {'imprimer': 'pdf', 'periode': 'impair'})
+                         .content[:4], b'%PDF')
+        r = self.client.get(reverse('enseignant_etudiants', args=[self.algo.pk]))
+        self.assertContains(r, 'N0')
+        self.assertNotContains(r, 'N2')                                # Génie civil : autre classe
+        self.assertEqual(self.client.get(reverse('enseignant_etudiants', args=[self.algo.pk]), {'imprimer': 'pdf'})
+                         .content[:4], b'%PDF')
+        self.assertEqual(self.client.get(reverse('enseignant_etudiants', args=[self.autre.pk])).status_code, 404)
+        # Notes de SA matière : saisie et fiche Excel ; pas celles d'une autre matière
+        self.assertEqual(self.client.get(reverse('notes_saisie', args=[self.algo.pk])).status_code, 200)
+        self.assertEqual(self.client.get(reverse('notes_saisie', args=[self.autre.pk])).status_code, 404)
+        e0 = Etudiant.objects.get(matricule='M0')
+        self.client.post(reverse('notes_saisie', args=[self.algo.pk]), {f'moyenne_{e0.pk}': '7'})
+        self.assertEqual(Note.objects.get(etudiant=e0, matiere=self.algo).moyenne, 7)
+        self.assertEqual(self.client.get(reverse('notes_fiche_enseignant', args=[self.algo.pk])).status_code, 200)
+        self.assertEqual(self.client.get(reverse('notes_fiche_enseignant', args=[self.autre.pk])).status_code, 404)
+        # Pas d'accès aux pages du personnel
+        self.assertRedirects(self.client.get(reverse('etudiants_liste')), reverse('espace_enseignant'),
+                             fetch_redirect_response=False)
+
+    def test_personnel_qui_enseigne_ouvre_son_espace_dans_un_onglet(self):
+        from .models import Enseignant, Seance
+        u = User.objects.get(username='info')                       # directeur de programme qui enseigne aussi
+        ens = Enseignant.objects.create(utilisateur=u, prenom='Info', nom='T', email='info.ens@t.local',
+                                        departement=self.info)
+        Seance.objects.create(matiere=self.autre, type='TP', jour=2, debut=480, fin=540).enseignants.add(ens)
+        self.connecter('info')
+        r = self.client.get(reverse('etudiants_liste'))                # espace habituel : un lien, nouvel onglet
+        self.assertContains(r, f'href="{reverse("espace_enseignant")}" target="_blank"')
+        self.assertNotContains(r, reverse('enseignant_heures'))
+        r = self.client.get(reverse('enseignant_matieres'))           # l'onglet enseignant : le menu de l'enseignant
+        self.assertContains(r, reverse('enseignant_heures'))
+        self.assertContains(r, 'Retour à mon espace')
+        self.assertNotContains(r, f'href="{reverse("etudiants_liste")}"')         # pas le menu habituel
+        self.assertContains(r, 'Réseaux')
+        # La saisie ouverte depuis l'espace enseignant garde son menu
+        r = self.client.get(reverse('notes_saisie', args=[self.autre.pk]) + '?espace=enseignant')
+        self.assertContains(r, reverse('enseignant_heures'))
+
+    def test_documents_signes_par_l_enseignant(self):
+        from .pdf_listes import _signataire
+        self.prof.civilite, self.prof.grade, self.prof.telephone = 'Dr', 'maitre_assistant', '+224 620 00 00 01'
+        self.prof.save()
+        self.connecter('prof')
+        for url in (reverse('enseignant_etudiants', args=[self.algo.pk]), reverse('enseignant_emploi'),
+                    reverse('notes_saisie', args=[self.algo.pk]) + '?espace=enseignant'):
+            s = _signataire(self.client.get(url).wsgi_request)
+            self.assertEqual((s.nom, s.fonction, s.service, s.email, s.telephone),
+                             ('Dr Awa PROF', "L'Enseignant · Maître-assistant", 'INFORMATIQUE', 'prof@t.local',
+                              '+224 620 00 00 01'), url)
+        self.assertEqual(self.client.get(reverse('enseignant_etudiants', args=[self.algo.pk]), {'imprimer': 'pdf'})
+                         .content[:4], b'%PDF')
+        # Le personnel, dans son espace habituel : toujours le chef de son service
+        self.connecter('info')
+        self.assertNotEqual(_signataire(self.client.get(reverse('etudiants_liste')).wsgi_request).fonction[:13],
+                            "L'Enseignant")
+
+    def test_decoupage_du_document_word(self):
+        from .plans_cours import decouper_docx
+        chapitres = decouper_docx(docx_plan([
+            ('Titre', 'Plan de cours : Algorithmique'), ('', 'Objectifs : apprendre.'),
+            ('Titre1', 'Chapitre 1 : Introduction (4 h)'), ('', 'Notions de base'), ('', '• Historique'),
+            ('', 'II. Les boucles'), ('', 'Pour, tant que'), ('', 'Volume horaire : 6 h'),
+            ('Titre1', 'Chapitre 3 : Les tableaux'), ('Titre2', '3.1 Déclaration'), ('', 'Détail ignoré'),
+            ('Titre2', '3.2 Parcours'),
+        ]))
+        self.assertEqual([(c['titre'], c['elements']) for c in chapitres], [
+            ('Chapitre 1 : Introduction (4 h)', ['Notions de base', 'Historique']),
+            ('II. Les boucles', ['Pour, tant que']),
+            ('Chapitre 3 : Les tableaux', ['3.1 Déclaration', '3.2 Parcours'])])
+        self.assertEqual([str(c['heures']) for c in chapitres], ['4', '6', 'None'])
+        # Sans titres Word : les lignes numérotées ; « 1.1 » est un contenu
+        chapitres = decouper_docx(docx_plan([('', '1) Introduction'), ('', '1.1 Variables'), ('', '1.2 Types'),
+                                             ('', 'Séance 2 Les boucles'), ('', 'Pour')]))
+        self.assertEqual([(c['titre'], c['elements']) for c in chapitres],
+                         [('1) Introduction', ['1.1 Variables', '1.2 Types']), ('Séance 2 Les boucles', ['Pour'])])
+        # Tableau « Semaine | Contenu | Heures »
+        chapitres = decouper_docx(docx_plan([('', 'Plan')], tableau=[['Semaine', 'Contenu', 'Volume horaire'],
+                                                                       ['1', 'Introduction\nHistoire', '3'],
+                                                                       ['2', 'Les boucles', '4,5']]))
+        self.assertEqual([(c['titre'], str(c['heures']), c['elements']) for c in chapitres],
+                         [('1 · Introduction', '3', ['Histoire']), ('2 · Les boucles', '4.5', [])])
+        with self.assertRaises(ValueError):
+            decouper_docx(SimpleUploadedFile('x.docx', b'pas un zip'))
+
+    def test_plan_cours_seance_validee_par_le_delegue(self):
+        import re as _re
+        from datetime import time, timedelta
+        from django.core import mail
+        from django.utils import timezone
+        from .models import DelegueClasse, ElementPlan, PlanCours, SeanceCours
+        url = reverse('plan_cours', args=[self.algo.pk])
+        self.connecter('prof')
+        self.client.post(url, {'action': 'deposer', 'fichier': docx_plan([
+            ('Titre1', 'Chapitre 1 : Introduction'), ('', 'Bases'), ('', 'Historique'),
+            ('Titre1', 'Chapitre 2 : Boucles')])})
+        plan = PlanCours.objects.get()
+        self.assertEqual((plan.statut, plan.parties.count(), ElementPlan.objects.count()), ('brouillon', 2, 3))
+        # Corrections (contenus un par ligne ; un chapitre sans contenu en reçoit un : son titre), puis soumission
+        self.client.post(url, {'action': 'soumettre', 'nb_parties': '3', 'titre_0': 'Chapitre 1 : Introduction',
+                               'heures_0': '4', 'elements_0': 'Bases\nHistorique\n\n- Vocabulaire',
+                               'titre_1': 'Chapitre 2 : Boucles', 'titre_2': 'Chapitre 3 : Tableaux',
+                               'heures_2': '2,5', 'elements_2': 'Déclaration\nParcours'})
+        plan.refresh_from_db()
+        self.assertEqual((plan.statut, plan.parties.count()), ('soumis', 3))
+        ch1 = plan.parties.first()
+        self.assertEqual([e.texte for e in ch1.elements.all()], ['Bases', 'Historique', 'Vocabulaire'])
+        self.assertEqual([e.texte for e in plan.parties.all()[1].elements.all()], ['Chapitre 2 : Boucles'])
+        elements = list(ch1.elements.all())
+        lundi = timezone.localdate() - timedelta(days=timezone.localdate().weekday() or 7)   # un lundi passé
+        cours = {'action': 'declarer', 'elements': [elements[0].pk, elements[1].pk], 'type': 'CM',
+                 'date': lundi.isoformat(), **signer()}
+        # Avant l'approbation : rien à déclarer
+        self.assertEqual(self.client.post(url, cours).status_code, 403)
+        # Le directeur du programme approuve et désigne les délégués (deux au plus)
+        self.connecter('info')
+        self.assertContains(self.client.get(reverse('plans_liste')), 'Algorithmique')
+        self.client.post(reverse('plan_detail', args=[plan.pk]), {'action': 'approuver'})
+        plan.refresh_from_db()
+        self.assertEqual(plan.statut, 'approuve')
+        for mat in ('M0', 'M1'):
+            insc = Inscription.objects.get(etudiant__matricule=mat)
+            self.client.post(reverse('delegues'), {'action': 'designer', 'inscription': insc.pk})
+        self.assertEqual(DelegueClasse.objects.count(), 2)
+        self.connecter('dep')
+        self.assertEqual(self.client.get(reverse('delegues')).status_code, 403)
+        # L'enseignant déclare le cours (contenus cochés, type, date, signature) : les deux délégués reçoivent le lien
+        self.connecter('prof')
+        r = self.client.post(url, {**cours, 'elements': []})
+        self.assertContains(r, 'Cochez les contenus')
+        r = self.client.post(url, {**cours, 'date': (timezone.localdate() + timedelta(days=1)).isoformat()})
+        self.assertContains(r, 'dans le futur')
+        n = len(mail.outbox)
+        self.client.post(url, cours)
+        s = SeanceCours.objects.get()
+        self.assertEqual((s.statut, s.type, s.elements.count()), ('attente', 'CM', 2))
+        self.assertEqual((s.heure_arrivee, s.heure_depart), (time(8, 0), time(10, 0)))   # proposées : emploi du temps
+        self.assertAlmostEqual((s.expire_le - timezone.now()).total_seconds() / 3600, 72, delta=0.1)
+        self.assertEqual(len(mail.outbox), n + 2)
+        self.assertEqual(plan.avancement(), {'confirmees': 0, 'total': 6, 'attente': 1, 'pct': 0})
+        lien = _re.search(r'https?://[^\s]+/plan-de-cours/confirmer/[^\s]+/', mail.outbox[-1].body).group(0)
+        chemin = '/' + lien.split('/', 3)[3]
+        # Le délégué (sans compte) : contenus, heures ajustées, matricule, signature
+        self.client.logout()
+        r = self.client.get(chemin)
+        self.assertContains(r, 'Chapitre 1 : Introduction')
+        self.assertContains(r, 'Historique')
+        self.assertContains(r, 'value="08:00"')
+        r = self.client.post(chemin, {'matricule': 'M9', 'heure_arrivee': '08:15', 'heure_depart': '10:00', **signer()})
+        self.assertContains(r, 'Matricule incorrect')
+        matricule = Etudiant.objects.get(email=mail.outbox[-1].to[0]).matricule
+        r = self.client.post(chemin, {'matricule': matricule, 'heure_arrivee': '10:00', 'heure_depart': '08:15',
+                                      **signer()})
+        self.assertContains(r, 'après l&#x27;heure d&#x27;arrivée')
+        self.client.post(chemin, {'matricule': matricule, 'heure_arrivee': '08:15', 'heure_depart': '10:00', **signer()})
+        s.refresh_from_db()
+        self.assertEqual((s.statut, s.validee_par.matricule, s.heure_arrivee, s.duree),
+                         ('validee', matricule, time(8, 15), 1.75))
+        self.assertEqual(plan.avancement()['confirmees'], 2)
+        self.assertContains(self.client.get(reverse('plan_confirmer', args=['faux'])), 'Lien invalide')
+        # L'enseignant voit les heures validées et qui a validé ; « Mes heures » : prévu / fait
+        self.connecter('prof')
+        r = self.client.get(url)
+        self.assertContains(r, '08:15 – 10:00')
+        self.assertContains(r, '1 h 45')
+        self.assertContains(self.client.get(reverse('enseignant_heures')), '1 h 45 sur')
+        # Suivi : la scolarité voit le plan et les cours
+        self.connecter('scol')
+        r = self.client.get(reverse('plan_detail', args=[plan.pk]))
+        self.assertContains(r, '2 contenus dispensés')
+        self.assertContains(r, '08:15 – 10:00')
+
+
+class SuiviCoursTests(TestCase):
+    """Heures (prévu / fait, équivalent TD, heures supplémentaires), CIAQ, Direction des Études (réajustement)."""
+    setUpTestData_base = GpedTests.__dict__['setUpTestData']
+    connecter = GpedTests.connecter
+
+    @classmethod
+    def setUpTestData(cls):
+        from .models import ElementPlan, Enseignant, Matiere, PartiePlan, PlanCours, Seance, Semestre
+        EspaceEnseignantTests.__dict__['setUpTestData'].__func__(cls)
+        cls.prof.grade = 'maitre_assistant'
+        cls.prof.save()
+        u = User.objects.create_user('vac', password='x', email='vac@t.local')
+        cls.vac = Enseignant.objects.create(utilisateur=u, prenom='Ibrahima', nom='VACATAIRE', email='vac@t.local',
+                                            departement=cls.info, statut='vacataire', grade='assistant')
+        Seance.objects.create(matiere=cls.autre, type='TP', jour=2, debut=480, fin=660).enseignants.add(cls.vac)
+        cls.plan = PlanCours.objects.create(matiere=cls.algo, enseignant=cls.prof, statut='approuve')
+        ch = PartiePlan.objects.create(plan=cls.plan, ordre=0, titre='Chapitre 1 : Introduction')
+        cls.el = ElementPlan.objects.create(partie=ch, ordre=0, texte='Bases')
+        for k, (login, nom, code) in enumerate([('ciaq', 'Cellule Interne de Contrôle de Qualité', 'CIAQ'),
+                                                ('dge', 'Direction Générale Des Etudes', '0000')]):
+            svc = Service.objects.filter(code=code).first() if code == 'CIAQ' else None
+            svc = svc or Service.objects.create(nom=nom, code=code)
+            u = User.objects.create_user(login, password='x')
+            pers = Personnel.objects.create(utilisateur=u, prenom=login, nom='Q', telephone=f'8{k}',
+                                            email=f'{login}@t.local', fonc='Chef', chef=True)
+            pers.service.add(svc)
+
+    def cours(self, type_, debut, fin, enseignant=None, statut='validee', jour=None):
+        from datetime import date, time
+        from .models import SeanceCours
+        s = SeanceCours.objects.create(plan=self.plan, matiere=self.algo, enseignant=enseignant or self.prof,
+                                       date=jour or date(2026, 10, 5), type=type_, statut=statut,
+                                       heure_arrivee=time(*debut), heure_depart=time(*fin))
+        s.elements.add(self.el)
+        return s
+
+    def test_heures_supplementaires_selon_les_parametres(self):
+        from datetime import date
+        from . import heures
+        from .models import DatesSemestre, ParametresHeures
+        params = ParametresHeures.actuels()
+        self.assertEqual((params.semaines_semestre, params.grade('maitre_assistant')),
+                         (15, {'service': 105, 'taux': 150000}))
+        for _ in range(5):
+            self.cours('CM', (8, 0), (10, 0))                    # 10 h de CM = 15 h éq. TD
+        for _ in range(50):
+            self.cours('TD', (8, 0), (10, 0))                    # 100 h de TD
+        self.cours('TP', (8, 0), (11, 0), statut='attente')       # pas encore validé : ne compte pas
+        permanents, vacataires = heures.situation(self.session, 'impair', params=params)
+        l = next(x for x in permanents if x['enseignant'] == self.prof)
+        self.assertEqual((l['fait'], l['eq_td'], l['service'], l['hs'], l['montant']), (110, 115, 105, 10, 1500000))
+        self.assertEqual(l['hs_txt'], '10 h')
+        # Fonction administrative : service réduit de moitié ; heures supplémentaires plafonnées à 50 % du service
+        self.prof.fonction_administrative = True
+        self.prof.save()
+        l = next(x for x in heures.situation(self.session, 'impair', params=params)[0] if x['enseignant'] == self.prof)
+        self.assertEqual((l['service'], l['hs_brut'], l['hs']), (52.5, 62.5, 26.25))
+        self.assertIn('plafonnées', ' '.join(l['alertes']))
+        # Sans équivalent TD : une heure = une heure
+        params.equivalent_td = False
+        params.save()
+        l = next(x for x in heures.situation(self.session, 'impair', params=params)[0] if x['enseignant'] == self.prof)
+        self.assertEqual(l['eq_td'], 110)
+        # Vacataire : heures de l'emploi du temps (3 h par semaine × 15), au taux de son grade, ni service ni plafond
+        v = next(x for x in vacataires if x['enseignant'] == self.vac)
+        self.assertEqual((v['hebdo'], v['edt_semestre'], v['montant']), (3, 45, 4500000))
+        # Prévu à ce jour : semaines écoulées depuis le début du semestre (dates de la Direction des Études)
+        self.assertIsNone(heures.semaines_ecoulees(self.session, 'impair'))
+        DatesSemestre.objects.create(session=self.session, periode='impair', debut=date(2026, 10, 1),
+                                     fin=date(2027, 1, 31))
+        self.assertEqual(heures.semaines_ecoulees(self.session, 'impair', aujourd_hui=date(2026, 10, 15)), 3)
+        self.assertEqual(heures.semaines_ecoulees(self.session, 'impair', aujourd_hui=date(2027, 6, 1)), 15)
+
+    def test_ciaq_consulte_et_definit_les_parametres(self):
+        from .models import ParametresHeures
+        self.cours('CM', (8, 0), (10, 0))
+        self.connecter('ciaq')
+        r = self.client.get(reverse('ciaq_avancement'), {'vue': 'enseignant'})
+        self.assertContains(r, 'PROF')
+        self.assertContains(r, 'Prévu / fait')
+        for vue in ('programme', 'matiere'):
+            self.assertEqual(self.client.get(reverse('ciaq_avancement'), {'vue': vue}).status_code, 200, vue)
+        r = self.client.get(reverse('ciaq_situation'))
+        self.assertContains(r, 'Awa PROF')
+        self.assertContains(self.client.get(reverse('ciaq_situation'), {'onglet': 'vacataires'}), 'VACATAIRE')
+        for url in (reverse('ciaq_avancement'), reverse('ciaq_situation')):
+            self.assertEqual(self.client.get(url, {'imprimer': 'pdf'}).content[:4], b'%PDF', url)
+        # Pas d'étudiants, de matières ni de soutenances ; son tableau de bord : l'avancement des cours
+        insc = Inscription.objects.get(etudiant__matricule='M0')
+        for url in (reverse('etudiants_liste'), reverse('preinscriptions_liste'), reverse('statistiques'),
+                    reverse('etudiant_fiche', args=[insc.pk]), reverse('exclusions_liste'), reverse('matieres_liste'),
+                    reverse('soutenances'), reverse('projets_liste'), reverse('soutenances_calendrier')):
+            self.assertEqual(self.client.get(url).status_code, 403, url)
+        self.assertRedirects(self.client.get(reverse('tableau_de_bord')), reverse('ciaq_avancement'))
+        r = self.client.get(reverse('ciaq_avancement'))
+        for url in (reverse('etudiants_liste'), reverse('matieres_liste'), reverse('soutenances'),
+                    reverse('statistiques')):
+            self.assertNotContains(r, f'href="{url}"')
+        self.assertEqual(self.client.get(reverse('emploi_du_temps')).status_code, 200)    # emploi du temps : lecture
+        self.assertEqual(self.client.get(reverse('plans_liste')).status_code, 200)
+        self.assertEqual(self.client.get(reverse('cours_dispenses')).status_code, 200)
+        # Paramètres : la CIAQ les modifie (tout), et c'est sa seule modification
+        donnees = {'semaines_semestre': 14, 'equivalent_td': 'on', 'coef_cm': '1.5', 'coef_td': '1', 'coef_tp': '0.75',
+                   'coef_controle': '1', 'coef_tout': '1', 'reduction_fonction': 50, 'hs_plafond_hebdo': '6',
+                   'hs_plafond_pct': 50, 'cm_rang_a_pct': 50, 'service_assistant': '110', 'taux_assistant': '120000',
+                   'service_professeur': '75', 'taux_professeur': '200000'}
+        self.assertRedirects(self.client.post(reverse('ciaq_parametres'), donnees), reverse('ciaq_parametres'))
+        p = ParametresHeures.actuels()
+        self.assertEqual((p.semaines_semestre, float(p.coef_tp), p.grade('assistant'), p.grade('maitre_assistant')),
+                         (14, 0.75, {'service': 110.0, 'taux': 120000}, {'service': None, 'taux': None}))
+        self.assertEqual(self.client.post(reverse('plan_detail', args=[self.plan.pk]),
+                                          {'action': 'approuver'}).status_code, 403)
+        self.assertEqual(self.client.post(reverse('dates_semestres'), {}).status_code, 403)
+        # Les autres : pas les paramètres (la Direction les voit sans les modifier)
+        self.connecter('dge')
+        self.assertEqual(self.client.get(reverse('ciaq_parametres')).status_code, 200)
+        self.assertEqual(self.client.post(reverse('ciaq_parametres'), donnees).status_code, 403)
+        for login in ('info', 'scol', 'prof'):
+            self.connecter(login)
+            self.assertIn(self.client.get(reverse('ciaq_situation')).status_code, (302, 403), login)
+
+    def test_reajustement_par_la_direction_des_etudes(self):
+        import re as _re
+        from datetime import date, time, timedelta
+        from django.core import mail
+        from django.utils import timezone
+        from .models import DelegueClasse, SeanceCours
+        insc = Inscription.objects.get(etudiant__matricule='M0')
+        DelegueClasse.objects.create(etudiant=insc.etudiant, filiere_id=insc.filiere_id, licence_id=insc.licence_id,
+                                     session=self.session)
+        s = self.cours('CM', (8, 0), (10, 0))
+        # Dates des semestres : la Direction des Études
+        self.connecter('dge')
+        self.client.post(reverse('dates_semestres') + f'?session={self.session.pk}',
+                         {'debut_impair': '2026-10-01', 'fin_impair': '2027-01-31', 'debut_pair': '', 'fin_pair': ''})
+        self.assertEqual(self.session.dates_semestres.get().debut, date(2026, 10, 1))
+        # Réajustement (motif obligatoire) : l'enseignant doit signer de nouveau
+        url = reverse('cours_dispense', args=[s.pk])
+        self.assertContains(self.client.post(url, {'arrivee': '08:30', 'depart': '10:00', 'motif': ''}), 'motif')
+        n = len(mail.outbox)
+        self.client.post(url, {'arrivee': '08:30', 'depart': '10:00', 'motif': 'Réclamation du délégué, PV du 6/10'})
+        s.refresh_from_db()
+        self.assertEqual((s.statut, s.heure_arrivee, s.validee_par), ('resigner', time(8, 30), None))
+        self.assertEqual(mail.outbox[n].to, ['prof@t.local'])
+        self.connecter('prof')
+        self.assertContains(self.client.get(reverse('espace_enseignant')), 'réajusté')
+        r = self.client.get(reverse('plan_cours', args=[self.algo.pk]), {'resigner': s.pk})
+        self.assertContains(r, 'Heures réajustées')
+        self.client.post(reverse('seance_cours_action', args=[s.pk]), {'action': 'resigner', **signer()})
+        s.refresh_from_db()
+        self.assertEqual(s.statut, 'reaj_delegue')
+        self.assertIsNotNone(s.reajustements.get().signe_enseignant_le)
+        lien = _re.search(r'https?://[^\s]+/plan-de-cours/confirmer/[^\s]+/', mail.outbox[-1].body).group(0)
+        chemin = '/' + lien.split('/', 3)[3]
+        # Le délégué signe les heures réajustées : il ne peut plus les changer
+        self.client.logout()
+        self.assertContains(self.client.get(chemin), 'readonly')
+        self.client.post(chemin, {'matricule': 'M0', 'heure_arrivee': '07:00', 'heure_depart': '12:00', **signer()})
+        s.refresh_from_db()
+        self.assertEqual((s.statut, s.heure_arrivee, s.heure_depart), ('validee', time(8, 30), time(10, 0)))
+        self.assertIsNotNone(s.reajustements.get().signe_delegue_le)
+        # Délai de 72 h dépassé : le délégué ne valide plus ; la Direction des Études relance
+        s2 = self.cours('TD', (10, 0), (11, 0), statut='attente')
+        s2.expire_le = timezone.now() - timedelta(hours=1)
+        s2.save()
+        from .plans_cours import jeton
+        r = self.client.get(reverse('plan_confirmer', args=[jeton(s2, insc.etudiant)]))
+        self.assertContains(r, 'Délai dépassé')
+        self.connecter('dge')
+        self.assertContains(self.client.get(reverse('cours_dispenses'), {'etat': 'expires'}), 'Relancer')
+        self.client.post(reverse('cours_dispenses'), {'cours': s2.pk})
+        s2.refresh_from_db()
+        self.assertFalse(s2.expiree)
+        # Un directeur de programme : pas d'accès aux cours dispensés de tout l'établissement
+        self.connecter('info')
+        self.assertEqual(self.client.get(reverse('cours_dispenses')).status_code, 403)
 
 
 class SallesBatimentsTests(TestCase):

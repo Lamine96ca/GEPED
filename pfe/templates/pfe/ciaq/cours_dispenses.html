@@ -1,0 +1,70 @@
+{% extends 'pfe/base.html' %}
+{% block titre %}Cours dispensés{% endblock %}
+{% block titre_page %}Cours dispensés{% endblock %}
+{% block sous_titre %}<div class="sous-titre">Cours déclarés par les enseignants et validés par les délégués (heures d'arrivée et de départ){% if session %} · {{ session.annee }}{% endif %}</div>{% endblock %}
+{% block contenu %}
+<div class="row g-3 mb-3">
+  {% for code, lib in etats %}{% if code != 'reajustes' %}
+  <div class="col-6 col-lg-3"><a class="card carte-gped h-100 text-decoration-none" href="?session={{ session.pk }}&amp;etat={{ code }}"><div class="card-body py-3"><div class="small text-secondary">{{ lib }}</div><div class="fs-5 fw-semibold {% if code == 'expires' and compteurs.expires %}text-danger{% endif %}" style="color:var(--encre)">{% if code == 'attente' %}{{ compteurs.attente }}{% elif code == 'expires' %}{{ compteurs.expires }}{% elif code == 'resigner' %}{{ compteurs.resigner }}{% else %}{{ compteurs.validee }}{% endif %}</div></div></a></div>
+  {% endif %}{% endfor %}
+</div>
+<div class="card carte-gped liste">
+  <form method="get" class="barre-filtres border-bottom">
+    <div class="row g-2 align-items-end">
+      {% include 'pfe/ciaq/_filtres.html' with periodes=None %}
+      <div class="col-12 col-md-4 col-lg-3">
+        <label class="form-label small text-secondary mb-1" for="f-q">Recherche</label>
+        <div class="champ-icone"><i class="bi bi-search"></i><input type="search" id="f-q" name="q" value="{{ filtres.q }}" class="form-control" placeholder="Enseignant, matière"></div>
+      </div>
+      <div class="col-6 col-md-3 col-lg-3">
+        <label class="form-label small text-secondary mb-1" for="f-prog">Programme</label>
+        <select id="f-prog" name="programme" class="form-select" onchange="this.form.submit()">
+          <option value="">Tous</option>
+          {% for p in programmes %}<option value="{{ p.pk }}"{% if filtres.programme == p.pk %} selected{% endif %}>{{ p.nom }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-md-2 col-lg-2">
+        <label class="form-label small text-secondary mb-1" for="f-etat">État</label>
+        <select id="f-etat" name="etat" class="form-select" onchange="this.form.submit()">
+          <option value="">Tous</option>
+          {% for code, lib in etats %}<option value="{{ code }}"{% if filtres.etat == code %} selected{% endif %}>{{ lib }}</option>{% endfor %}
+        </select>
+      </div>
+    </div>
+  </form>
+  <div class="px-4 pt-3 small text-secondary">{{ page.paginator.count }} cours avec ces filtres</div>
+  <div class="table-responsive mt-2">
+    <table class="table table-etudiants mb-0">
+      <thead><tr><th>Date</th><th>Matière</th><th>Enseignant</th><th>Type</th><th>Arrivée – départ</th><th class="text-end">Durée</th><th>État</th><th class="text-end"></th></tr></thead>
+      <tbody>
+      {% for s in page %}
+        <tr style="cursor:default"{% if s.expiree %} class="table-danger"{% endif %}>
+          <td class="text-nowrap">{{ s.date|date:"d/m/Y" }}</td>
+          <td style="white-space:normal"><strong style="color:var(--encre)">{{ s.matiere.nom }}</strong><div class="small text-secondary">{{ s.matiere.filiere.nom }} · {{ s.matiere.licence.nom }}</div></td>
+          <td class="small">{{ s.enseignant }}</td>
+          <td><span class="pill">{{ s.type_court }}</span></td>
+          <td class="text-nowrap">{% if s.heure_arrivee %}{{ s.heure_arrivee|time:"H:i" }} – {{ s.heure_depart|time:"H:i" }}{% else %}—{% endif %}{% if s.reajustement %} <i class="bi bi-arrow-repeat text-secondary" title="Réajusté"></i>{% endif %}</td>
+          <td class="text-end">{{ s.duree_txt }}</td>
+          <td class="small">{% if s.statut == 'validee' %}<span class="pill pill-succes">Validé</span><div class="text-secondary">{{ s.validee_par.prenom }} {{ s.validee_par.nom }}</div>{% elif s.expiree %}<span class="pill pill-danger">Délai dépassé</span>{% else %}<span class="pill pill-attention">{{ s.get_statut_display }}</span>{% endif %}</td>
+          <td class="text-end text-nowrap">
+            {% if s.expiree and profil.reajuste_cours %}<form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="cours" value="{{ s.pk }}"><input type="hidden" name="suivant" value="{{ request.get_full_path }}"><button class="btn btn-sm btn-light" title="Relancer la validation ({{ 72 }} h)"><i class="bi bi-arrow-clockwise"></i> Relancer</button></form>{% endif %}
+            <a class="btn btn-sm btn-light" href="{% url 'cours_dispense' s.pk %}"><i class="bi bi-eye"></i></a>
+          </td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="8"><div class="etat-vide py-4"><i class="bi bi-journal"></i>Aucun cours dispensé avec ces filtres.</div></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if page.has_other_pages %}
+  <div class="d-flex justify-content-between align-items-center px-4 py-3 small">
+    <span class="text-secondary">Page {{ page.number }} / {{ page.paginator.num_pages }}</span>
+    <div class="d-flex gap-2">
+      {% if page.has_previous %}<a class="btn btn-sm btn-light" href="?{{ params }}&amp;page={{ page.previous_page_number }}"><i class="bi bi-chevron-left"></i></a>{% endif %}
+      {% if page.has_next %}<a class="btn btn-sm btn-light" href="?{{ params }}&amp;page={{ page.next_page_number }}"><i class="bi bi-chevron-right"></i></a>{% endif %}
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,48 @@
+{% extends 'pfe/base.html' %}
+{% block titre %}Délégués de classe{% endblock %}
+{% block titre_page %}Délégués de classe{% endblock %}
+{% block sous_titre %}<div class="sous-titre">{{ maximum }} délégués au plus par classe · ils confirment l'avancement des plans de cours par un lien reçu par e-mail</div>{% endblock %}
+{% block actions %}
+  <form method="get"><select name="session" class="form-select" style="height:38px;width:auto" onchange="this.form.submit()" aria-label="Session">
+    {% for s in sessions %}<option value="{{ s.pk }}"{% if session and s.pk == session.pk %} selected{% endif %}>{{ s.annee }}{% if s.en_cours %} (en cours){% endif %}</option>{% endfor %}
+  </select></form>
+{% endblock %}
+{% block contenu %}
+<div class="row g-3">
+{% for c in classes %}
+  <div class="col-xl-6">
+    <div class="card carte-gped h-100">
+      <div class="card-body">
+        <div class="entete-carte"><span class="icone-carte"><i class="bi bi-people"></i></span>
+          <div><h3>{{ c.programme.nom }} · {{ c.licence.nom }}</h3><p>{{ c.effectif }} étudiant{{ c.effectif|pluralize }} · {{ c.delegues|length }}/{{ maximum }} délégué{{ c.delegues|length|pluralize }}</p></div></div>
+        <ul class="list-unstyled mb-3">
+          {% for d in c.delegues %}
+            <li class="d-flex align-items-center gap-2 py-1 border-bottom">
+              <i class="bi bi-person-badge text-secondary"></i>
+              <div class="me-auto"><strong style="color:var(--encre)">{{ d.etudiant.prenom }} {{ d.etudiant.nom }}</strong> <span class="small text-secondary">{{ d.etudiant.matricule }}</span>
+                <div class="small {% if d.etudiant.email %}text-secondary{% else %}text-danger{% endif %}">{{ d.etudiant.email|default:"Pas d'adresse e-mail : il ne recevra pas les liens" }}</div></div>
+              <form method="post" onsubmit="return confirm('Retirer {{ d.etudiant.prenom|escapejs }} {{ d.etudiant.nom|escapejs }} des délégués ?');">{% csrf_token %}
+                <input type="hidden" name="action" value="retirer"><input type="hidden" name="delegue" value="{{ d.pk }}">
+                <button class="btn btn-sm btn-light" title="Retirer"><i class="bi bi-x-lg"></i></button></form>
+            </li>
+          {% empty %}
+            <li class="small text-secondary">Aucun délégué désigné.</li>
+          {% endfor %}
+        </ul>
+        {% if not c.complet %}
+          <form method="post" class="d-flex gap-2">{% csrf_token %}<input type="hidden" name="action" value="designer">
+            <select name="inscription" class="form-select" required aria-label="Étudiant à désigner">
+              <option value="">Choisir un étudiant…</option>
+              {% for i in c.candidats %}<option value="{{ i.pk }}">{{ i.etudiant.nom }} {{ i.etudiant.prenom }} · {{ i.etudiant.matricule|default:"" }}</option>{% endfor %}
+            </select>
+            <button class="btn btn-primary text-nowrap"><i class="bi bi-person-plus"></i> Désigner</button>
+          </form>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+{% empty %}
+  <div class="col-12"><div class="etat-vide py-4"><i class="bi bi-people"></i>Aucune classe avec des inscrits dans vos programmes pour cette session.</div></div>
+{% endfor %}
+</div>
+{% endblock %}

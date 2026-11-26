@@ -417,14 +417,19 @@ class EnseignantForm(BootstrapMixin, forms.ModelForm):
     class Meta:
         from .models import Enseignant
         model = Enseignant
-        fields = ['civilite', 'prenom', 'nom', 'grade', 'statut', 'specialite', 'departement', 'email', 'telephone']
+        fields = ['civilite', 'prenom', 'nom', 'grade', 'statut', 'fonction_administrative', 'specialite',
+                  'departement', 'email', 'telephone']
         widgets = {'email': forms.EmailInput()}
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, departements=None, **kwargs):
         super().__init__(*args, **kwargs)
         from .roles import departements_etablissement
         f = self.fields
-        f['departement'].queryset = departements_etablissement()
+        # Chef de département, directeur de programme : leur(s) département(s) seulement
+        f['departement'].queryset = (departements_etablissement() if departements is None
+                                     else departements_etablissement().filter(pk__in=departements))
+        if departements is not None and len(set(departements)) == 1 and not self.instance.pk:
+            f['departement'].initial = next(iter(departements))
         f['prenom'].widget.attrs['placeholder'] = 'Ex. Mariame'
         f['nom'].widget.attrs['placeholder'] = 'Ex. CAMARA'
         f['specialite'].widget.attrs['placeholder'] = 'Ex. Réseaux et télécommunications'

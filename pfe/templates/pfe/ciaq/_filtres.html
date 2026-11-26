@@ -1,0 +1,15 @@
+{# Filtres communs du suivi des cours : session, période (semestres impairs / pairs) #}
+<div class="col-6 col-md-3 col-lg-2">
+  <label class="form-label small text-secondary mb-1" for="f-session">Session</label>
+  <select id="f-session" name="session" class="form-select" onchange="this.form.submit()">
+    {% for s in sessions %}<option value="{{ s.pk }}"{% if session and s.pk == session.pk %} selected{% endif %}>{{ s.annee }}</option>{% endfor %}
+  </select>
+</div>
+{% if periodes %}
+<div class="col-6 col-md-4 col-lg-3">
+  <label class="form-label small text-secondary mb-1" for="f-periode">Semestres</label>
+  <select id="f-periode" name="periode" class="form-select" onchange="this.form.submit()">
+    {% for code, lib in periodes %}<option value="{{ code }}"{% if periode == code %} selected{% endif %}>{{ lib }}</option>{% endfor %}
+  </select>
+</div>
+{% endif %}

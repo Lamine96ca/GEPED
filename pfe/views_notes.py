@@ -27,7 +27,7 @@ from .notes import (CHAMPS_SAISIE, MOTIF_SUPER_UTILISATEUR, avec_promotion, code
                     filtrer_promotion, peut_modifier, recalculer, regles, saisie_de, semestres_delibres,
                     semestres_valides, session_ecoulee, verifier_pdf)
 from .roles import (chef_departement_requis, chef_scolarite_requis, fiches_requises,
-                    gestion_matieres_requise, get_profil, lecture_notes_requise, matieres_visibles,
+                    gestion_matieres_requise, get_profil, saisie_notes_requise, lecture_notes_requise, matieres_visibles,
                     programmes_du_profil, scolarite_requise, validations_requises)
 
 from .pdf_listes import GRIS_CLAIR as GRIS_PDF, ROUGE as ROUGE_PDF, VERT as VERT_PDF
@@ -120,7 +120,7 @@ def inscrits_de(matiere):
 # ------------------------------------------------------------------ saisie
 
 @login_required
-@gestion_matieres_requise
+@saisie_notes_requise
 def notes_matieres(request):
     """Choix de la matière à saisir (cascade), avec l'avancement (notes saisies / inscrits) des matières filtrées."""
     profil = get_profil(request)
@@ -192,7 +192,7 @@ def _imprimer_matiere(request, matiere, inscrits, notes, promotion):
 
 
 @login_required
-@gestion_matieres_requise
+@saisie_notes_requise
 def notes_saisie(request, pk):
     """Grille de saisie : une ligne par étudiant inscrit, enregistrée en une fois."""
     profil = get_profil(request)
@@ -496,7 +496,7 @@ def _export_notes(qs):
 # ------------------------------------------------------------------ import
 
 @login_required
-@gestion_matieres_requise
+@saisie_notes_requise
 def notes_importer(request):
     profil = get_profil(request)
     rapport = None
@@ -583,7 +583,7 @@ def notes_import_excel(request, pk):
 
 
 @login_required
-@gestion_matieres_requise
+@saisie_notes_requise
 def notes_modele(request):
     """Modèle d'import ; ?reglement=877 : colonnes CC / CT de l'arrêté 877."""
     code = request.GET.get('reglement', '')

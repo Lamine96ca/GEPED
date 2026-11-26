@@ -189,6 +189,7 @@ def importer_notes(fichier, profil, utilisateur=None, simulation=False, pdf_ense
                          "ou « rattrapage ».")
 
     autorises = None if profil.est_scolarite else set(profil.programme_ids)
+    enseignees = profil.matieres_enseignees_ids              # l'enseignant : les matières de ses séances
     programmes = _index_programmes()
     sessions = {cle_session(s.annee): s for s in Session.objects.all()}
 
@@ -337,7 +338,7 @@ def importer_notes(fichier, profil, utilisateur=None, simulation=False, pdf_ense
                 rapport.erreur(numero, f"matière « {nom_matiere} » introuvable pour {matricule} "
                                        f"(son programme et sa licence en {session})")
                 continue
-        if autorises is not None and matiere.filiere_id not in autorises:
+        if autorises is not None and matiere.filiere_id not in autorises and matiere.pk not in enseignees:
             hors_perimetre.append((numero, matiere.filiere.nom))
             continue
         identite = (etu.pk, matiere.pk)

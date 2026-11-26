@@ -155,3 +155,18 @@ def signataire_du_profil(profil):
     else:
         fonction = f"Le Chef du service {service.nom}"
     return Signataire('', fonction, nom_service, defaut.email, defaut.telephone, scolarite=False)
+
+
+def signataire_enseignant(enseignant):
+    """
+    Documents imprimés depuis l'espace enseignant (emploi du temps, liste d'appel, notes de ses matières) : signés par
+    l'enseignant lui-même (civilité, prénom, NOM ; « L'Enseignant »), sous le bandeau de son département ; l'en-tête
+    porte SES coordonnées (e-mail, téléphone), jamais celles d'un service.
+    """
+    defaut = _par_defaut()
+    nom = ' '.join(x for x in (enseignant.civilite, enseignant.prenom.strip(), enseignant.nom.strip().upper()) if x)
+    grade = enseignant.get_grade_display() if enseignant.grade else ''
+    fonction = "L'Enseignant" + (f" · {grade}" if grade else '')
+    service = enseignant.departement.nom.upper() if enseignant.departement_id else defaut.service
+    return Signataire(nom, fonction, service, (enseignant.email or '').strip(), (enseignant.telephone or '').strip(),
+                      scolarite=False)

@@ -306,10 +306,12 @@ def peut_modifier(profil, matiere, delibere=None, ouvertes=None, ecoulee=None, v
     n'est pas délibéré (année en cours) ; un semestre délibéré ou une année écoulée ne s'ouvre que pendant
     une autorisation du chef de la scolarité (programme, session, niveau, du … au …).
     Directeur de programme : plus rien une fois le semestre VALIDÉ par le chef de département (qui peut encore
-    corriger, ou annuler sa validation). `delibere`, `ouvertes`, `ecoulee`, `valide` : déjà calculés.
+    corriger, ou annuler sa validation). L'enseignant d'une matière (séances de l'emploi du temps) : comme le
+    directeur de programme, pour cette matière seulement. `delibere`, `ouvertes`, `ecoulee`, `valide` : déjà calculés.
     """
+    enseigne = matiere.pk in profil.matieres_enseignees_ids
     dans_perimetre = profil.est_scolarite or (profil.gere_matieres and matiere.filiere_id in profil.programme_ids)
-    if not dans_perimetre:
+    if not dans_perimetre and not enseigne:
         return False
     if ecoulee is None:
         ecoulee = session_ecoulee(matiere.session)
@@ -321,7 +323,8 @@ def peut_modifier(profil, matiere, delibere=None, ouvertes=None, ecoulee=None, v
         if ouvertes is None:
             ouvertes = autorisations_actives([matiere])
         return (matiere.filiere_id, matiere.session_id, matiere.licence_id) in ouvertes
-    if profil.role == 'programme':                    # directeur : fermé après la validation du chef de département
+    if profil.role == 'programme' or not dans_perimetre:
+        # directeur de programme et enseignant de la matière : fermé après la validation du chef de département
         return not (est_valide(matiere) if valide is None else valide)
     return True
 

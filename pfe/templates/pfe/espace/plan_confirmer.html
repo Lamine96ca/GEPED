@@ -1,0 +1,68 @@
+{% extends 'pfe/espace/base.html' %}
+{% load static %}
+{% block titre %}Cours dispensé : validation{% endblock %}
+{% block contenu %}
+<section class="verif-carte">
+  {% if not valide %}
+    <div class="verif-statut ko">
+      <span class="icone"><i class="bi bi-x-octagon-fill"></i></span>
+      <div><h1>Lien invalide</h1><p>Ce lien ne permet pas de valider un cours : il est faux ou trop ancien, ou vous n'êtes plus délégué de cette classe.</p></div>
+    </div>
+  {% else %}
+    {% with m=seance.matiere %}
+    {% if seance.statut == 'validee' %}
+      <div class="verif-statut ok">
+        <span class="icone"><i class="bi bi-patch-check-fill"></i></span>
+        <div><h1>Cours validé</h1><p>Validé le {{ seance.validee_le|date:"d/m/Y à H:i" }} par {{ seance.validee_par.prenom }} {{ seance.validee_par.nom }} : {{ seance.heure_arrivee|time:"H:i" }} – {{ seance.heure_depart|time:"H:i" }}. Merci.</p></div>
+      </div>
+    {% elif expiree %}
+      <div class="verif-statut ko">
+        <span class="icone"><i class="bi bi-clock-history"></i></span>
+        <div><h1>Délai dépassé</h1><p>Ce cours devait être validé avant le {{ seance.expire_le|date:"d/m/Y à H:i" }} ({{ delai }} h). Adressez-vous à la Direction des Études, qui peut relancer la validation.</p></div>
+      </div>
+    {% elif not attend %}
+      <div class="verif-statut ko">
+        <span class="icone"><i class="bi bi-hourglass"></i></span>
+        <div><h1>Pas encore à valider</h1><p>Les heures de ce cours ont été réajustées par la Direction des Études : l'enseignant doit d'abord les signer. Vous recevrez un nouveau lien.</p></div>
+      </div>
+    {% endif %}
+    <div class="mt-3">
+      <div class="small text-secondary">Cours dispensé · {{ m.filiere.nom }} · {{ m.licence.nom }} · {{ m.session.annee }}</div>
+      <h1 class="h4 mb-1" style="color:var(--encre)">{{ m.nom }}</h1>
+      <p class="text-secondary mb-3">{{ seance.enseignant.civilite|default:"" }} {{ seance.enseignant.prenom }} {{ seance.enseignant.nom }} · {{ seance.date|date:"l d/m/Y" }} · {{ seance.get_type_display }}</p>
+      <div class="verif-conseil"><i class="bi bi-journal-check"></i>
+        <span><strong>Contenus dispensés, déclarés par l'enseignant :</strong>
+          {% for chap, els in chapitres %}<br><strong>{{ chap.titre }}</strong><ul class="mb-1 ps-3">{% for e in els %}<li>{{ e.texte }}</li>{% endfor %}</ul>{% endfor %}
+          <span class="small">Signé par l'enseignant le {{ seance.declaree_le|date:"d/m/Y à H:i" }}.</span></span>
+      </div>
+      {% if reajustement %}<div class="verif-conseil mt-2"><i class="bi bi-arrow-repeat"></i><span><strong>Heures réajustées par la Direction des Études</strong> le {{ reajustement.le|date:"d/m/Y" }} : {{ reajustement.motif }}</span></div>{% endif %}
+    </div>
+    {% if attend and not expiree %}
+      <form method="post" class="mt-3" novalidate>{% csrf_token %}
+        <p class="mb-2">{{ etudiant.prenom }} {{ etudiant.nom }}, vous êtes délégué(e) de cette classe : <strong>{% if reajuste %}signez les heures réajustées{% else %}vérifiez les contenus et indiquez l'heure d'arrivée et de départ de l'enseignant{% endif %}</strong>, à valider avant le {{ seance.expire_le|date:"d/m/Y à H:i" }}.</p>
+        {% if erreur %}<div class="alert alert-danger py-2"><i class="bi bi-exclamation-circle"></i> {{ erreur }}</div>{% endif %}
+        <div class="row g-3">
+          <div class="col-6 col-md-3">
+            <label class="form-label" for="c-arrivee">Arrivée de l'enseignant <span class="text-danger">*</span></label>
+            <input type="time" id="c-arrivee" name="heure_arrivee" class="form-control" value="{{ arrivee }}" step="300" required{% if reajuste %} readonly{% endif %}>
+          </div>
+          <div class="col-6 col-md-3">
+            <label class="form-label" for="c-depart">Départ de l'enseignant <span class="text-danger">*</span></label>
+            <input type="time" id="c-depart" name="heure_depart" class="form-control" value="{{ depart }}" step="300" required{% if reajuste %} readonly{% endif %}>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="c-matricule">Votre matricule <span class="text-danger">*</span></label>
+            <div class="champ-icone"><i class="bi bi-upc"></i><input id="c-matricule" name="matricule" class="form-control" required autocomplete="off" inputmode="numeric" placeholder="Votre matricule"></div>
+          </div>
+          {% if not reajuste %}<div class="col-12 small text-secondary mt-1"><i class="bi bi-info-circle"></i> Les heures proposées viennent de l'emploi du temps : corrigez-les si l'enseignant est arrivé ou parti à une autre heure. Ce sont ces heures qui comptent.</div>{% endif %}
+          <div class="col-12">{% include 'pfe/_cadre_signature.html' %}</div>
+          <div class="col-12"><button class="btn btn-primary"><i class="bi bi-check2-circle"></i> Je valide ce cours</button></div>
+        </div>
+      </form>
+    {% endif %}
+    {% endwith %}
+  {% endif %}
+  <div class="verif-conseil mt-4"><i class="bi bi-shield-lock"></i><span>Ce lien est personnel : ne le transférez à personne. Votre validation est enregistrée avec la date, l'heure et votre signature.</span></div>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{% static 'pfe/js/gped-signature.js' %}?v={{ version_statique }}" defer></script>{% endblock %}

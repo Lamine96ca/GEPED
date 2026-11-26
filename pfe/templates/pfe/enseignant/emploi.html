@@ -1,0 +1,22 @@
+{% extends 'pfe/base.html' %}
+{% load static %}
+{% block titre %}Emploi du temps{% endblock %}
+{% block titre_page %}Mon emploi du temps{% endblock %}
+{% block sous_titre %}<div class="sous-titre">Semaine type d'après l'emploi du temps de la Direction des Études{% if session %} · {{ session.annee }}{% endif %}</div>{% endblock %}
+{% block actions %}{% include 'pfe/enseignant/_session.html' %}{% endblock %}
+{% block contenu %}
+<link rel="stylesheet" href="{% static 'pfe/css/emploi_du_temps.css' %}?v={{ version_statique }}">
+{% for b in blocs %}
+<div class="card carte-gped mb-3">
+  <div class="card-header d-flex flex-wrap align-items-center gap-2">
+    <h3 class="titre-stat me-auto mb-0">{{ b.libelle }} <span class="small text-secondary fw-normal">· {{ b.total }} par semaine · {{ b.seances|length }} cours</span></h3>
+    <a class="btn btn-sm btn-light" target="_blank" rel="noopener" href="?session={{ session.pk }}&amp;periode={{ b.code }}&amp;imprimer=pdf"><i class="bi bi-printer"></i> Imprimer la grille</a>
+  </div>
+  <div class="card-body p-2">
+    {% include 'pfe/_grille_emploi.html' with dispo=b.dispo grande=True %}
+  </div>
+</div>
+{% empty %}
+  <div class="card carte-gped"><div class="card-body"><div class="etat-vide py-4"><i class="bi bi-calendar-x"></i>Aucune séance à votre nom dans l'emploi du temps de {{ session.annee|default:"cette session" }}. La Direction des Études vous place dans l'emploi du temps.</div></div></div>
+{% endfor %}
+{% endblock %}

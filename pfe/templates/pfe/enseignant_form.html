@@ -42,7 +42,9 @@
             {% include 'pfe/_champ.html' with champ=form.grade col='col-md-4' %}
             {% include 'pfe/_champ.html' with champ=form.statut col='col-md-3' %}
             {% include 'pfe/_champ.html' with champ=form.departement col='col-md-5' %}
-            {% include 'pfe/_champ.html' with champ=form.specialite col='col-md-12' %}
+            {% include 'pfe/_champ.html' with champ=form.specialite col='col-md-8' %}
+            {% include 'pfe/_champ.html' with champ=form.fonction_administrative col='col-md-4' %}
+            <div class="col-12 small text-secondary"><i class="bi bi-info-circle"></i> {{ form.fonction_administrative.help_text }}</div>
           </div>
         </div>
       </div>
@@ -54,7 +56,7 @@
         <button class="btn btn-primary"><i class="bi bi-check-lg"></i> {% if enseignant %}Enregistrer{% else %}Enregistrer l'enseignant{% endif %}</button>
         <a href="{% url 'enseignants_liste' %}" class="btn btn-light">Annuler</a>
       </div>
-      {% if not enseignant %}<div class="small text-secondary mt-2"><i class="bi bi-info-circle"></i> Sans la case cochée, aucun e-mail n'est envoyé : il pourra l'être plus tard depuis la liste. L'e-mail vient de la Direction des Études ; si la personne a déjà un compte, il lui dit d'utiliser ce compte et de ne pas en créer d'autre.</div>{% endif %}
+      {% if not enseignant %}<div class="small text-secondary mt-2"><i class="bi bi-info-circle"></i> Sans la case cochée, aucun e-mail n'est envoyé : il pourra l'être plus tard depuis la liste. L'e-mail vient du département de l'enseignant ; si la personne a déjà un compte, il lui dit d'utiliser ce compte et de ne pas en créer d'autre.</div>{% endif %}
     </form>
   </div>
 
@@ -90,7 +92,7 @@
                 <button class="btn btn-primary w-100"><i class="bi bi-person-check"></i> Réactiver l'enseignant</button></form>
             {% endif %}
           </div>
-          <div class="small text-secondary mt-3"><i class="bi bi-envelope"></i> Les e-mails partent à {{ enseignant.email }}, au nom de la Direction des Études. Le lien d'activation est valable 7 jours.{% if enseignant.personnel %} Désactiver l'enseignant ne touche pas à son compte du personnel.{% endif %}</div>
+          <div class="small text-secondary mt-3"><i class="bi bi-envelope"></i> Les e-mails partent à {{ enseignant.email }}, au nom de son département. Le lien d'activation est valable 7 jours.{% if enseignant.personnel %} Désactiver l'enseignant ne touche pas à son compte du personnel.{% endif %}</div>
         </div>
       </div>
     </div>

@@ -1350,7 +1350,8 @@ class Enseignant(models.Model):
     Enseignant de l'établissement, affecté à un département. UN SEUL COMPTE PAR PERSONNE : un membre du personnel
     qui enseigne (chef de département, directeur de programme…) garde son compte, auquel on rattache cette fiche ;
     un enseignant qui n'est pas du personnel a un compte sans service, qui n'ouvre que l'espace enseignant.
-    Gérés par la Direction Générale des Études (pfe/views_enseignants.py).
+    Gérés par le chef de département et le directeur de programme (leur département) et l'administrateur
+    (pfe/views_enseignants.py).
     """
     PERMANENT, VACATAIRE = 'permanent', 'vacataire'
     STATUTS = [(PERMANENT, 'Permanent'), (VACATAIRE, 'Vacataire')]
@@ -1368,6 +1369,9 @@ class Enseignant(models.Model):
     grade = models.CharField(max_length=20, choices=GRADES, blank=True, default='', verbose_name="Grade")
     statut = models.CharField(max_length=10, choices=STATUTS, default=PERMANENT, verbose_name="Statut")
     specialite = models.CharField(max_length=150, blank=True, default='', verbose_name="Spécialité")
+    fonction_administrative = models.BooleanField(
+        default=False, verbose_name="Fonction administrative",
+        help_text="Chef de département, doyen, chef de division… : service statutaire réduit (paramètre de la CIAQ).")
     departement = models.ForeignKey(Service, on_delete=models.PROTECT, related_name='enseignants',
                                     verbose_name="Département")
     actif = models.BooleanField(default=True, verbose_name="Actif",
@@ -1471,3 +1475,265 @@ class Seance(models.Model):
     @staticmethod
     def heure(minutes):
         return f"{minutes // 60:02d}h{minutes % 60:02d}"
+
+
+# ------------------------------------------------------------------ espace enseignant : délégués et plans de cours
+
+class DelegueClasse(models.Model):
+    """
+    Délégué d'une classe (programme, niveau, session) : désigné par le directeur du programme ou le chef de
+    département, deux au plus par classe. Il valide, par un lien reçu par e-mail (72 h), chaque cours dispensé déclaré
+    par l'enseignant : contenus, heure d'arrivée et heure de départ (voir pfe/plans_cours.py).
+    """
+    MAXIMUM = 2
+    etudiant = models.ForeignKey(Etudiant, on_delete=models.CASCADE, related_name='delegations', verbose_name='Étudiant')
+    filiere = models.ForeignKey(Service, on_delete=models.CASCADE, related_name='delegues', verbose_name='Programme')
+    licence = models.ForeignKey(Licence, on_delete=models.CASCADE, related_name='delegues', verbose_name='Niveau')
+    session = models.ForeignKey(Session, on_delete=models.CASCADE, related_name='delegues', verbose_name='Session')
+    designe_par = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+                                    verbose_name='Désigné par')
+    date = models.DateTimeField('Désigné le', auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Délégué de classe'
+        unique_together = [('etudiant', 'filiere', 'licence', 'session')]
+
+    def __str__(self):
+        return f"{self.etudiant} · délégué {self.filiere} {self.licence} {self.session}"
+
+
+class PlanCours(models.Model):
+    """
+    Plan de cours d'une matière, déposé par son enseignant (document Word) : GePed le découpe en chapitres et contenus,
+    que l'enseignant corrige puis soumet ; le chef de département (ou le directeur du programme) l'approuve. Ensuite,
+    chaque cours dispensé (SeanceCours) coche des contenus, signé par l'enseignant puis validé par un délégué : c'est
+    l'avancement du cours.
+    """
+    BROUILLON, SOUMIS, APPROUVE, REFUSE = 'brouillon', 'soumis', 'approuve', 'refuse'
+    STATUTS = [(BROUILLON, 'Brouillon'), (SOUMIS, 'Soumis'), (APPROUVE, 'Approuvé'), (REFUSE, 'À corriger')]
+    matiere = models.ForeignKey(Matiere, on_delete=models.CASCADE, related_name='plans_cours', verbose_name='Matière')
+    enseignant = models.ForeignKey('Enseignant', on_delete=models.CASCADE, related_name='plans_cours',
+                                   verbose_name='Enseignant')
+    fichier = models.FileField('Document Word', upload_to='plans_cours/%Y', storage=stockage_prive, blank=True)
+    nom_fichier = models.CharField('Nom du document', max_length=150, blank=True, default='')
+    statut = models.CharField('Statut', max_length=10, choices=STATUTS, default=BROUILLON)
+    soumis_le = models.DateTimeField('Soumis le', null=True, blank=True)
+    decide_par = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+                                   verbose_name='Approuvé (ou renvoyé) par')
+    decide_le = models.DateTimeField('Décision le', null=True, blank=True)
+    motif_refus = models.TextField('À corriger', blank=True, default='')
+    date_creation = models.DateTimeField('Créé le', auto_now_add=True)
+    date_maj = models.DateTimeField('Modifié le', auto_now=True)
+
+    class Meta:
+        verbose_name = 'Plan de cours'
+        unique_together = [('matiere', 'enseignant')]
+
+    def __str__(self):
+        return f"Plan de cours · {self.matiere} · {self.enseignant}"
+
+    @property
+    def modifiable(self):
+        """L'enseignant corrige son plan tant qu'il n'est pas soumis ou approuvé."""
+        return self.statut in (self.BROUILLON, self.REFUSE)
+
+    def avancement(self):
+        """Contenus dispensés (séances validées par un délégué) sur le total des contenus du plan."""
+        elements = list(ElementPlan.objects.filter(partie__plan=self).values_list('pk', flat=True))
+        faits = set(SeanceCours.objects.filter(plan=self, statut=SeanceCours.VALIDEE)
+                    .values_list('elements__pk', flat=True)) & set(elements)
+        attente = SeanceCours.objects.filter(plan=self, statut__in=SeanceCours.EN_COURS).count()
+        return {'confirmees': len(faits), 'total': len(elements), 'attente': attente,
+                'pct': round(100 * len(faits) / len(elements)) if elements else 0}
+
+
+class PartiePlan(models.Model):
+    """Un CHAPITRE (grande ligne) du plan de cours ; ses contenus sont des ElementPlan."""
+    plan = models.ForeignKey(PlanCours, on_delete=models.CASCADE, related_name='parties', verbose_name='Plan')
+    ordre = models.PositiveSmallIntegerField('Ordre', default=0)
+    titre = models.CharField('Chapitre', max_length=255)
+    heures_prevues = models.DecimalField('Heures prévues', max_digits=5, decimal_places=1, null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Chapitre du plan de cours'
+        ordering = ['ordre', 'pk']
+
+    def __str__(self):
+        return self.titre
+
+
+class ElementPlan(models.Model):
+    """Un contenu d'un chapitre (sous-partie, notion, exercice…) : coché par l'enseignant quand il l'a dispensé."""
+    partie = models.ForeignKey(PartiePlan, on_delete=models.CASCADE, related_name='elements', verbose_name='Chapitre')
+    ordre = models.PositiveSmallIntegerField('Ordre', default=0)
+    texte = models.CharField('Contenu', max_length=500)
+
+    class Meta:
+        verbose_name = 'Contenu du plan de cours'
+        ordering = ['ordre', 'pk']
+
+    def __str__(self):
+        return self.texte
+
+
+class SeanceCours(models.Model):
+    """
+    Cours dispensé, déclaré par l'enseignant (contenus cochés d'un chapitre, type, date, signature), puis validé par
+    un délégué de la classe dans les 72 h (heures d'arrivée et de départ de l'enseignant, signature) : ce sont ces
+    heures qui comptent (heures faites). Réajustement possible par la Direction des Études (après la procédure
+    administrative) : les nouvelles heures doivent être signées de nouveau par l'enseignant puis par un délégué.
+    """
+    CM, TD, TP, CONTROLE, TOUT = 'CM', 'TD', 'TP', 'CTRL', 'TOUT'
+    TYPES = [(CM, 'Cours magistral (CM)'), (TD, 'Travaux dirigés (TD)'), (TP, 'Travaux pratiques (TP)'),
+             (CONTROLE, 'Contrôle'), (TOUT, 'CM, TD et TP')]
+    COURTS = {CM: 'CM', TD: 'TD', TP: 'TP', CONTROLE: 'Contrôle', TOUT: 'CM·TD·TP'}
+    ATTENTE, VALIDEE, A_RESIGNER, ATTENTE_DELEGUE_REAJ = 'attente', 'validee', 'resigner', 'reaj_delegue'
+    STATUTS = [(ATTENTE, 'En attente du délégué'), (VALIDEE, 'Validé'),
+               (A_RESIGNER, "Réajusté : à signer par l'enseignant"),
+               (ATTENTE_DELEGUE_REAJ, 'Réajusté : en attente du délégué')]
+    EN_COURS = (ATTENTE, A_RESIGNER, ATTENTE_DELEGUE_REAJ)
+    plan = models.ForeignKey(PlanCours, on_delete=models.CASCADE, related_name='seances', verbose_name='Plan de cours')
+    matiere = models.ForeignKey(Matiere, on_delete=models.CASCADE, related_name='seances_dispensees',
+                                verbose_name='Matière')
+    enseignant = models.ForeignKey('Enseignant', on_delete=models.CASCADE, related_name='seances_dispensees',
+                                   verbose_name='Enseignant')
+    date = models.DateField('Date du cours')
+    type = models.CharField('Type', max_length=4, choices=TYPES, default=CM)
+    elements = models.ManyToManyField(ElementPlan, related_name='seances', verbose_name='Contenus dispensés')
+    declaree_le = models.DateTimeField('Déclaré le', auto_now_add=True)
+    signature_enseignant = models.FileField("Signature de l'enseignant", upload_to='plans_cours/signatures/%Y',
+                                            storage=stockage_prive, blank=True)
+    statut = models.CharField('Statut', max_length=14, choices=STATUTS, default=ATTENTE)
+    lien_envoye_le = models.DateTimeField('Lien envoyé aux délégués le', null=True, blank=True)
+    expire_le = models.DateTimeField('Le délégué valide avant le', null=True, blank=True)
+    heure_arrivee = models.TimeField("Heure d'arrivée de l'enseignant", null=True, blank=True)
+    heure_depart = models.TimeField("Heure de départ de l'enseignant", null=True, blank=True)
+    validee_le = models.DateTimeField('Validé le', null=True, blank=True)
+    validee_par = models.ForeignKey(Etudiant, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+                                    verbose_name='Validé par (délégué)')
+    signature_delegue = models.FileField('Signature du délégué', upload_to='plans_cours/signatures/%Y',
+                                         storage=stockage_prive, blank=True)
+    signature_ip = models.CharField('Adresse IP du délégué', max_length=45, blank=True, default='')
+
+    class Meta:
+        verbose_name = 'Cours dispensé'
+        ordering = ['-date', '-pk']
+
+    def __str__(self):
+        return f"{self.matiere} · {self.date:%d/%m/%Y} · {self.COURTS.get(self.type, self.type)}"
+
+    @property
+    def duree(self):
+        """Durée en heures (départ − arrivée, fournies par le délégué) ; None tant qu'elles ne sont pas données."""
+        if not (self.heure_arrivee and self.heure_depart):
+            return None
+        m = (self.heure_depart.hour * 60 + self.heure_depart.minute) - (self.heure_arrivee.hour * 60
+                                                                         + self.heure_arrivee.minute)
+        return round(m / 60, 2) if m > 0 else 0
+
+    @property
+    def expiree(self):
+        from django.utils import timezone
+        return self.statut in (self.ATTENTE, self.ATTENTE_DELEGUE_REAJ) and bool(self.expire_le) \
+            and timezone.now() > self.expire_le
+
+
+class ReajustementSeance(models.Model):
+    """Réajustement des heures d'un cours par la Direction des Études, après la procédure administrative."""
+    seance = models.ForeignKey(SeanceCours, on_delete=models.CASCADE, related_name='reajustements', verbose_name='Cours')
+    ancienne_arrivee = models.TimeField('Arrivée (avant)', null=True, blank=True)
+    ancien_depart = models.TimeField('Départ (avant)', null=True, blank=True)
+    nouvelle_arrivee = models.TimeField('Arrivée (après)')
+    nouveau_depart = models.TimeField('Départ (après)')
+    motif = models.TextField('Motif (procédure administrative)')
+    justificatif = models.FileField('Pièce justificative (PDF)', upload_to='plans_cours/reajustements/%Y',
+                                    storage=stockage_prive, blank=True)
+    par = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+                            verbose_name='Réajusté par')
+    le = models.DateTimeField('Réajusté le', auto_now_add=True)
+    signe_enseignant_le = models.DateTimeField("Signé de nouveau par l'enseignant le", null=True, blank=True)
+    signe_delegue_le = models.DateTimeField('Signé de nouveau par le délégué le', null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Réajustement des heures d'un cours"
+        ordering = ['-le']
+
+
+class DatesSemestre(models.Model):
+    """Début et fin des semestres impairs et pairs d'une session (saisis par la Direction des Études)."""
+    IMPAIR, PAIR = 'impair', 'pair'
+    PERIODES = [(IMPAIR, 'Semestres impairs (1, 3, 5…)'), (PAIR, 'Semestres pairs (2, 4, 6…)')]
+    session = models.ForeignKey(Session, on_delete=models.CASCADE, related_name='dates_semestres',
+                                verbose_name='Session')
+    periode = models.CharField('Semestres', max_length=6, choices=PERIODES)
+    debut = models.DateField('Début')
+    fin = models.DateField('Fin')
+
+    class Meta:
+        verbose_name = 'Dates des semestres'
+        unique_together = [('session', 'periode')]
+
+
+class ParametresHeures(models.Model):
+    """
+    Paramètres des heures des enseignants, définis par la CIAQ (un seul enregistrement, pk = 1). Valeurs de départ :
+    arrêté A/2024/108/MESRSI (15 semaines par semestre, équivalent TD, service par grade, plafond des heures
+    supplémentaires à la moitié du service, réduction de moitié pour une fonction administrative) et décret
+    D/2024/0027 (6 h supplémentaires par semaine au plus, taux horaires par grade). Tout reste modifiable.
+    """
+    semaines_semestre = models.PositiveSmallIntegerField('Semaines par semestre', default=15)
+    equivalent_td = models.BooleanField('Compter en équivalent TD (coefficients)', default=True)
+    coef_cm = models.DecimalField('1 h de CM vaut (h de TD)', max_digits=4, decimal_places=3, default=1.5)
+    coef_td = models.DecimalField('1 h de TD vaut (h de TD)', max_digits=4, decimal_places=3, default=1)
+    coef_tp = models.DecimalField('1 h de TP vaut (h de TD)', max_digits=4, decimal_places=3, default=0.667)
+    coef_controle = models.DecimalField('1 h de contrôle vaut (h de TD)', max_digits=4, decimal_places=3, default=1)
+    coef_tout = models.DecimalField('1 h de « CM, TD et TP » vaut (h de TD)', max_digits=4, decimal_places=3, default=1)
+    plafonds_par_type = models.BooleanField("Plafonner les heures de chaque type", default=False)
+    plafond_cm = models.DecimalField('Heures normales de CM par semestre', max_digits=6, decimal_places=1, null=True,
+                                     blank=True)
+    plafond_td = models.DecimalField('Heures normales de TD par semestre', max_digits=6, decimal_places=1, null=True,
+                                     blank=True)
+    plafond_tp = models.DecimalField('Heures normales de TP par semestre', max_digits=6, decimal_places=1, null=True,
+                                     blank=True)
+    reduction_fonction = models.PositiveSmallIntegerField('Réduction du service pour une fonction administrative (%)',
+                                                          default=50)
+    hs_plafond_hebdo = models.DecimalField('Heures supplémentaires par semaine au plus', max_digits=4,
+                                           decimal_places=1, null=True, blank=True, default=6)
+    hs_plafond_pct = models.PositiveSmallIntegerField('Heures supplémentaires : au plus (% du service)', null=True,
+                                                      blank=True, default=50)
+    cm_rang_a_pct = models.PositiveSmallIntegerField('Rang A : part minimale de CM dans le service (%)', null=True,
+                                                     blank=True, default=50)
+    # Par grade (code de Enseignant.GRADES) : {'service': heures par semestre, 'taux': GNF par heure}
+    grades = models.JSONField('Service et taux par grade', default=dict, blank=True)
+    modifie_le = models.DateTimeField('Modifié le', auto_now=True)
+    modifie_par = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+
+    GRADES_PAR_DEFAUT = {
+        'professeur': {'service': 75, 'taux': 200000}, 'maitre_conferences': {'service': 90, 'taux': 200000},
+        'maitre_assistant': {'service': 105, 'taux': 150000}, 'assistant': {'service': 120, 'taux': 100000},
+        'docteur': {'service': None, 'taux': None}, 'ingenieur': {'service': None, 'taux': None},
+        'master': {'service': None, 'taux': None}, 'autre': {'service': None, 'taux': None},
+    }
+
+    class Meta:
+        verbose_name = 'Paramètres des heures (CIAQ)'
+
+    @classmethod
+    def actuels(cls):
+        p, cree = cls.objects.get_or_create(pk=1)
+        if cree or not p.grades:
+            p.grades = {k: dict(v) for k, v in cls.GRADES_PAR_DEFAUT.items()}
+            p.save(update_fields=['grades'])
+        return p
+
+    def grade(self, code):
+        return {**self.GRADES_PAR_DEFAUT.get(code or 'autre', {'service': None, 'taux': None}),
+                **(self.grades or {}).get(code or 'autre', {})}
+
+    def coefficient(self, type_cours):
+        if not self.equivalent_td:
+            return 1
+        return float({SeanceCours.CM: self.coef_cm, SeanceCours.TD: self.coef_td, SeanceCours.TP: self.coef_tp,
+                      SeanceCours.CONTROLE: self.coef_controle, SeanceCours.TOUT: self.coef_tout}
+                     .get(type_cours, 1))
+

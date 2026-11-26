@@ -1,10 +1,10 @@
 """
 Enseignants : liste (par département), ajout, modification, activation du compte, et l'espace enseignant.
 
-- La Direction Générale des Études gère (ajoute, modifie, désactive, envoie le lien d'activation) : c'est sa seule
-  exception à la consultation seule (pfe/lecture_seule.py). Le super utilisateur aussi.
-- La Direction Générale et la scolarité voient tous les enseignants ; le chef de département et le directeur de
-  programme, ceux de leur département. En lecture seule.
+- Le chef de département et le directeur de programme gèrent (ajoutent, modifient, désactivent, envoient le lien
+  d'activation) les enseignants de leur département ; le super utilisateur, tous.
+- La Direction Générale, la Direction des Études, la scolarité et la CIAQ voient tous les enseignants, en
+  consultation.
 - Un seul compte par personne : un membre du personnel qui enseigne garde son compte (voir EnseignantForm).
 - À l'enregistrement, aucun e-mail n'est envoyé sauf si la case est cochée ; le lien d'activation peut être envoyé
   ensuite, comme pour le personnel.
@@ -24,7 +24,7 @@ from .comptes import envoyer_mail_enseignant, statut as statut_compte
 from .forms import EnseignantForm
 from .models import Enseignant
 from .roles import (_calculer_profil, departements_du_profil, departements_etablissement, enseignants_gestion_requise,
-                    enseignants_lecture_requise, enseignants_visibles, espace_enseignant_requis, get_profil)
+                    enseignants_lecture_requise, enseignants_visibles, get_profil)
 
 ETATS = [('actifs', 'Actifs'), ('desactives', 'Désactivés'), ('tous', 'Tous')]
 
@@ -39,7 +39,7 @@ def _filtres(request, profil):
          'statut': g.get('statut') if g.get('statut') in dict(Enseignant.STATUTS) else '',
          'etat': g.get('etat') if g.get('etat') in dict(ETATS) else 'actifs'}
     departements = departements_etablissement()
-    if profil.role in ('chef_departement', 'programme') and not (profil.est_scolarite or profil.gere_enseignants):
+    if profil.role in ('chef_departement', 'programme') and not (profil.est_scolarite or profil.superuser):
         departements = departements.filter(pk__in=departements_du_profil(profil))
     return f, list(departements)
 
@@ -135,7 +135,7 @@ def _imprimer(request, f, departements, qs):
 
 
 def _envoyer(request, enseignant, quoi='activation'):
-    """E-mail de la Direction des Études ; il précise si l'enseignant avait déjà un compte (inutile d'en créer un)."""
+    """E-mail du département ; il précise si l'enseignant avait déjà un compte (inutile d'en créer un)."""
     if quoi == 'activation' and enseignant.utilisateur.has_usable_password():
         quoi = 'acces'
     try:
@@ -151,9 +151,24 @@ def _envoyer(request, enseignant, quoi='activation'):
     return True
 
 
+def _departements_geres(profil):
+    """None : tous (super utilisateur) ; sinon les départements du chef de département ou du directeur."""
+    return None if profil.superuser else sorted(departements_du_profil(profil))
+
+
+def _gere(request, pk):
+    """Enseignant que le compte peut gérer (son département), sinon 404."""
+    profil = get_profil(request)
+    qs = Enseignant.objects.select_related('utilisateur')
+    if not profil.superuser:
+        qs = qs.filter(departement_id__in=departements_du_profil(profil))
+    return get_object_or_404(qs, pk=pk)
+
+
 def _formulaire(request, enseignant=None):
+    departements = _departements_geres(get_profil(request))
     if request.method == 'POST':
-        form = EnseignantForm(request.POST, instance=enseignant)
+        form = EnseignantForm(request.POST, instance=enseignant, departements=departements)
         if form.is_valid():
             rattache = form.compte_existant is not None
             e = form.save(cree_par=request.user)
@@ -173,7 +188,7 @@ def _formulaire(request, enseignant=None):
                                            "vous serez prêt.")
             return redirect('enseignants_liste')
     else:
-        form = EnseignantForm(instance=enseignant)
+        form = EnseignantForm(instance=enseignant, departements=departements)
     contexte = {'form': form, 'enseignant': enseignant, 'actif': 'enseignants',
                 'titre': f"{enseignant.prenom} {enseignant.nom}" if enseignant else 'Nouvel enseignant'}
     if enseignant is not None:
@@ -191,7 +206,7 @@ def enseignant_creer(request):
 @login_required
 @enseignants_gestion_requise
 def enseignant_modifier(request, pk):
-    return _formulaire(request, get_object_or_404(Enseignant.objects.select_related('utilisateur'), pk=pk))
+    return _formulaire(request, _gere(request, pk))
 
 
 @login_required
@@ -200,7 +215,7 @@ def enseignant_modifier(request, pk):
 def enseignant_action(request, pk):
     """Envoyer le lien d'activation, l'information (compte existant) ou un lien de nouveau mot de passe ;
     désactiver ou réactiver l'enseignant."""
-    e = get_object_or_404(Enseignant.objects.select_related('utilisateur'), pk=pk)
+    e = _gere(request, pk)
     action, u = request.POST.get('action'), e.utilisateur
     if action == 'desactiver':
         e.actif = False
@@ -220,13 +235,3 @@ def enseignant_action(request, pk):
             _envoyer(request, e, {'invitation': 'activation'}.get(action, action))
     suivant = request.POST.get('suivant', '')
     return redirect(suivant if suivant.startswith('/') and not suivant.startswith('//') else reverse('enseignants_liste'))
-
-
-# ------------------------------------------------------------------ espace enseignant
-
-@login_required
-@espace_enseignant_requis
-def espace_enseignant(request):
-    """Accueil de l'espace enseignant (le contenu — emploi du temps… — viendra ensuite)."""
-    profil = get_profil(request)
-    return render(request, 'pfe/espace_enseignant.html', {'enseignant': profil.enseignant, 'actif': 'espace_enseignant'})

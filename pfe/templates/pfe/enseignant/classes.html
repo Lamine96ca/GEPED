@@ -1,0 +1,31 @@
+{% extends 'pfe/base.html' %}
+{% block titre %}Mes étudiants{% endblock %}
+{% block titre_page %}Mes étudiants{% endblock %}
+{% block sous_titre %}<div class="sous-titre">Vos classes{% if session %} ({{ session.annee }}){% endif %} : liste des étudiants et liste d'appel de chaque matière</div>{% endblock %}
+{% block actions %}{% include 'pfe/enseignant/_session.html' %}{% endblock %}
+{% block contenu %}
+<div class="row g-3">
+{% for c in classes %}
+  <div class="col-xl-6">
+    <div class="card carte-gped h-100">
+      <div class="card-body">
+        <div class="entete-carte"><span class="icone-carte"><i class="bi bi-people"></i></span>
+          <div><h3>{{ c.classe }}</h3><p>{{ c.effectif }} étudiant{{ c.effectif|pluralize }} inscrit{{ c.effectif|pluralize }}</p></div></div>
+        <ul class="list-unstyled mb-0">
+          {% for m in c.matieres %}
+            <li class="d-flex align-items-center gap-2 py-2 border-bottom">
+              <i class="bi bi-journal-bookmark text-secondary"></i>
+              <div class="me-auto"><strong style="color:var(--encre)">{{ m.nom }}</strong> <span class="small text-secondary">{{ m.semestre.nom }}</span></div>
+              <a class="btn btn-sm btn-light" href="{% url 'enseignant_etudiants' m.pk %}"><i class="bi bi-list-ul"></i> Étudiants</a>
+              <a class="btn btn-sm btn-light" target="_blank" rel="noopener" href="{% url 'enseignant_etudiants' m.pk %}?imprimer=pdf" title="Liste d'appel (PDF)"><i class="bi bi-printer"></i></a>
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+  </div>
+{% empty %}
+  <div class="col-12"><div class="card carte-gped"><div class="card-body"><div class="etat-vide py-4"><i class="bi bi-people"></i>Aucune classe : vous n'avez pas de séance dans l'emploi du temps de {{ session.annee|default:"cette session" }}.</div></div></div></div>
+{% endfor %}
+</div>
+{% endblock %}

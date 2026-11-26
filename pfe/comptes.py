@@ -118,12 +118,17 @@ def envoyer_lien(request, user, invitation=True):
     return destinataire
 
 
-DIRECTION_ETUDES = "la Direction des Études"
+def expediteur_enseignant(enseignant):
+    """Qui écrit à l'enseignant : son département (c'est lui qui l'enregistre)."""
+    nom = ' '.join((enseignant.departement.nom if enseignant.departement_id else '').split())
+    if not nom:
+        return "la Direction des Études"
+    return f"le {nom}" if nom.lower().startswith('département') else f"le département {nom}"
 
 
 def envoyer_mail_enseignant(request, enseignant, quoi='activation'):
     """
-    E-mail de la Direction des Études à un enseignant. `quoi` :
+    E-mail du département de l'enseignant (qui l'enregistre). `quoi` :
       - 'activation'    : compte pas encore activé → lien pour choisir le mot de passe (7 jours) ;
       - 'acces'         : compte déjà actif (rattaché à son compte existant) → simple information, pas de lien ;
       - 'reinitialiser' : lien pour un nouveau mot de passe (2 heures).
@@ -149,7 +154,7 @@ def envoyer_mail_enseignant(request, enseignant, quoi='activation'):
     existant = enseignant.compte_existant
     contexte = {
         'user': user, 'enseignant': enseignant, 'personnel': personnel, 'existant': existant, 'quoi': quoi,
-        'lien': lien, 'site': site, 'expediteur': DIRECTION_ETUDES, 'role': _calculer_profil(user).libelle,
+        'lien': lien, 'site': site, 'expediteur': expediteur_enseignant(enseignant), 'role': _calculer_profil(user).libelle,
         'validite': f"{VALIDITE_INVITATION_JOURS} jours" if quoi == 'activation' else "2 heures",
         'logo': f"{site}{settings.STATIC_URL}pfe/img/logo_ist.png",
     }

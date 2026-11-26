@@ -12,13 +12,13 @@
   <div class="me-auto" style="min-width:0">
     <div class="surtitre">{{ profil.libelle }}{% if profil.a_perimetre %} · {{ profil.structure }}{% endif %}</div>
     <h2>Bonjour {% if profil.personnel %}{{ profil.personnel.prenom }}{% else %}{{ user.first_name|default:user.username }}{% endif %}</h2>
-    <p>Bienvenue sur la plateforme de gestion pédagogique GePed.</p>
+    <p>Bienvenue sur GePed, la gestion pédagogique de l'IST de Mamou.</p>
     {% if session %}<span class="puce"><i class="bi bi-calendar3"></i> Session {{ session }}</span>{% endif %}
     <span class="puce"><i class="bi bi-people"></i> {{ inscrits.total|intcomma }} inscrit{{ inscrits.total|pluralize }}</span>
     {% if preinscrits.total %}<span class="puce"><i class="bi bi-hourglass-split"></i> {{ preinscrits.total|intcomma }} préinscrit{{ preinscrits.total|pluralize }}</span>{% endif %}
   </div>
   <div class="actions d-flex flex-wrap gap-2">
-    <a href="{% url 'etudiants_liste' %}" class="btn btn-verre"><i class="bi bi-list-ul"></i> Liste des étudiants</a>
+    {% if profil.voit_etudiants %}<a href="{% url 'etudiants_liste' %}" class="btn btn-verre"><i class="bi bi-list-ul"></i> Liste des étudiants</a>{% endif %}
     {% if profil.est_scolarite %}
       <a href="{% url 'importer' %}" class="btn btn-verre"><i class="bi bi-upload"></i> Importer</a>
       <a href="{% url 'inscription_creer' %}" class="btn btn-or-plein"><i class="bi bi-plus-lg"></i> Nouvelle inscription</a>

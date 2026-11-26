@@ -1,0 +1,166 @@
+{% extends 'pfe/base.html' %}
+{% load static %}
+{% block titre %}Plan de cours · {{ matiere.nom }}{% endblock %}
+{% block titre_page %}Plan de cours · {{ matiere.nom }}{% endblock %}
+{% block sous_titre %}<div class="sous-titre">{{ matiere.filiere.nom }} · {{ matiere.licence.nom }} · {{ matiere.semestre.nom }} · {{ matiere.session.annee }}{% if plan %} · <span class="pill {% if plan.statut == 'approuve' %}pill-succes{% elif plan.statut == 'soumis' %}pill-accent{% elif plan.statut == 'refuse' %}pill-danger{% else %}pill-attention{% endif %}">{{ plan.get_statut_display }}</span>{% endif %}</div>{% endblock %}
+{% block actions %}
+  <a class="btn btn-light" href="{% url 'enseignant_plans' %}?session={{ matiere.session_id }}"><i class="bi bi-arrow-left"></i> <span class="d-none d-sm-inline">Mes plans de cours</span></a>
+  {% if plan and plan.fichier %}<a class="btn btn-light" href="{% url 'plan_document' plan.pk %}"><i class="bi bi-file-earmark-word"></i> <span class="d-none d-sm-inline">Document déposé</span></a>{% endif %}
+{% endblock %}
+{% block contenu %}
+{% for e in erreurs %}<div class="alert alert-danger py-2"><i class="bi bi-exclamation-circle"></i> {{ e }}</div>{% endfor %}
+
+{% if plan.statut == 'refuse' %}
+  <div class="alert alert-danger"><i class="bi bi-arrow-return-left"></i> <strong>Plan renvoyé pour correction</strong>{% if plan.decide_par %} par {{ plan.decide_par.get_full_name|default:plan.decide_par.username }}{% endif %} le {{ plan.decide_le|date:"d/m/Y" }} : {{ plan.motif_refus }}</div>
+{% elif plan.statut == 'soumis' %}
+  <div class="alert alert-info"><i class="bi bi-hourglass-split"></i> Plan soumis le {{ plan.soumis_le|date:"d/m/Y à H:i" }} : en attente d'approbation par le chef de département (ou le directeur du programme).</div>
+{% endif %}
+
+{% if not plan or plan.modifiable %}
+  <!-- 1. Dépôt du document Word -->
+  <div class="card carte-gped mb-3">
+    <div class="card-body">
+      <div class="entete-carte"><span class="icone-carte"><i class="bi bi-file-earmark-word"></i></span>
+        <div><h3>{% if plan and plan.fichier %}Remplacer le document{% else %}Déposer le plan de cours{% endif %}</h3><p>Document Word (.docx) : GePed le lit et propose les chapitres et leurs contenus, que vous vérifiez ensuite.</p></div></div>
+      <form method="post" enctype="multipart/form-data" class="d-flex flex-wrap gap-2 align-items-center">{% csrf_token %}
+        <input type="hidden" name="action" value="deposer">
+        <input type="file" name="fichier" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" class="form-control" style="max-width:420px" required>
+        <button class="btn btn-primary"><i class="bi bi-upload"></i> Lire le document</button>
+        {% if plan and plan.fichier %}<span class="small text-secondary">Remplacer le document refait le découpage (vos corrections seront perdues).</span>{% endif %}
+      </form>
+      <div class="small text-secondary mt-2"><i class="bi bi-info-circle"></i> Chapitres : les titres « Titre 1 » (ou les lignes « Chapitre 1 », « I. »…) ou les lignes d'un tableau « Semaine | Contenu | Heures ». Contenus : les sous-titres « Titre 2 », les lignes « 1.1 », les puces et paragraphes du chapitre. Un ancien .doc : ouvrez-le dans Word puis « Enregistrer sous » .docx.</div>
+    </div>
+  </div>
+{% endif %}
+
+{% if plan and plan.modifiable %}
+  <!-- 2. Chapitres à vérifier -->
+  <form method="post" class="card carte-gped mb-3" id="form-decoupage">{% csrf_token %}
+    <div class="card-body">
+      <div class="entete-carte"><span class="icone-carte"><i class="bi bi-list-ol"></i></span>
+        <div><h3>Chapitres du plan ({{ chapitres|length }})</h3><p>Pour chaque chapitre : son titre, les heures prévues, et ses contenus (un par ligne). Videz un chapitre pour le supprimer.</p></div></div>
+      <input type="hidden" name="nb_parties" value="{{ chapitres|length|add:5 }}">
+      {% for c in chapitres %}
+        <div class="row g-2 align-items-start mb-3 pb-3 border-bottom">
+          <div class="col-auto pt-2 text-secondary small" style="width:28px">{{ forloop.counter }}</div>
+          <div class="col-md-4">
+            <input class="form-control mb-2" name="titre_{{ forloop.counter0 }}" value="{{ c.titre }}" maxlength="255" placeholder="Titre du chapitre">
+            <input class="form-control" style="max-width:160px" name="heures_{{ forloop.counter0 }}" value="{{ c.heures_prevues|default_if_none:'' }}" placeholder="Heures prévues" inputmode="decimal">
+          </div>
+          <div class="col"><textarea class="form-control" name="elements_{{ forloop.counter0 }}" rows="{{ c.nb_total|add:1|default:3 }}" placeholder="Contenus du chapitre, un par ligne">{{ c.lignes }}</textarea></div>
+        </div>
+      {% endfor %}
+      {% for k in "01234" %}
+        <div class="row g-2 align-items-start mb-2">
+          <div class="col-auto pt-2 text-secondary small" style="width:28px">+</div>
+          <div class="col-md-4">
+            <input class="form-control mb-2" name="titre_{{ chapitres|length|add:forloop.counter0 }}" maxlength="255" placeholder="Nouveau chapitre">
+            <input class="form-control" style="max-width:160px" name="heures_{{ chapitres|length|add:forloop.counter0 }}" placeholder="Heures prévues" inputmode="decimal">
+          </div>
+          <div class="col"><textarea class="form-control" name="elements_{{ chapitres|length|add:forloop.counter0 }}" rows="2" placeholder="Contenus, un par ligne"></textarea></div>
+        </div>
+      {% endfor %}
+      <div class="d-flex flex-wrap gap-2 mt-3">
+        <button class="btn btn-light" name="action" value="enregistrer"><i class="bi bi-save"></i> Enregistrer le brouillon</button>
+        <button class="btn btn-primary" name="action" value="soumettre" onclick="return confirm('Soumettre le plan au chef de département ? Il ne sera plus modifiable sauf s\'il vous le renvoie.');"><i class="bi bi-send"></i> Soumettre au chef de département</button>
+      </div>
+    </div>
+  </form>
+{% elif plan %}
+  {% if plan.statut == 'approuve' %}
+    <!-- Avancement -->
+    <div class="card carte-gped mb-3">
+      <div class="card-body">
+        <div class="entete-carte"><span class="icone-carte"><i class="bi bi-graph-up-arrow"></i></span>
+          <div><h3>Avancement : {{ avancement.confirmees }} / {{ avancement.total }} contenu{{ avancement.total|pluralize }} dispensé{{ avancement.confirmees|pluralize }} ({{ avancement.pct }} %)</h3>
+            <p>Approuvé le {{ plan.decide_le|date:"d/m/Y" }}{% if plan.decide_par %} par {{ plan.decide_par.get_full_name|default:plan.decide_par.username }}{% endif %}. Après chaque cours : ouvrez le chapitre, cochez les contenus dispensés, choisissez le type et signez. Un délégué valide dans les {{ delai }} h avec vos heures d'arrivée et de départ.{% if avancement.attente %} <strong>{{ avancement.attente }} cours en attente.</strong>{% endif %}</p></div></div>
+        <div class="barre-part"><span style="width:{{ avancement.pct }}%"></span></div>
+        <div class="small mt-2">{% if delegues %}<i class="bi bi-people"></i> Délégués : {% for d in delegues %}<strong>{{ d.etudiant.prenom }} {{ d.etudiant.nom }}</strong>{% if not d.etudiant.email %} (sans e-mail){% endif %}{% if not forloop.last %}, {% endif %}{% endfor %}
+          {% else %}<span class="text-danger"><i class="bi bi-exclamation-triangle"></i> Aucun délégué pour cette classe : demandez au directeur du programme ou au chef de département de les désigner.</span>{% endif %}</div>
+      </div>
+    </div>
+
+    {% if resigner %}
+      <form method="post" action="{% url 'seance_cours_action' resigner.pk %}" class="card carte-gped mb-3" id="signature">{% csrf_token %}
+        <input type="hidden" name="action" value="resigner">
+        <div class="card-body">
+          <div class="entete-carte"><span class="icone-carte"><i class="bi bi-pen"></i></span>
+            <div><h3>Heures réajustées : cours du {{ resigner.date|date:"d/m/Y" }}</h3><p>La Direction des Études a réajusté les heures de ce cours : {{ resigner.heure_arrivee|time:"H:i" }} – {{ resigner.heure_depart|time:"H:i" }}. Signez pour les accepter ; un délégué signera ensuite.</p></div></div>
+          {% with r=resigner.reajustements.first %}{% if r %}<div class="alert alert-light border small"><strong>Motif :</strong> {{ r.motif }}{% if r.ancienne_arrivee %} · avant : {{ r.ancienne_arrivee|time:"H:i" }} – {{ r.ancien_depart|time:"H:i" }}{% endif %}</div>{% endif %}{% endwith %}
+          {% include 'pfe/_cadre_signature.html' %}
+          <div class="d-flex gap-2 mt-3"><button class="btn btn-primary"><i class="bi bi-check2"></i> Signer les heures réajustées</button>
+            <a class="btn btn-light" href="{% url 'plan_cours' matiere.pk %}">Annuler</a></div>
+        </div>
+      </form>
+    {% else %}
+      <!-- Déclarer un cours dispensé -->
+      <form method="post" class="card carte-gped mb-3" id="declarer">{% csrf_token %}
+        <input type="hidden" name="action" value="declarer">
+        <div class="card-body">
+          <div class="entete-carte"><span class="icone-carte"><i class="bi bi-journal-check"></i></span>
+            <div><h3>Déclarer un cours dispensé</h3><p>Ouvrez le chapitre, cochez ce que vous avez fait. Les contenus déjà validés sont grisés ; vous pouvez les cocher de nouveau (suite, TD après le CM…).</p></div></div>
+          <div class="chapitres-plan mb-3">
+            {% for c in chapitres %}
+              <details class="chapitre-plan"{% if c.ouvert %} open{% endif %}>
+                <summary>
+                  <span class="titre">{{ forloop.counter }}. {{ c.titre }}</span>
+                  {% if c.heures_prevues %}<span class="small text-secondary">{{ c.heures_prevues|floatformat:"-1" }} h prévues</span>{% endif %}
+                  <span class="pill {% if c.nb_faits == c.nb_total and c.nb_total %}pill-succes{% elif c.nb_faits %}pill-accent{% endif %}">{{ c.nb_faits }} / {{ c.nb_total }}</span>
+                </summary>
+                <div class="contenus">
+                  <label class="form-check small text-secondary mb-1"><input type="checkbox" class="form-check-input" data-tout-cocher> <span class="form-check-label">Tout le chapitre</span></label>
+                  {% for x in c.contenus %}
+                    <label class="form-check contenu-plan{% if x.etat == 'fait' %} fait{% elif x.etat == 'attente' %} attente{% endif %}">
+                      <input type="checkbox" class="form-check-input" name="elements" value="{{ x.e.pk }}"{% if x.coche %} checked{% endif %}>
+                      <span class="form-check-label">{{ x.e.texte }}
+                        {% if x.etat == 'fait' %}<span class="small"> · <i class="bi bi-check2-circle"></i> {{ x.seance.date|date:"d/m" }} ({{ x.seance.validee_par.prenom }} {{ x.seance.validee_par.nom }})</span>
+                        {% elif x.etat == 'attente' %}<span class="small"> · <i class="bi bi-hourglass-split"></i> {{ x.seance.date|date:"d/m" }}, en attente du délégué</span>{% endif %}</span>
+                    </label>
+                  {% endfor %}
+                </div>
+              </details>
+            {% empty %}
+              <div class="etat-vide py-3"><i class="bi bi-list-check"></i>Aucun chapitre.</div>
+            {% endfor %}
+          </div>
+          <div class="row g-3 align-items-end">
+            <div class="col-sm-6 col-md-3">
+              <label class="form-label small mb-1" for="c-date">Date du cours <span class="text-danger">*</span></label>
+              <input type="date" id="c-date" name="date" class="form-control" value="{% if post.date %}{{ post.date }}{% else %}{{ aujourdhui|date:'Y-m-d' }}{% endif %}" max="{{ aujourdhui|date:'Y-m-d' }}" required>
+            </div>
+            <div class="col-sm-6 col-md-4">
+              <label class="form-label small mb-1" for="c-type">Type <span class="text-danger">*</span></label>
+              <select id="c-type" name="type" class="form-select" required>
+                <option value="">Choisir…</option>
+                {% for v, l in types %}<option value="{{ v }}"{% if post.type == v %} selected{% endif %}>{{ l }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="col-12">{% include 'pfe/_cadre_signature.html' %}</div>
+            <div class="col-12"><button class="btn btn-primary"><i class="bi bi-send-check"></i> Signer et envoyer au délégué</button>
+              <span class="small text-secondary ms-2">L'heure d'arrivée et de départ est proposée d'après l'emploi du temps ; le délégué l'ajuste avant de valider.</span></div>
+          </div>
+        </div>
+      </form>
+    {% endif %}
+
+    <div class="card carte-gped liste mb-3" id="cours">
+      <div class="card-header"><h3 class="titre-stat mb-0">Cours dispensés ({{ seances|length }})</h3></div>
+      {% include 'pfe/_seances_cours.html' with enseignant_actions=True %}
+    </div>
+  {% endif %}
+  <div class="card carte-gped liste mb-3">
+    <div class="card-header"><h3 class="titre-stat mb-0">Chapitres du plan</h3></div>
+    {% include 'pfe/_plan_parties.html' %}
+  </div>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+{% if plan.statut == 'approuve' %}<script src="{% static 'pfe/js/gped-signature.js' %}?v={{ version_statique }}" defer></script>
+<script>
+document.querySelectorAll('[data-tout-cocher]').forEach(function (c) {
+  c.addEventListener('change', function () {
+    c.closest('.contenus').querySelectorAll('input[name="elements"]').forEach(function (x) { x.checked = c.checked; });
+  });
+});
+</script>{% endif %}
+{% endblock %}

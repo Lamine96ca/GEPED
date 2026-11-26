@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import (views, views_conges, views_demandes, views_diplomes, views_exclusions, views_emplois, views_enseignants, views_guides, views_salles, views_notes, views_personnel, views_releves,
+from . import (views, views_conges, views_demandes, views_diplomes, views_exclusions, views_emplois, views_enseignants, views_espace_enseignant, views_ciaq, views_guides, views_salles, views_notes, views_personnel, views_releves,
                views_soutenances,
                views_suivi_notes)
 
@@ -93,7 +93,31 @@ urlpatterns = [
     path('enseignants/ajouter/', views_enseignants.enseignant_creer, name='enseignant_creer'),
     path('enseignants/<int:pk>/', views_enseignants.enseignant_modifier, name='enseignant_modifier'),
     path('enseignants/<int:pk>/compte/', views_enseignants.enseignant_action, name='enseignant_action'),
-    path('enseignant/', views_enseignants.espace_enseignant, name='espace_enseignant'),
+    path('enseignant/', views_espace_enseignant.espace_enseignant, name='espace_enseignant'),
+    path('enseignant/emploi-du-temps/', views_espace_enseignant.enseignant_emploi, name='enseignant_emploi'),
+    path('enseignant/matieres/', views_espace_enseignant.enseignant_matieres, name='enseignant_matieres'),
+    path('enseignant/mes-etudiants/', views_espace_enseignant.enseignant_classes, name='enseignant_classes'),
+    path('enseignant/notes/', views_espace_enseignant.enseignant_notes, name='enseignant_notes'),
+    path('enseignant/plans/', views_espace_enseignant.enseignant_plans, name='enseignant_plans'),
+    path('enseignant/heures/', views_espace_enseignant.enseignant_heures, name='enseignant_heures'),
+    path('enseignant/matieres/<int:pk>/etudiants/', views_espace_enseignant.enseignant_etudiants,
+         name='enseignant_etudiants'),
+    path('enseignant/matieres/<int:pk>/plan/', views_espace_enseignant.plan_cours, name='plan_cours'),
+    path('enseignant/cours/<int:pk>/', views_espace_enseignant.seance_cours_action, name='seance_cours_action'),
+    # Plans de cours (suivi, approbation) et délégués de classe
+    path('plans-de-cours/', views_espace_enseignant.plans_liste, name='plans_liste'),
+    path('plans-de-cours/<int:pk>/', views_espace_enseignant.plan_detail, name='plan_detail'),
+    path('plans-de-cours/<int:pk>/document/', views_espace_enseignant.plan_fichier, name='plan_document'),
+    path('plans-de-cours/<int:pk>/cours/<int:cours>/<str:quoi>/', views_espace_enseignant.plan_fichier,
+         name='plan_signature'),
+    path('delegues/', views_espace_enseignant.delegues, name='delegues'),
+    # Suivi des cours : CIAQ (avancement, situation, paramètres), Direction des Études (dates, cours dispensés)
+    path('suivi/avancement/', views_ciaq.ciaq_avancement, name='ciaq_avancement'),
+    path('suivi/situation-des-enseignants/', views_ciaq.ciaq_situation, name='ciaq_situation'),
+    path('suivi/parametres-des-heures/', views_ciaq.ciaq_parametres, name='ciaq_parametres'),
+    path('suivi/dates-des-semestres/', views_ciaq.dates_semestres, name='dates_semestres'),
+    path('suivi/cours-dispenses/', views_ciaq.cours_dispenses, name='cours_dispenses'),
+    path('suivi/cours-dispenses/<int:pk>/', views_ciaq.cours_dispense, name='cours_dispense'),
     # Emplois du temps (semaine type par semestre)
     path('emplois/', views_emplois.emploi_du_temps, name='emploi_du_temps'),
     path('emplois/donnees/', views_emplois.emploi_donnees, name='emploi_donnees'),

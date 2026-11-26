@@ -1,0 +1,10 @@
+{# Cadre de signature (pfe/js/gped-signature.js) : le tracé va dans le champ caché « signature » du formulaire #}
+<div class="cadre-signature" data-signature>
+  <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+    <span class="small fw-semibold" style="color:var(--encre)">{{ libelle_signature|default:"Votre signature" }} <span class="text-danger">*</span></span>
+    <span class="small text-secondary me-auto" data-signature-etat>Signez au doigt ou à la souris dans le cadre blanc.</span>
+    <button type="button" class="btn btn-sm btn-light" data-signature-effacer><i class="bi bi-eraser"></i> Effacer</button>
+  </div>
+  <canvas class="toile-signature" aria-label="Cadre de signature"></canvas>
+</div>
+<input type="hidden" name="signature" data-signature-valeur>

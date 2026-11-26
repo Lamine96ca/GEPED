@@ -39,7 +39,7 @@
       <span class="avatar {% if photo_compte %}a-photo{% endif %}" data-apercu="compte" {% if photo_compte %}style="background-image:url('{{ photo_compte }}')"{% endif %}>{% if user.first_name %}{{ user.first_name|first }}{{ user.last_name|first }}{% else %}{{ user.username|slice:":2" }}{% endif %}</span>
       <span class="d-none d-md-inline text-start lh-sm">
         <span class="d-block fw-semibold">{{ user.get_full_name|default:user.username }}</span>
-        <small>{{ profil.libelle }}{% if profil.structure and profil.structure != profil.libelle %} · {{ profil.structure }}{% endif %}</small>
+        <small>{% if profil.role == 'enseignant' or actif|slice:':4' == 'ens_' or request.GET.espace == 'enseignant' %}Espace enseignant{% if profil.enseignant %} · {{ profil.enseignant.departement.nom }}{% endif %}{% else %}{{ profil.libelle }}{% if profil.structure and profil.structure != profil.libelle %} · {{ profil.structure }}{% endif %}{% endif %}</small>
       </span>
       <i class="bi bi-chevron-down small"></i>
     </button>
@@ -66,15 +66,30 @@
       {% with p=profil.personnel %}
       <a href="{% url 'mon_compte' %}" class="avatar-menu {% if photo_compte %}a-photo{% endif %}" data-apercu="compte" title="Mon compte" {% if photo_compte %}style="background-image:url('{{ photo_compte }}')"{% endif %}>{% if p %}{{ p.prenom|first }}{{ p.nom|first }}{% elif user.first_name %}{{ user.first_name|first }}{{ user.last_name|first }}{% else %}{{ user.username|slice:":2" }}{% endif %}</a>
       <div class="nom">{% if p %}{{ p.prenom }} {{ p.nom }}{% else %}{{ user.get_full_name|default:user.username }}{% endif %}</div>
-      <div class="role">{{ profil.libelle }}</div>
+      <div class="role">{% if profil.role == 'enseignant' or actif|slice:':4' == 'ens_' or request.GET.espace == 'enseignant' %}Espace enseignant{% else %}{{ profil.libelle }}{% endif %}</div>
       {% endwith %}
     </div>
     <nav class="nav flex-column gped-nav">
+      {% if profil.role == 'enseignant' or actif|slice:':4' == 'ens_' or request.GET.espace == 'enseignant' %}
+      <!-- Espace enseignant : son propre menu (compte enseignant, ou personnel qui enseigne, dans son onglet) -->
+      <a class="nav-link {% if actif == 'ens_accueil' %}active{% endif %}" href="{% url 'espace_enseignant' %}"><i class="bi bi-grid-1x2"></i> Tableau de bord</a>
+      <a class="nav-link {% if actif == 'ens_emploi' %}active{% endif %}" href="{% url 'enseignant_emploi' %}"><i class="bi bi-calendar-week"></i> Emploi du temps</a>
+      <a class="nav-link {% if actif == 'ens_matieres' %}active{% endif %}" href="{% url 'enseignant_matieres' %}"><i class="bi bi-journal-bookmark"></i> Mes matières</a>
+      <a class="nav-link {% if actif == 'ens_etudiants' %}active{% endif %}" href="{% url 'enseignant_classes' %}"><i class="bi bi-people"></i> Mes étudiants</a>
+      <a class="nav-link {% if actif == 'ens_notes' or actif == 'notes_saisie' or actif == 'notes_importer' %}active{% endif %}" href="{% url 'enseignant_notes' %}"><i class="bi bi-123"></i> Notes</a>
+      <a class="nav-link {% if actif == 'ens_plans' %}active{% endif %}" href="{% url 'enseignant_plans' %}"><i class="bi bi-list-check"></i> Plans de cours</a>
+      <a class="nav-link {% if actif == 'ens_heures' %}active{% endif %}" href="{% url 'enseignant_heures' %}"><i class="bi bi-clock-history"></i> Mes heures</a>
+      <a class="nav-link {% if actif == 'compte' %}active{% endif %}" href="{% url 'mon_compte' %}"><i class="bi bi-person-gear"></i> Mon compte</a>
+      {% if profil.a_acces %}
+        <a class="nav-link lien-enseignant" href="{% url 'tableau_de_bord' %}" title="Mon espace {{ profil.libelle|lower }}"><i class="bi bi-arrow-left-right"></i> Retour à mon espace</a>
+      {% endif %}
+      {% else %}
       {% if profil.a_acces %}
       <a class="nav-link {% if actif == 'tableau' %}active{% endif %}" href="{% url 'tableau_de_bord' %}"><i class="bi bi-grid-1x2"></i> Tableau de bord</a>
 
       <!-- 1. Étudiants : sous-menu, ouvert quand on est sur l'une de ses pages -->
-      {% if actif == 'etudiants' or actif == 'preinscriptions' or actif == 'inscrire' or actif == 'importer' or actif == 'statistiques' or actif == 'demandes' or actif == 'conges' or actif == 'exclusions' %}
+      {% if profil.voit_etudiants %}
+      {% if actif == 'etudiants' or actif == 'preinscriptions' or actif == 'inscrire' or actif == 'importer' or actif == 'statistiques' or actif == 'demandes' or actif == 'conges' or actif == 'exclusions' or actif == 'delegues' %}
         {% firstof 'show' as etu_ouvert %}
       {% else %}
         {% firstof '' as etu_ouvert %}
@@ -105,9 +120,13 @@
           {% if profil.voit_exclusions %}
             <a class="nav-link {% if actif == 'exclusions' %}active{% endif %}" href="{% url 'exclusions_liste' %}">Exclusions</a>
           {% endif %}
+          {% if profil.designe_delegues %}
+            <a class="nav-link {% if actif == 'delegues' %}active{% endif %}" href="{% url 'delegues' %}">Délégués de classe</a>
+          {% endif %}
           <a class="nav-link {% if actif == 'statistiques' %}active{% endif %}" href="{% url 'statistiques' %}">Statistiques</a>
         </div>
       </div>
+      {% endif %}{# fin du groupe Étudiants #}
 
       <!-- 2. Attestations -->
       {% if profil.gere_attestations %}
@@ -187,12 +206,41 @@
       {% if profil.voit_diplomes %}
         <a class="nav-link {% if actif == 'diplomes' %}active{% endif %}" href="{% url 'diplomes_liste' %}"><i class="bi bi-award"></i> Diplômés</a>
       {% endif %}
-      <!-- Enseignants : Direction des Études (gestion) ; Direction Générale, scolarité, départements (lecture) -->
+      <!-- Plans de cours : approbation (chef de département, directeur) et suivi de l'avancement -->
+      {% if profil.voit_plans %}
+        <a class="nav-link {% if actif == 'plans_cours' %}active{% endif %}" href="{% url 'plans_liste' %}"><i class="bi bi-list-check"></i> Plans de cours</a>
+      {% endif %}
+      <!-- Enseignants : chefs de département et directeurs (gestion, leur département) ; Direction, scolarité, CIAQ (lecture) -->
       {% if profil.voit_enseignants %}
         <a class="nav-link {% if actif == 'enseignants' %}active{% endif %}" href="{% url 'enseignants_liste' %}"><i class="bi bi-person-video3"></i> Enseignants</a>
       {% endif %}
       {% if profil.voit_emplois %}
         <a class="nav-link {% if actif == 'emplois' %}active{% endif %}" href="{% url 'emploi_du_temps' %}"><i class="bi bi-calendar-week"></i> Emploi du temps</a>
+      {% endif %}
+      <!-- Suivi des cours : CIAQ (avancement, situation des enseignants, paramètres), Direction des Études (dates des
+           semestres, cours dispensés et réajustements), Direction (consultation) -->
+      {% if profil.voit_heures or profil.reajuste_cours %}
+        {% if actif|slice:':5' == 'suivi' %}{% firstof 'show' as suivi_ouvert %}{% else %}{% firstof '' as suivi_ouvert %}{% endif %}
+        <div class="groupe-menu">
+          <button type="button" class="nav-link groupe-titre {% if suivi_ouvert %}ouvert{% else %}collapsed{% endif %}"
+                  data-bs-toggle="collapse" data-bs-target="#sous-menu-suivi"
+                  aria-expanded="{% if suivi_ouvert %}true{% else %}false{% endif %}" aria-controls="sous-menu-suivi">
+            <i class="bi bi-clipboard-data"></i> Suivi des cours <span class="chevron bi bi-chevron-down"></span>
+          </button>
+          <div class="collapse sous-menu {{ suivi_ouvert }}" id="sous-menu-suivi">
+            {% if profil.voit_heures %}
+            <a class="nav-link {% if actif == 'suivi_avancement' %}active{% endif %}" href="{% url 'ciaq_avancement' %}">Avancement</a>
+            <a class="nav-link {% if actif == 'suivi_situation' %}active{% endif %}" href="{% url 'ciaq_situation' %}">Situation des enseignants</a>
+            {% endif %}
+            <a class="nav-link {% if actif == 'suivi_cours' %}active{% endif %}" href="{% url 'cours_dispenses' %}">Cours dispensés</a>
+            {% if profil.reajuste_cours %}
+            <a class="nav-link {% if actif == 'suivi_dates' %}active{% endif %}" href="{% url 'dates_semestres' %}">Dates des semestres</a>
+            {% endif %}
+            {% if profil.voit_heures %}
+            <a class="nav-link {% if actif == 'suivi_parametres' %}active{% endif %}" href="{% url 'ciaq_parametres' %}">Paramètres des heures</a>
+            {% endif %}
+          </div>
+        </div>
       {% endif %}
       {% if profil.voit_salles %}
         <a class="nav-link {% if actif == 'salles' %}active{% endif %}" href="{% url 'salles' %}"><i class="bi bi-door-open"></i> Salles et bâtiments</a>
@@ -202,9 +250,9 @@
       {% if profil.gere_etudiants and user.is_superuser %}
         <a class="nav-link {% if actif == 'personnel' %}active{% endif %}" href="{% url 'personnel_liste' %}"><i class="bi bi-person-badge"></i> Personnel</a>
       {% endif %}
-      <!-- Espace enseignant : juste avant le compte, dans sa propre couleur -->
+      <!-- Espace enseignant (personnel qui enseigne) : il s'ouvre dans un nouvel onglet, avec le menu de l'enseignant -->
       {% if profil.est_enseignant %}
-        <a class="nav-link lien-enseignant {% if actif == 'espace_enseignant' %}active{% endif %}" href="{% url 'espace_enseignant' %}"><i class="bi bi-person-video3"></i> Espace enseignant</a>
+        <a class="nav-link lien-enseignant" href="{% url 'espace_enseignant' %}" target="_blank" rel="noopener" title="S'ouvre dans un nouvel onglet"><i class="bi bi-person-video3"></i> Espace enseignant <i class="bi bi-box-arrow-up-right ms-auto" style="background:none;width:auto;height:auto;font-size:.75rem"></i></a>
       {% endif %}
       <!-- 4. Mon compte -->
       <a class="nav-link {% if actif == 'compte' %}active{% endif %}" href="{% url 'mon_compte' %}"><i class="bi bi-person-gear"></i> Mon compte</a>
@@ -212,6 +260,7 @@
       {% if user.is_staff %}
         <a class="btn btn-or-plein" href="{% url 'admin:index' %}"><i class="bi bi-sliders"></i> Administration</a>
       {% endif %}
+      {% endif %}{# fin du choix : menu de l'espace enseignant ou menu habituel #}
     </nav>
     <div class="menu-pied">GePed · version {{ version_gped }}{% if en_developpement %} (dev){% endif %}</div>
   </aside>

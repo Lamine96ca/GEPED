@@ -4,7 +4,7 @@ from django.urls import include, path, re_path
 
 from pfe.forms import MotDePasseOublieForm, NouveauMotDePasseForm
 from pfe.views import media_protege
-from pfe import views_connexion, views_espace
+from pfe import views_connexion, views_espace, views_espace_enseignant
 
 urlpatterns = [
     # La connexion de l'administration Django passe par celle de GePed (code par e-mail)
@@ -21,6 +21,8 @@ urlpatterns = [
     path('etudiant/quitter/', views_espace.espace_quitter, name='espace_quitter'),
     path('etudiant/dossier/photo/', views_espace.espace_photo, name='espace_photo'),
     path('etudiant/dossier/signature/', views_espace.espace_signature, name='espace_signature'),
+    # Lien reçu par un délégué de classe : valider un cours dispensé (contenus, heures ; sans compte)
+    path('plan-de-cours/confirmer/<str:jeton>/', views_espace_enseignant.plan_confirmer, name='plan_confirmer'),
     path('connexion/', views_connexion.Connexion.as_view(), name='login'),
     path('connexion/code/', views_connexion.connexion_code, name='connexion_code'),
     path('connexion/recommencer/', views_connexion.recommencer_connexion, name='connexion_recommencer'),

@@ -4,7 +4,8 @@ et notes (liste des notes, notes d'une matière, résultats du semestre, grille 
 
 - En-tête officiel de l'IST (pfe/entete.py) sur la première page : service et coordonnées du signataire.
 - Signature en bas de la liste : TOUJOURS le chef du service (scolarité, département, Direction Générale des
-  Études…), jamais la personne qui imprime (pfe/signataires.py, signataire_du_profil).
+  Études…), jamais la personne qui imprime (pfe/signataires.py, signataire_du_profil). Exception : les
+  documents imprimés depuis l'espace enseignant portent l'enseignant lui-même (signataire_enseignant).
 - Titre de la liste, puis SEULEMENT les filtres choisis par l'utilisateur (« Session : 2025 - 2026 · Programme : … »).
 - Tableau aux colonnes libres (portrait ou paysage) ; en-têtes répétés sur chaque page ; pied de page : date
   d'impression et numéro de page.
@@ -232,9 +233,20 @@ def pdf_liste_etudiants(titre, filtres, lignes, utilisateur=None, signataire=Non
 
 
 def _signataire(request):
+    """Le chef du service de la personne qui imprime ; depuis l'espace enseignant : l'enseignant lui-même."""
     from .roles import get_profil
-    from .signataires import signataire_du_profil
-    return signataire_du_profil(get_profil(request))
+    from .signataires import signataire_du_profil, signataire_enseignant
+    profil = get_profil(request)
+    if profil.enseignant is not None and depuis_espace_enseignant(request, profil):
+        return signataire_enseignant(profil.enseignant)
+    return signataire_du_profil(profil)
+
+
+def depuis_espace_enseignant(request, profil):
+    """Compte enseignant seul, page de l'espace enseignant, ou page ouverte depuis lui (?espace=enseignant)."""
+    nom = getattr(getattr(request, 'resolver_match', None), 'url_name', '') or ''
+    return (profil.role == 'enseignant' or request.GET.get('espace') == 'enseignant'
+            or nom == 'espace_enseignant' or nom.startswith('enseignant_'))
 
 
 def imprimer_liste(request, titre, filtres, lignes, nom_fichier):

@@ -4,7 +4,7 @@
 
 {% block carte %}
   {% if validlink %}
-    <div class="surtitre">Bienvenue sur GePed</div>
+    <div class="surtitre">Bienvenue sur GePed, la gestion pédagogique de l'IST de Mamou</div>
     <h1>Activer mon compte</h1>
     <p class="intro">Identifiant : <strong>{{ form.user.get_username }}</strong>. Choisissez votre mot de passe, puis confirmez-le : vous serez aussitôt connecté.</p>
     <form method="post" novalidate>{% csrf_token %}

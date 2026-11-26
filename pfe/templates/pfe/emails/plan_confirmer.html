@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="fr">
+<body style="margin:0;padding:24px;background:#f4f7fa;font-family:'Century Gothic',Arial,sans-serif;color:#3c4b5a;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:540px;margin:0 auto;background:#ffffff;border-radius:10px;overflow:hidden;">
+    <tr>
+      <td style="background:#41627c;padding:16px 24px;color:#ffffff;font-size:20px;font-weight:bold;">
+        <img src="{{ logo }}" width="44" height="44" alt="IST de Mamou"
+             style="vertical-align:middle;background:#ffffff;border-radius:50%;padding:3px;margin-right:10px;">GePed
+        <span style="font-size:13px;font-weight:normal;color:#dbe4ec;"> · IST de Mamou</span>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:24px;font-size:15px;line-height:1.55;">
+        <p style="margin:0 0 12px;">Bonjour {{ etudiant.prenom }} {{ etudiant.nom }},</p>
+        {% if reajuste %}
+        <p style="margin:0 0 12px;">Vous êtes délégué(e) de votre classe ({{ matiere.filiere.nom }}, {{ matiere.licence.nom }}). La Direction des Études a réajusté les heures du cours <strong>{{ matiere.nom }}</strong> du {{ seance.date|date:"d/m/Y" }} ({{ enseignant.civilite|default:"" }} {{ enseignant.prenom }} {{ enseignant.nom }}) : <strong>{{ seance.heure_arrivee|time:"H:i" }} – {{ seance.heure_depart|time:"H:i" }}</strong>. L'enseignant les a signées ; signez-les à votre tour.</p>
+        {% else %}
+        <p style="margin:0 0 12px;">Vous êtes délégué(e) de votre classe ({{ matiere.filiere.nom }}, {{ matiere.licence.nom }}). {{ enseignant.civilite|default:"" }} {{ enseignant.prenom }} {{ enseignant.nom }} a déclaré le cours <strong>{{ matiere.nom }}</strong> du {{ seance.date|date:"d/m/Y" }} ({{ seance.get_type_display }}) :</p>
+        <div style="margin:0 0 12px;padding:12px 14px;background:#f4f7fa;border-radius:8px;">{% for e in elements %}<div>• <strong>{{ e.partie.titre }}</strong> : {{ e.texte }}</div>{% endfor %}</div>
+        <p style="margin:0 0 12px;">Vérifiez les contenus, indiquez l'heure d'arrivée et l'heure de départ de l'enseignant, puis validez (votre matricule et votre signature vous seront demandés) :</p>
+        {% endif %}
+        <p style="margin:24px 0;text-align:center;">
+          <a href="{{ lien }}" style="background:#41627c;color:#ffffff;text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:bold;display:inline-block;">Valider le cours</a>
+        </p>
+        <p style="margin:0 0 12px;color:#6c7a87;font-size:13px;">À valider avant le {{ limite|date:"d/m/Y à H:i" }} ({{ delai }}). Ce lien est personnel : ne le transférez à personne.</p>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:14px 24px;background:#f4f7fa;color:#9aa6b1;font-size:12px;">GePed · Institut Supérieur de Technologie de Mamou</td>
+    </tr>
+  </table>
+</body>
+</html>

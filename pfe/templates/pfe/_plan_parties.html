@@ -1,0 +1,24 @@
+{# Chapitres d'un plan de cours et leurs contenus, avec l'état de chaque contenu (lecture). Paramètre : chapitres #}
+<div class="chapitres-plan p-3">
+  {% for c in chapitres %}
+    <details class="chapitre-plan"{% if forloop.first and chapitres|length < 4 %} open{% endif %}>
+      <summary>
+        <span class="titre">{{ forloop.counter }}. {{ c.titre }}</span>
+        {% if c.heures_prevues %}<span class="small text-secondary">{{ c.heures_prevues|floatformat:"-1" }} h prévues</span>{% endif %}
+        <span class="pill {% if c.nb_faits == c.nb_total and c.nb_total %}pill-succes{% elif c.nb_faits %}pill-accent{% endif %}">{{ c.nb_faits }} / {{ c.nb_total }}</span>
+      </summary>
+      <ul class="contenus liste-contenus">
+        {% for x in c.contenus %}
+          <li class="contenu-plan{% if x.etat == 'fait' %} fait{% elif x.etat == 'attente' %} attente{% endif %}">
+            <i class="bi {% if x.etat == 'fait' %}bi-check2-circle{% elif x.etat == 'attente' %}bi-hourglass-split{% else %}bi-circle{% endif %}"></i>
+            {{ x.e.texte }}
+            {% if x.etat == 'fait' %}<span class="small"> · dispensé le {{ x.seance.date|date:"d/m/Y" }}, validé par {{ x.seance.validee_par.prenom }} {{ x.seance.validee_par.nom }}</span>
+            {% elif x.etat == 'attente' %}<span class="small"> · {{ x.seance.date|date:"d/m/Y" }}, en attente du délégué</span>{% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    </details>
+  {% empty %}
+    <div class="etat-vide py-3"><i class="bi bi-list-check"></i>Aucun chapitre.</div>
+  {% endfor %}
+</div>

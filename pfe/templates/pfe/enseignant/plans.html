@@ -1,0 +1,30 @@
+{% extends 'pfe/base.html' %}
+{% block titre %}Plans de cours{% endblock %}
+{% block titre_page %}Mes plans de cours{% endblock %}
+{% block sous_titre %}<div class="sous-titre">Déposez le plan (Word) de chaque matière, faites-le approuver, puis déclarez chaque cours dispensé{% if session %} · {{ session.annee }}{% endif %}</div>{% endblock %}
+{% block actions %}{% include 'pfe/enseignant/_session.html' %}{% endblock %}
+{% block contenu %}
+<div class="card carte-gped liste">
+  <div class="table-responsive">
+    <table class="table table-etudiants mb-0">
+      <thead><tr><th>Matière</th><th>Classe</th><th>Statut</th><th style="min-width:180px">Avancement</th><th class="text-end"></th></tr></thead>
+      <tbody>
+      {% for l in lignes %}
+        {% with m=l.matiere p=l.plan a=l.avancement %}
+        <tr style="cursor:default">
+          <td><strong style="color:var(--encre)">{{ m.nom }}</strong><div class="small text-secondary">{{ m.semestre.nom }}</div></td>
+          <td class="small">{{ m.filiere.nom }}<div class="text-secondary">{{ m.licence.nom }}</div></td>
+          <td>{% if p %}<span class="pill {% if p.statut == 'approuve' %}pill-succes{% elif p.statut == 'soumis' %}pill-accent{% elif p.statut == 'refuse' %}pill-danger{% else %}pill-attention{% endif %}">{{ p.get_statut_display }}</span>{% else %}<span class="pill">À déposer</span>{% endif %}</td>
+          <td>{% if p and p.statut == 'approuve' %}<div class="barre-part"><span style="width:{{ a.pct }}%"></span></div><div class="small text-secondary">{{ a.confirmees }}/{{ a.total }} contenu{{ a.total|pluralize }} dispensé{{ a.confirmees|pluralize }} · {{ a.pct }} %{% if a.attente %} · {{ a.attente }} cours en attente{% endif %}</div>
+            {% elif p %}<span class="small text-secondary">{{ a.total }} contenu{{ a.total|pluralize }}</span>{% else %}—{% endif %}</td>
+          <td class="text-end"><a class="btn btn-sm {% if not p or p.modifiable %}btn-primary{% else %}btn-light{% endif %}" href="{% url 'plan_cours' m.pk %}">{% if not p %}<i class="bi bi-upload"></i> Déposer{% elif p.modifiable %}<i class="bi bi-pencil"></i> Compléter{% elif p.statut == 'approuve' %}<i class="bi bi-pen"></i> Avancement{% else %}Ouvrir{% endif %}</a></td>
+        </tr>
+        {% endwith %}
+      {% empty %}
+        <tr><td colspan="5"><div class="etat-vide py-3"><i class="bi bi-list-check"></i>Aucune matière : vous n'avez pas de séance dans l'emploi du temps de {{ session.annee|default:"cette session" }}.</div></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

@@ -1041,3 +1041,36 @@ code { color: var(--encre); background: var(--survol); padding: .05rem .3rem; bo
 /* Part d'une ligne dans le total (statistiques des diplômés par tranche d'âge) */
 .barre-part { height: 8px; border-radius: 4px; background: var(--bord); overflow: hidden; }
 .barre-part span { display: block; height: 100%; background: var(--accent); -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+/* Plan de cours : chapitres dépliables et contenus (espace enseignant, suivi) */
+.chapitres-plan { display: flex; flex-direction: column; gap: .5rem; }
+.chapitre-plan { border: 1px solid var(--bord); border-radius: 10px; background: #fff; }
+.chapitre-plan > summary { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; padding: .6rem .85rem; cursor: pointer; list-style: none; }
+.chapitre-plan > summary::-webkit-details-marker { display: none; }
+.chapitre-plan > summary::before { content: "\F285"; font-family: bootstrap-icons; font-size: .8rem; color: var(--muet); transition: transform .15s; }
+.chapitre-plan[open] > summary::before { transform: rotate(90deg); }
+.chapitre-plan > summary .titre { font-weight: 600; color: var(--encre); margin-right: auto; }
+.chapitre-plan .contenus { padding: .25rem .85rem .75rem 2.1rem; margin: 0; }
+.liste-contenus { list-style: none; }
+.liste-contenus li { padding: .15rem 0; }
+.liste-contenus li i { margin-right: .35rem; }
+.contenu-plan { padding: .15rem 0; }
+.contenu-plan.fait { color: var(--discret); }
+.contenu-plan.fait i, .contenu-plan.fait .small { color: var(--succes); }
+.contenu-plan.attente .small, .contenu-plan.attente i { color: var(--attention); }
+
+/* Heures : barres « prévu / fait » (une ligne par matière ou enseignant) */
+.barres-heures { display: flex; flex-direction: column; gap: .7rem; }
+.barres-heures .ligne { display: grid; grid-template-columns: minmax(120px, 34%) 1fr auto; gap: .25rem .75rem; align-items: center; }
+.barres-heures .nom { font-size: .85rem; color: var(--encre); overflow: hidden; text-overflow: ellipsis; }
+.barres-heures .nom small { display: block; color: var(--discret); }
+.barres-heures .barres { display: flex; flex-direction: column; gap: 3px; }
+.barres-heures .barre { height: 10px; border-radius: 0 4px 4px 0; min-width: 2px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.barres-heures .barre.prevu { background: var(--bord-fort); }
+.barres-heures .barre.fait { background: var(--accent); }
+.barres-heures .valeurs { font-size: .8rem; text-align: right; white-space: nowrap; color: var(--encre); }
+.barres-heures .valeurs small { display: block; color: var(--discret); }
+.legende-heures { display: flex; gap: 1rem; font-size: .8rem; color: var(--muet); }
+.legende-heures span::before { content: ""; display: inline-block; width: 12px; height: 10px; border-radius: 2px; margin-right: .35rem; vertical-align: -1px; background: var(--bord-fort); }
+.legende-heures span.fait::before { background: var(--accent); }
+@media (max-width: 575px) { .barres-heures .ligne { grid-template-columns: 1fr auto; } .barres-heures .barres { grid-column: 1 / -1; grid-row: 2; } }
