@@ -97,18 +97,27 @@ def _entete(c, releve, contenu, url_verification):
         c.setFillColorRGB(0, 0, 0)
         _texte(c, G + 130, y, valeur, 'Times-Bold', 10.5 if compact else 11, largeur=D - G - 130 - 100)
         y -= pas
+    # Niveau à droite, sur la dernière ligne de l'identité ; mais jamais sous le QR code et sa mention « Scannez pour
+    # vérifier » (identité courte, sans INE ou sans année) : il descend alors juste en dessous.
+    y_niveau = y + pas
+    if url_verification:
+        y_niveau = min(y_niveau, haut_identite - 58 - 9 - 16)
     if contenu.get('niveau'):
         texte, taille = _ajuste(contenu['niveau'], 'Times-Bold', 10.5, 150)
         c.setFont('Times-Bold', taille)
-        c.drawRightString(D, y + pas, texte)
+        c.drawRightString(D, y_niveau, texte)
         c.setFont('Helvetica', 9.5)
         c.setFillColorRGB(*GRIS_TEXTE)
-        c.drawRightString(D - stringWidth(texte, 'Times-Bold', taille) - 4, y + pas, 'Niveau :')
+        c.drawRightString(D - stringWidth(texte, 'Times-Bold', taille) - 4, y_niveau, 'Niveau :')
         c.setFillColorRGB(0, 0, 0)
+    else:
+        y_niveau = y + pas
     if url_verification:
         _qr(c, url_verification, D - 62, haut_identite - 58, 58)
-    # Le bloc d'identité ne descend pas plus bas que le QR code (et sa mention)
-    return min(y + pas - 12, haut_identite - 58 - 14) if compact else y - 6
+    # Le bloc d'identité ne descend pas plus bas que le QR code (et sa mention), ni que le niveau
+    if compact:
+        return min(y + pas - 12, haut_identite - 58 - 14, y_niveau - 12)
+    return min(y, y_niveau - pas) - 6
 
 
 def _qr(c, url, x, y, taille):
