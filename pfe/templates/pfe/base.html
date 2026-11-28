@@ -79,6 +79,7 @@
       <a class="nav-link {% if actif == 'ens_notes' or actif == 'notes_saisie' or actif == 'notes_importer' %}active{% endif %}" href="{% url 'enseignant_notes' %}"><i class="bi bi-123"></i> Notes</a>
       <a class="nav-link {% if actif == 'ens_plans' %}active{% endif %}" href="{% url 'enseignant_plans' %}"><i class="bi bi-list-check"></i> Plans de cours</a>
       <a class="nav-link {% if actif == 'ens_heures' %}active{% endif %}" href="{% url 'enseignant_heures' %}"><i class="bi bi-clock-history"></i> Mes heures</a>
+      <a class="nav-link {% if actif == 'ens_heures_sup' %}active{% endif %}" href="{% url 'enseignant_heures_sup' %}"><i class="bi bi-calculator"></i> Heures supplémentaires</a>
       <a class="nav-link {% if actif == 'compte' %}active{% endif %}" href="{% url 'mon_compte' %}"><i class="bi bi-person-gear"></i> Mon compte</a>
       {% if profil.a_acces %}
         <a class="nav-link lien-enseignant" href="{% url 'tableau_de_bord' %}" title="Mon espace {{ profil.libelle|lower }}"><i class="bi bi-arrow-left-right"></i> Retour à mon espace</a>

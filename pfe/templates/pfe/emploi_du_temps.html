@@ -60,6 +60,7 @@
           <select id="e-semestre" name="semestre" class="form-select" data-cascade {% if not sel.semestres %}disabled{% endif %}>
             <option value="">{% if sel.semestres %}Choisir…{% else %}—{% endif %}</option>
             {% for s in sel.semestres %}<option value="{{ s.pk }}" {% if sel.semestre.pk == s.pk %}selected{% endif %}>{{ s.nom }}</option>{% endfor %}
+            {% if sel.semestres|length > 1 %}<option value="annee" {% if sel.annee %}selected{% endif %}>Toute l'année</option>{% endif %}
           </select>
         </div>
       {% elif sel.mode == 'heures' %}
@@ -73,7 +74,7 @@
         <div class="col-6 col-md-3">
           <label class="form-label small text-secondary mb-1" for="e-periode-h">Période</label>
           <select id="e-periode-h" name="periode" class="form-select" data-cascade>
-            {% for code, lib in periodes %}<option value="{{ code }}" {% if sel.periode == code %}selected{% endif %}>{{ lib }}</option>{% endfor %}
+            {% for code, lib in periodes_heures %}<option value="{{ code }}" {% if sel.periode == code %}selected{% endif %}>{{ lib }}</option>{% endfor %}
           </select>
         </div>
         <div class="col-6 col-md-2">
@@ -172,6 +173,20 @@
     {% endfor %}
   {% empty %}
     <div class="card carte-gped"><div class="card-body"><div class="etat-vide"><i class="bi bi-calendar-week"></i>Aucune classe avec des matières pour cette session et cette période.</div></div></div>
+  {% endfor %}
+{% elif grilles_annee %}
+  {% if nb_conflits %}<div class="alert alert-danger py-2 small d-flex gap-2 align-items-center"><i class="bi bi-exclamation-triangle"></i> <span><strong>{{ nb_conflits }}</strong> cours en conflit (en rouge clair) sur l'année.</span></div>{% endif %}
+  {% for g in grilles_annee %}
+    <div class="card carte-gped mb-3">
+      <div class="card-header d-flex flex-wrap align-items-center gap-2">
+        <div class="me-auto"><strong>{{ g.titre }}</strong> <span class="small text-secondary">· {{ g.analyses|length }} cours · {{ g.heures }} par semaine{% if g.nb_conflits %} · <span class="text-danger">{{ g.nb_conflits }} en conflit</span>{% endif %}</span></div>
+        {% if sel.mode == 'classe' %}{% for s in sel.semestres %}{% if s.nom == g.titre %}<a class="btn btn-sm btn-light" href="?vue=classe&amp;session={{ sel.session.pk }}&amp;programme={{ sel.programme.pk }}&amp;licence={{ sel.licence.pk }}&amp;semestre={{ s.pk }}"><i class="bi bi-box-arrow-up-right"></i> {% if profil.gere_emplois %}Ouvrir pour modifier{% else %}Ouvrir ce semestre{% endif %}</a>{% endif %}{% endfor %}{% endif %}
+      </div>
+      <div class="card-body p-2">
+        {% if g.analyses %}{% include 'pfe/_grille_emploi.html' with dispo=g.dispo grande=True %}
+        {% else %}<div class="small text-secondary px-2 py-1"><i class="bi bi-calendar-x"></i> Aucun cours placé.</div>{% endif %}
+      </div>
+    </div>
   {% endfor %}
 {% elif seances is None %}
   <div class="card carte-gped"><div class="card-body"><div class="etat-vide"><i class="bi bi-calendar-week"></i>

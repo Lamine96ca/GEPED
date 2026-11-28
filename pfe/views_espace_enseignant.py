@@ -27,7 +27,7 @@ from django.views.decorators.http import require_POST
 
 from . import emplois, heures, plans_cours
 from .forms import preparer_signature
-from .models import (DelegueClasse, ElementPlan, Etudiant, Inscription, Licence, Matiere, ParametresHeures,
+from .models import (DelegueClasse, ElementPlan, Enseignant, Etudiant, Inscription, Licence, Matiere, ParametresHeures,
                      PlanCours, Seance, SeanceCours, Service, Session, stockage_prive)
 from .roles import delegues_requis, espace_enseignant_requis, get_profil, plans_lecture_requise
 
@@ -242,6 +242,40 @@ def enseignant_heures(request):
         return les_blocs
     return _page(request, 'pfe/enseignant/heures.html', 'ens_heures', blocs=blocs,
                  semaines_semestre=lambda p, s: ParametresHeures.actuels().semaines_semestre)
+
+
+@login_required
+@espace_enseignant_requis
+def enseignant_heures_sup(request):
+    """
+    Ses heures supplémentaires (ou sa vacation) de l'année, expliquées pas à pas avec SES chiffres : heures faites,
+    équivalent TD, charge statutaire, dépassement, plafonds, montant (arrêté A/2024/108 et décret D/2024/0027).
+    """
+    profil = get_profil(request)
+    session, sessions = _session(request)
+    params = ParametresHeures.actuels()
+    ligne = None
+    if session:
+        permanents, vacataires = heures.situation(session, [profil.enseignant], params)
+        ligne = (permanents + vacataires)[0] if permanents + vacataires else None
+    g = params.grade(profil.enseignant.grade)
+    # Exemple : un maître-assistant qui a enseigné 80 h de CM, 100 h de TD et 60 h de TP dans l'année
+    ma = params.grade('maitre_assistant')
+    eq = 80 * params.coefficient('CM') + 100 + 60 * params.coefficient('TP')
+    charge = float(ma['charge'])
+    depasse = max(0.0, eq - charge)
+    hs = min(depasse, charge * params.hs_plafond_pct / 100)
+    exemple = {'cm': 80, 'td': 100, 'tp': 60, 'cm_eq': 80 * params.coefficient('CM'), 'tp_eq': 60 * params.coefficient('TP'),
+               'eq': eq, 'charge': charge, 'depasse': depasse, 'moitie': charge * params.hs_plafond_pct / 100, 'hs': hs}
+    return render(request, 'pfe/enseignant/heures_sup.html', {
+        'enseignant': profil.enseignant, 'session': session, 'sessions': sessions, 'l': ligne, 'params': params,
+        'grade': g, 'charge_grade_txt': heures.fmt(g['charge']) if g['charge'] else None,
+        'charge_semaine_txt': heures.fmt(float(g['charge']) / params.semaines_annee) if g['charge'] else None,
+        'exemple': {**{k: heures.fmt(v) for k, v in exemple.items()}, 'taux': heures.gnf(ma['taux']),
+                    'montant': heures.gnf(hs * ma['taux'])},
+        'grades': [(lib, heures.fmt(params.grade(code)['charge']), heures.gnf(params.grade(code)['taux']))
+                   for code, lib in Enseignant.GRADES if code in params.GRADES_TEXTES],
+        'actif': 'ens_heures_sup'})
 
 
 @login_required

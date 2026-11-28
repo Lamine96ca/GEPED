@@ -100,6 +100,8 @@ urlpatterns = [
     path('enseignant/notes/', views_espace_enseignant.enseignant_notes, name='enseignant_notes'),
     path('enseignant/plans/', views_espace_enseignant.enseignant_plans, name='enseignant_plans'),
     path('enseignant/heures/', views_espace_enseignant.enseignant_heures, name='enseignant_heures'),
+    path('enseignant/heures-supplementaires/', views_espace_enseignant.enseignant_heures_sup,
+         name='enseignant_heures_sup'),
     path('enseignant/matieres/<int:pk>/etudiants/', views_espace_enseignant.enseignant_etudiants,
          name='enseignant_etudiants'),
     path('enseignant/matieres/<int:pk>/plan/', views_espace_enseignant.plan_cours, name='plan_cours'),

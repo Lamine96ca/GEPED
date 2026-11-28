@@ -1,7 +1,7 @@
 {% extends 'pfe/base.html' %}
 {% block titre %}Situation des enseignants{% endblock %}
 {% block titre_page %}Situation des enseignants{% endblock %}
-{% block sous_titre %}<div class="sous-titre">Heures faites, service, heures supplémentaires et montants, selon les paramètres de la CIAQ{% if session %} · {{ session.annee }}{% endif %}</div>{% endblock %}
+{% block sous_titre %}<div class="sous-titre">Année universitaire {% if session %}{{ session.annee }}{% endif %} · arrêté A/2024/108/MESRSI/SGG et décret D/2024/0027</div>{% endblock %}
 {% block actions %}
   <a href="?{{ request.GET.urlencode }}{% if request.GET %}&amp;{% endif %}imprimer=pdf" target="_blank" rel="noopener" class="btn btn-light"><i class="bi bi-printer"></i> <span class="d-none d-sm-inline">Imprimer l'onglet</span></a>
   <a href="{% url 'ciaq_parametres' %}" class="btn btn-light"><i class="bi bi-sliders"></i> <span class="d-none d-sm-inline">Paramètres</span></a>
@@ -11,7 +11,7 @@
   <input type="hidden" name="onglet" value="{{ onglet }}">
   <div class="card-body">
     <div class="row g-2 align-items-end">
-      {% include 'pfe/ciaq/_filtres.html' %}
+      {% include 'pfe/ciaq/_filtres.html' with periodes=None %}
       <div class="col-12 col-md-5 col-lg-4">
         <label class="form-label small text-secondary mb-1" for="f-dep">Département</label>
         <select id="f-dep" name="departement" class="form-select" onchange="this.form.submit()">
@@ -23,59 +23,74 @@
   </div>
 </form>
 <ul class="nav nav-pills onglets-stat mb-3">
-  <li class="nav-item"><a class="nav-link {% if onglet == 'permanents' %}active{% endif %}" href="?session={{ session.pk }}&amp;periode={{ periode }}&amp;departement={{ departement_id|default_if_none:'' }}&amp;onglet=permanents">Permanents ({{ nb_permanents }})</a></li>
-  <li class="nav-item"><a class="nav-link {% if onglet == 'vacataires' %}active{% endif %}" href="?session={{ session.pk }}&amp;periode={{ periode }}&amp;departement={{ departement_id|default_if_none:'' }}&amp;onglet=vacataires">Vacataires ({{ nb_vacataires }})</a></li>
+  <li class="nav-item"><a class="nav-link {% if onglet == 'permanents' %}active{% endif %}" href="?session={{ session.pk }}&amp;departement={{ departement_id|default_if_none:'' }}&amp;onglet=permanents">Permanents ({{ nb_permanents }})</a></li>
+  <li class="nav-item"><a class="nav-link {% if onglet == 'vacataires' %}active{% endif %}" href="?session={{ session.pk }}&amp;departement={{ departement_id|default_if_none:'' }}&amp;onglet=vacataires">Vacataires ({{ nb_vacataires }})</a></li>
 </ul>
 <div class="row g-3 mb-3">
-  <div class="col-6 col-lg-3"><div class="card carte-gped h-100"><div class="card-body py-3"><div class="small text-secondary">Heures faites (validées)</div><div class="fs-5 fw-semibold" style="color:var(--encre)">{{ totaux.fait }}</div></div></div></div>
-  <div class="col-6 col-lg-3"><div class="card carte-gped h-100"><div class="card-body py-3"><div class="small text-secondary">Emploi du temps (semestre)</div><div class="fs-5 fw-semibold" style="color:var(--encre)">{{ totaux.edt }}</div></div></div></div>
+  <div class="col-6 col-lg-3"><div class="chiffre-heures prevu"><div class="lib">Prévu (emploi du temps, l'année)</div><div class="val">{{ totaux.edt }}</div></div></div>
+  <div class="col-6 col-lg-3"><div class="chiffre-heures fait"><div class="lib">Réellement enseigné{% if onglet == 'permanents' %} (équivalent TD){% endif %}</div><div class="val">{% if onglet == 'permanents' %}{{ totaux.eq_td }}{% else %}{{ totaux.reel }}{% endif %}</div></div></div>
   {% if onglet == 'permanents' %}<div class="col-6 col-lg-3"><div class="card carte-gped h-100"><div class="card-body py-3"><div class="small text-secondary">Heures supplémentaires</div><div class="fs-5 fw-semibold" style="color:var(--encre)">{{ totaux.hs }}</div></div></div></div>{% endif %}
   <div class="col-6 col-lg-3"><div class="card carte-gped h-100"><div class="card-body py-3"><div class="small text-secondary">Montant {% if onglet == 'permanents' %}des heures supplémentaires{% else %}des vacations{% endif %}</div><div class="fs-5 fw-semibold" style="color:var(--encre)">{{ totaux.montant }}</div></div></div></div>
 </div>
+
+<div class="card carte-gped mb-3">
+  <div class="card-body">
+    <div class="entete-carte"><span class="icone-carte"><i class="bi bi-bar-chart-line"></i></span>
+      <div><h3>Prévu et réellement enseigné, par enseignant</h3><p>{% if onglet == 'permanents' %}En équivalent TD. Le trait pointillé est la charge statutaire : ce qui le dépasse peut devenir des heures supplémentaires.{% else %}En heures réelles : la vacation est payée sur les heures enseignées et validées.{% endif %}</p></div></div>
+    <div class="legende-heures mb-3"><span>Prévu (emploi du temps)</span><span class="fait">Réellement enseigné (validé)</span>{% if onglet == 'permanents' %}<span class="repere">Charge statutaire</span>{% endif %}</div>
+    <div class="barres-heures">
+      {% for l in lignes %}
+        <div class="ligne">
+          <div class="nom">{{ l.enseignant }}<small>{{ l.grade }}{% if l.reduite %} · fonction administrative{% endif %}</small></div>
+          <div class="barres">
+            <div class="rang"><span>Prévu</span><div class="piste"><div class="barre prevu" style="width:{{ l.barre_prevu|stringformat:'s' }}%"></div><span class="valeur" style="left:calc({{ l.barre_prevu|stringformat:'s' }}% + 6px)">{{ l.edt_annee_txt }}</span>{% if l.repere_charge %}<span class="repere" style="left:{{ l.repere_charge|stringformat:'s' }}%" title="Charge statutaire : {{ l.charge_txt }}"></span>{% endif %}</div></div>
+            <div class="rang"><span>Fait</span><div class="piste"><div class="barre fait" style="width:{{ l.barre_fait|stringformat:'s' }}%"></div><span class="valeur" style="left:calc({{ l.barre_fait|stringformat:'s' }}% + 6px)">{% if l.permanent %}{{ l.eq_td_txt }}{% else %}{{ l.reel_txt }}{% endif %}</span>{% if l.repere_charge %}<span class="repere" style="left:{{ l.repere_charge|stringformat:'s' }}%"></span>{% endif %}</div></div>
+          </div>
+          <div class="resume">{% if l.permanent %}{% if l.charge is not None %}Charge {{ l.charge_txt }} · {% if l.hs %}<strong>{{ l.hs_txt }} supplémentaires</strong>{% else %}reste {{ l.reste_txt }} avant les heures supplémentaires{% endif %}{% endif %}{% else %}Vacation : <strong>{{ l.montant_txt }}</strong>{% endif %}{% for a in l.alertes %} · <span class="text-danger">{{ a }}</span>{% endfor %}</div>
+        </div>
+      {% empty %}
+        <div class="etat-vide py-3"><i class="bi bi-person-video3"></i>Aucun enseignant {% if onglet == 'permanents' %}permanent{% else %}vacataire{% endif %} avec des cours pour ces filtres.</div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
 <div class="card carte-gped liste">
   <div class="table-responsive">
     <table class="table table-etudiants mb-0">
       {% if onglet == 'permanents' %}
-      <thead><tr><th>Enseignant</th><th>Grade</th><th class="text-end">Fait</th><th>Par type</th><th class="text-end">{% if params.equivalent_td %}Éq. TD{% else %}Retenu{% endif %}</th><th class="text-end">Service</th><th class="text-end">H. sup.</th><th class="text-end">Montant</th><th>Alertes</th></tr></thead>
+      <thead><tr><th>Enseignant</th><th>Heures faites</th><th class="text-end">Éq. TD</th><th class="text-end">Charge</th><th class="text-end">Dépasse</th><th class="text-end">H. sup.</th><th class="text-end">Montant</th></tr></thead>
       <tbody>
       {% for l in lignes %}
         <tr style="cursor:default">
-          <td style="white-space:normal"><strong style="color:var(--encre)">{{ l.enseignant }}</strong><div class="small text-secondary">{{ l.enseignant.departement.nom }}{% if l.enseignant.fonction_administrative %} · fonction administrative{% endif %}</div></td>
-          <td class="small">{{ l.grade }}</td>
-          <td class="text-end text-nowrap">{{ l.fait_txt }}</td>
-          <td class="small">{% for t, h in l.par_type.items %}<span class="pill me-1">{{ t }} {{ h }}</span>{% empty %}—{% endfor %}</td>
-          <td class="text-end text-nowrap">{{ l.eq_td_txt }}</td>
-          <td class="text-end text-nowrap">{{ l.service_txt|default:"—" }}{% if l.reste %}<div class="small text-secondary">reste {{ l.reste_txt }}</div>{% endif %}</td>
+          <td style="white-space:normal"><strong style="color:var(--encre)">{{ l.enseignant }}</strong><div class="small text-secondary">{{ l.grade }} · {{ l.enseignant.departement.nom }}</div></td>
+          <td class="small">{% for t, h, eq in l.par_type_txt %}<div>{{ t }} {{ h }} → {{ eq }}</div>{% empty %}—{% endfor %}</td>
+          <td class="text-end text-nowrap">{{ l.eq_td_txt }}<div class="small text-secondary">S. impairs {{ l.eq_impair_txt }} · pairs {{ l.eq_pair_txt }}</div></td>
+          <td class="text-end text-nowrap">{{ l.charge_txt|default:"—" }}{% if l.reduite %}<div class="small text-secondary">réduite de moitié</div>{% endif %}</td>
+          <td class="text-end text-nowrap">{{ l.depassement_txt|default:"—" }}</td>
           <td class="text-end text-nowrap">{% if l.hs %}<strong>{{ l.hs_txt }}</strong>{% else %}{{ l.hs_txt|default:"—" }}{% endif %}</td>
           <td class="text-end text-nowrap">{{ l.montant_txt }}<div class="small text-secondary">{{ l.taux_txt }} / h</div></td>
-          <td class="small" style="white-space:normal">{% for a in l.alertes %}<div class="text-danger"><i class="bi bi-exclamation-triangle"></i> {{ a }}</div>{% endfor %}</td>
         </tr>
-      {% empty %}
-        <tr><td colspan="9"><div class="etat-vide py-4"><i class="bi bi-person-video3"></i>Aucun enseignant permanent avec des cours pour ces filtres.</div></td></tr>
       {% endfor %}
       </tbody>
       {% else %}
-      <thead><tr><th>Enseignant</th><th>Grade</th><th class="text-end">EDT / semaine</th><th class="text-end">EDT semestre</th><th class="text-end">Fait (validé)</th><th class="text-end">Taux</th><th class="text-end">Montant</th></tr></thead>
+      <thead><tr><th>Enseignant</th><th>Grade</th><th class="text-end">Prévu (EDT)</th><th class="text-end">Fait (validé)</th><th class="text-end">Taux</th><th class="text-end">Vacation</th></tr></thead>
       <tbody>
       {% for l in lignes %}
         <tr style="cursor:default">
-          <td style="white-space:normal"><strong style="color:var(--encre)">{{ l.enseignant }}</strong><div class="small text-secondary">{{ l.enseignant.departement.nom }}</div>{% for a in l.alertes %}<div class="small text-danger"><i class="bi bi-exclamation-triangle"></i> {{ a }}</div>{% endfor %}</td>
+          <td style="white-space:normal"><strong style="color:var(--encre)">{{ l.enseignant }}</strong><div class="small text-secondary">{{ l.enseignant.departement.nom }}</div></td>
           <td class="small">{{ l.grade }}</td>
-          <td class="text-end text-nowrap">{{ l.hebdo_txt }}</td>
-          <td class="text-end text-nowrap">{{ l.edt_semestre_txt }}</td>
-          <td class="text-end text-nowrap">{{ l.fait_txt }}</td>
+          <td class="text-end text-nowrap">{{ l.edt_annee_txt }}</td>
+          <td class="text-end text-nowrap">{{ l.reel_txt }}</td>
           <td class="text-end text-nowrap">{{ l.taux_txt }}</td>
           <td class="text-end text-nowrap"><strong>{{ l.montant_txt }}</strong></td>
         </tr>
-      {% empty %}
-        <tr><td colspan="7"><div class="etat-vide py-4"><i class="bi bi-person-video3"></i>Aucun vacataire avec des cours pour ces filtres.</div></td></tr>
       {% endfor %}
       </tbody>
       {% endif %}
     </table>
   </div>
 </div>
-<div class="small text-secondary mt-3"><i class="bi bi-info-circle"></i>
-  {% if onglet == 'permanents' %}Service du semestre selon le grade{% if params.reduction_fonction %} (réduit de {{ params.reduction_fonction }} % pour une fonction administrative){% endif %}. Heures supplémentaires : au-delà du service{% if params.hs_plafond_pct %}, au plus {{ params.hs_plafond_pct }} % du service{% endif %}{% if params.hs_plafond_hebdo %}, au plus {{ params.hs_plafond_hebdo|floatformat:"-1" }} h par semaine ({{ params.semaines_semestre }} semaines){% endif %}.{% else %}Vacataires : ni service ni plafond ; leurs heures sont celles de l'emploi du temps ({{ params.semaines_semestre }} semaines), comparées aux heures faites.{% endif %}
-  Tout se règle dans les <a href="{% url 'ciaq_parametres' %}">paramètres des heures</a>.</div>
+<div class="small text-secondary mt-3"><i class="bi bi-journal-text"></i>
+  {% if onglet == 'permanents' %}Heures enseignées et validées converties en équivalent TD (1 h de CM = {{ params.coef_cm|floatformat:"-2" }} h ; 1 h de TP = 2/3 h ; arrêté, art. 3). Heures supplémentaires : seulement au-delà de la charge statutaire annuelle du grade (art. 5 et 8), au plus la moitié de cette charge (art. 8) et {{ params.hs_plafond_hebdo|floatformat:"-1" }} h par semaine (décret, art. 16), payées au taux du grade.{% else %}Vacation : heures réellement enseignées et validées (« service fait, dûment constaté ») × taux du grade (décret, art. 16).{% endif %}</div>
 {% endblock %}

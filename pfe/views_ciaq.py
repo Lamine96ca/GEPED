@@ -3,9 +3,10 @@ Suivi des cours : CIAQ (Cellule interne de contrôle de qualité), Direction des
 
 - Avancement (CIAQ, Direction) : par programme, par matière ou par enseignant, les contenus des plans de cours
   dispensés et les heures prévues (emploi du temps) comparées aux heures faites (cours validés par un délégué).
-- Situation des enseignants (CIAQ, Direction) : permanents (service selon le grade, équivalent TD, heures
-  supplémentaires plafonnées, montant) et vacataires (heures de l'emploi du temps, montant) ; pfe/heures.py.
-- Paramètres des heures (définis par la CIAQ, vus par la Direction) : tout est modifiable, rien n'est figé.
+- Situation des enseignants sur l'année (CIAQ, Direction) : permanents (équivalent TD, charge statutaire, heures
+  supplémentaires, montant) et vacataires (vacation sur les heures faites), selon l'arrêté A/2024/108/MESRSI/SGG et
+  le décret D/2024/0027 ; pfe/heures.py.
+- Paramètres des heures : les valeurs de ces deux textes, mises à jour par la CIAQ si un texte change.
 - Dates des semestres et cours dispensés (Direction des Études) : relance d'un cours dont le délai (72 h) est
   dépassé, réajustement des heures après la procédure administrative (l'enseignant puis un délégué signent de
   nouveau). La CIAQ et la Direction voient les cours dispensés.
@@ -133,8 +134,8 @@ def ciaq_avancement(request):
 @login_required
 @heures_lecture_requise
 def ciaq_situation(request):
+    """Situation de l'ANNÉE (session) : la charge statutaire de l'arrêté est annuelle et couvre les deux semestres."""
     session, sessions = _session(request)
-    periode = _periode(request)
     onglet = 'vacataires' if request.GET.get('onglet') == 'vacataires' else 'permanents'
     departement_id = _entier(request.GET.get('departement'))
     departements = list(departements_etablissement())
@@ -144,72 +145,71 @@ def ciaq_situation(request):
         qs = Enseignant.objects.filter(actif=True)
         if departement_id:
             qs = qs.filter(departement_id=departement_id)
-        permanents, vacataires = heures.situation(session, periode, list(qs), params)
+        permanents, vacataires = heures.situation(session, list(qs), params)
     lignes = vacataires if onglet == 'vacataires' else permanents
-    totaux = {'fait': heures.fmt(sum(l['fait'] for l in lignes)),
-              'edt': heures.fmt(sum(l['edt_semestre'] for l in lignes)),
+    totaux = {'reel': heures.fmt(sum(l['reel'] for l in lignes)),
+              'eq_td': heures.fmt(sum(l['eq_td'] for l in lignes)),
+              'edt': heures.fmt(sum(l['edt_annee'] for l in lignes)),
               'hs': heures.fmt(sum(l.get('hs') or 0 for l in lignes)),
               'montant': heures.gnf(sum(l.get('montant') or 0 for l in lignes))}
     if request.GET.get('imprimer') == 'pdf':
         from .pdf_listes import imprimer_tableau
         if onglet == 'vacataires':
-            colonnes = [('N°', 18), ('Enseignant', 150), ('Grade', 80), ('Département', 120), ('EDT / semaine', 55),
-                        ('EDT semestre', 60), ('Fait (validé)', 60), ('Taux', 70), ('Montant', 85)]
-            rangs = [[k, str(l['enseignant']), l['grade'], l['enseignant'].departement.nom, l['hebdo_txt'],
-                      l['edt_semestre_txt'], l['fait_txt'], l['taux_txt'], l['montant_txt']]
-                     for k, l in enumerate(lignes, start=1)]
+            colonnes = [('N°', 18), ('Enseignant', 160), ('Grade', 90), ('Département', 130),
+                        ('Prévu (EDT)', 65), ('Fait (validé)', 65), ('Taux', 75), ('Vacation', 90)]
+            rangs = [[k, str(l['enseignant']), l['grade'], l['enseignant'].departement.nom, l['edt_annee_txt'],
+                      l['reel_txt'], l['taux_txt'], l['montant_txt']] for k, l in enumerate(lignes, start=1)]
         else:
-            colonnes = [('N°', 18), ('Enseignant', 135), ('Grade', 75), ('Département', 100), ('Fait', 48),
-                        ('Éq. TD', 48), ('Service', 48), ('H. sup.', 48), ('Taux', 62), ('Montant', 78),
-                        ('Alertes', 120)]
+            colonnes = [('N°', 18), ('Enseignant', 130), ('Grade', 72), ('Département', 95), ('Fait', 45),
+                        ('Éq. TD', 45), ('Charge', 45), ('H. sup.', 45), ('Taux', 60), ('Montant', 75),
+                        ('Observations', 130)]
             rangs = [[k, str(l['enseignant']) + (' (fonction adm.)' if l['enseignant'].fonction_administrative else ''),
-                      l['grade'], l['enseignant'].departement.nom, l['fait_txt'], l['eq_td_txt'],
-                      l.get('service_txt', '—'), l.get('hs_txt', '—'), l['taux_txt'], l['montant_txt'],
+                      l['grade'], l['enseignant'].departement.nom, l['reel_txt'], l['eq_td_txt'],
+                      l.get('charge_txt', '—'), l.get('hs_txt', '—'), l['taux_txt'], l['montant_txt'],
                       ' ; '.join(l['alertes'])] for k, l in enumerate(lignes, start=1)]
-        filtres = [('Session', session), ('Période', dict(heures.PERIODES)[periode]),
-                   ('Département', next((d.nom for d in departements if d.pk == departement_id), None))]
-        titre = 'SITUATION DES ENSEIGNANTS VACATAIRES' if onglet == 'vacataires' else \
-            'SITUATION DES ENSEIGNANTS PERMANENTS'
+        filtres = [('Année universitaire', session),
+                   ('Département', next((d.nom for d in departements if d.pk == departement_id), None)),
+                   ('Textes', 'Arrêté A/2024/108/MESRSI/SGG ; décret D/2024/0027')]
+        titre = 'SITUATION DES ENSEIGNANTS VACATAIRES' if onglet == 'vacataires' else             'SITUATION DES ENSEIGNANTS PERMANENTS'
         return imprimer_tableau(request, f'situation_{onglet}', titre, filtres, colonnes, rangs, paysage=True,
                                 total=f"{len(rangs)} enseignant(s) · montant : {totaux['montant']}",
                                 vide='Aucun enseignant pour ces filtres.')
     return render(request, 'pfe/ciaq/situation.html', {
         'lignes': lignes, 'onglet': onglet, 'nb_permanents': len(permanents), 'nb_vacataires': len(vacataires),
-        'totaux': totaux, 'session': session, 'sessions': sessions, 'periode': periode, 'periodes': heures.PERIODES,
-        'departements': departements, 'departement_id': departement_id, 'params': params,
-        'actif': 'suivi_situation'})
+        'totaux': totaux, 'session': session, 'sessions': sessions, 'departements': departements,
+        'departement_id': departement_id, 'params': params, 'actif': 'suivi_situation'})
 
 
 # ------------------------------------------------------------------ paramètres des heures
 
 class ParametresHeuresForm(BootstrapMixin, forms.ModelForm):
+    """Les valeurs de l'arrêté A/2024/108 et du décret D/2024/0027, et rien d'autre (voir ParametresHeures)."""
     class Meta:
         model = ParametresHeures
-        fields = ['semaines_semestre', 'equivalent_td', 'coef_cm', 'coef_td', 'coef_tp', 'coef_controle', 'coef_tout',
-                  'plafonds_par_type', 'plafond_cm', 'plafond_td', 'plafond_tp', 'reduction_fonction',
-                  'hs_plafond_hebdo', 'hs_plafond_pct', 'cm_rang_a_pct']
+        fields = ['semaines_semestre', 'coef_cm', 'coef_tp', 'reduction_fonction', 'hs_plafond_pct',
+                  'hs_plafond_hebdo', 'cm_rang_a_pct']
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.lignes_grades = []
-        for code, libelle in Enseignant.GRADES:
+        grades = dict(Enseignant.GRADES)
+        for code in ParametresHeures.GRADES_TEXTES:
             g = self.instance.grade(code)
-            self.fields[f'service_{code}'] = forms.DecimalField(
-                label=f"Service : {libelle}", required=False, min_value=0, max_digits=6, decimal_places=1,
-                initial=g.get('service'))
-            self.fields[f'taux_{code}'] = forms.IntegerField(label=f"Taux : {libelle}", required=False, min_value=0,
+            self.fields[f'charge_{code}'] = forms.DecimalField(
+                label=f"Charge annuelle : {grades[code]}", min_value=0, max_digits=6, decimal_places=1,
+                initial=g.get('charge'))
+            self.fields[f'taux_{code}'] = forms.IntegerField(label=f"Taux : {grades[code]}", min_value=0,
                                                              initial=g.get('taux'))
-            for n in (f'service_{code}', f'taux_{code}'):
+            for n in (f'charge_{code}', f'taux_{code}'):
                 self.fields[n].widget.attrs.update({'class': 'form-control', 'inputmode': 'decimal'})
-            self.lignes_grades.append((libelle, self[f'service_{code}'], self[f'taux_{code}']))
+            semaine = (float(g['charge']) / self.instance.semaines_annee) if g.get('charge') else None
+            self.lignes_grades.append((grades[code], self[f'charge_{code}'], self[f'taux_{code}'],
+                                       heures.fmt(semaine) if semaine is not None else '—'))
 
     def save(self, commit=True):
         p = super().save(commit=False)
-        grades = {}
-        for code, _ in Enseignant.GRADES:
-            s, t = self.cleaned_data.get(f'service_{code}'), self.cleaned_data.get(f'taux_{code}')
-            grades[code] = {'service': float(s) if s is not None else None, 'taux': t}
-        p.grades = grades
+        p.grades = {code: {'charge': float(self.cleaned_data[f'charge_{code}']),
+                           'taux': self.cleaned_data[f'taux_{code}']} for code in ParametresHeures.GRADES_TEXTES}
         if commit:
             p.save()
         return p

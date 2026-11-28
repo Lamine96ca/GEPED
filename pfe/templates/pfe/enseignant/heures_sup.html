@@ -1,0 +1,108 @@
+{% extends 'pfe/base.html' %}
+{% block titre %}Mes heures supplémentaires{% endblock %}
+{% block titre_page %}Mes heures supplémentaires{% endblock %}
+{% block sous_titre %}<div class="sous-titre">Comment elles sont calculées, avec vos propres chiffres{% if session %} · année {{ session.annee }}{% endif %}</div>{% endblock %}
+{% block actions %}{% include 'pfe/enseignant/_session.html' %}{% endblock %}
+{% block contenu %}
+<style>
+  .etape { display: grid; grid-template-columns: 2.6rem 1fr; gap: 1rem; padding: 1.1rem 0; border-top: 1px solid var(--bord); }
+  .etape:first-child { border-top: 0; padding-top: .2rem; }
+  .etape .num { width: 2.4rem; height: 2.4rem; border-radius: 50%; background: var(--accent); color: #fff; font-weight: 700;
+    display: flex; align-items: center; justify-content: center; font-size: 1.05rem; }
+  .etape h4 { font-size: 1rem; font-weight: 700; color: var(--encre); margin: .35rem 0 .3rem; }
+  .etape p { margin: 0 0 .5rem; }
+  .calcul { background: var(--fond); border-radius: var(--rayon-sm); padding: .65rem .9rem; font-variant-numeric: tabular-nums; }
+  .calcul .egal { font-weight: 700; color: var(--encre); }
+  .resultat { font-size: 1.6rem; font-weight: 800; color: var(--heures-fait); }
+  .regle { display: inline-block; font-size: .72rem; color: var(--muet); border: 1px solid var(--bord); border-radius: 999px; padding: 0 .5rem; margin-left: .3rem; }
+</style>
+
+{% if not l %}
+  <div class="card carte-gped"><div class="card-body"><div class="etat-vide py-4"><i class="bi bi-calculator"></i>Aucun cours dans l'emploi du temps ni aucun cours validé pour {{ session.annee|default:"cette année" }}.</div></div></div>
+{% elif not l.permanent %}
+  <!-- Vacataire -->
+  <div class="row g-3 mb-3">
+    <div class="col-md-4"><div class="chiffre-heures prevu"><div class="lib">Prévu dans l'emploi du temps</div><div class="val">{{ l.edt_annee_txt }}</div></div></div>
+    <div class="col-md-4"><div class="chiffre-heures fait"><div class="lib">Réellement enseigné (validé)</div><div class="val">{{ l.reel_txt }}</div></div></div>
+    <div class="col-md-4"><div class="chiffre-heures"><div class="lib">Votre vacation</div><div class="val">{{ l.montant_txt }}</div></div></div>
+  </div>
+  <div class="card carte-gped"><div class="card-body">
+    <div class="etape"><div class="num">1</div><div><h4>Vous êtes vacataire : chaque heure enseignée est payée</h4>
+      <p>Vous n'avez pas de charge statutaire à faire d'abord, ni de plafond : toutes vos heures comptent.</p></div></div>
+    <div class="etape"><div class="num">2</div><div><h4>Seules les heures validées comptent</h4>
+      <p>Une heure compte quand le délégué l'a validée (heure d'arrivée et de départ). Le décret parle de « service fait, dûment constaté ». <span class="regle">décret, art. 16</span></p></div></div>
+    <div class="etape"><div class="num">3</div><div><h4>Heures × taux de votre grade</h4>
+      <div class="calcul">{{ l.reel_txt }} × {{ l.taux_txt }} <span class="egal">= {{ l.montant_txt }}</span></div>
+      {% if l.alertes %}<p class="text-danger small mt-2">{% for a in l.alertes %}{{ a }}. {% endfor %}</p>{% endif %}</div></div>
+  </div></div>
+{% else %}
+  <!-- Permanent : les quatre étapes -->
+  <div class="row g-3 mb-3">
+    <div class="col-6 col-lg-3"><div class="chiffre-heures fait"><div class="lib">Vous avez enseigné (éq. TD)</div><div class="val">{{ l.eq_td_txt }}</div></div></div>
+    <div class="col-6 col-lg-3"><div class="chiffre-heures"><div class="lib">Votre charge de l'année</div><div class="val">{{ l.charge_txt|default:"—" }}</div></div></div>
+    <div class="col-6 col-lg-3"><div class="chiffre-heures"><div class="lib">Heures supplémentaires</div><div class="val">{{ l.hs_txt|default:"—" }}</div></div></div>
+    <div class="col-6 col-lg-3"><div class="chiffre-heures"><div class="lib">Montant</div><div class="val">{{ l.montant_txt }}</div></div></div>
+  </div>
+  <div class="card carte-gped mb-3"><div class="card-body">
+    <div class="etape"><div class="num">1</div><div>
+      <h4>On compte vos heures réellement faites</h4>
+      <p>Seuls comptent les cours <strong>validés par un délégué</strong>, avec l'heure d'arrivée et l'heure de départ. Un cours en attente ne compte pas encore.</p>
+      <div class="calcul">{% for t, h, eq in l.par_type_txt %}{{ t }} : {{ h }}{% if not forloop.last %} · {% endif %}{% empty %}Aucun cours validé pour l'instant.{% endfor %}{% if l.par_type_txt %} <span class="egal">— en tout {{ l.reel_txt }}</span>{% endif %}</div>
+    </div></div>
+    <div class="etape"><div class="num">2</div><div>
+      <h4>On les ramène toutes en « heures de TD »</h4>
+      <p>Une heure de cours magistral demande plus de travail : elle compte pour <strong>1 h 30</strong>. Une heure de TD compte pour <strong>1 h</strong>. Une heure de TP compte pour <strong>2/3 d'heure</strong> (3 h de TP = 2 h). <span class="regle">arrêté, art. 3</span></p>
+      <div class="calcul">{% for t, h, eq in l.par_type_txt %}{{ t }} {{ h }} → {{ eq }}{% if not forloop.last %} · {% endif %}{% empty %}—{% endfor %} <span class="egal">= {{ l.eq_td_txt }} en équivalent TD</span></div>
+    </div></div>
+    <div class="etape"><div class="num">3</div><div>
+      <h4>On enlève votre charge statutaire</h4>
+      <p>Chaque grade doit d'abord faire un nombre d'heures dans l'année : c'est la <strong>charge statutaire</strong>. Pour un {{ l.grade|lower }}, c'est <strong>{{ charge_grade_txt }}</strong> par an (environ {{ charge_semaine_txt }} par semaine){% if l.reduite %}, <strong>réduite de moitié</strong> car vous avez une fonction administrative <span class="regle">arrêté, art. 6</span>{% endif %}. Les heures supplémentaires ne commencent qu'après. <span class="regle">arrêté, art. 5 et 8</span></p>
+      <div class="calcul">{{ l.eq_td_txt }} − {{ l.charge_txt }} <span class="egal">= {% if l.depassement %}{{ l.depassement_txt }} au-delà de votre charge{% else %}rien au-delà : il vous reste {{ l.reste_txt }} à faire avant les heures supplémentaires{% endif %}</span></div>
+    </div></div>
+    <div class="etape"><div class="num">4</div><div>
+      <h4>On applique les deux limites</h4>
+      <p>Les heures supplémentaires ne peuvent pas dépasser <strong>la moitié de votre charge</strong> <span class="regle">arrêté, art. 8</span>, ni <strong>{{ params.hs_plafond_hebdo|floatformat:"-1" }} h par semaine</strong> <span class="regle">décret, art. 16</span>. Chaque semaine, on ne retient que {{ params.hs_plafond_hebdo|floatformat:"-1" }} h au plus au-delà de votre charge de la semaine ({{ l.charge_semaine_txt }}).</p>
+      <div class="calcul">Au-delà de la charge : {{ l.depassement_txt }} · moitié de la charge : {{ l.plafond_charge_txt }} · limite par semaine : {{ l.plafond_semaines_txt }} <span class="egal">→ on garde le plus petit : {{ l.hs_txt }}</span></div>
+      {% if l.alertes %}<p class="small text-danger mt-2 mb-0">{% for a in l.alertes %}{{ a|capfirst }}. {% endfor %}</p>{% endif %}
+    </div></div>
+    <div class="etape"><div class="num">5</div><div>
+      <h4>Heures supplémentaires × taux de votre grade</h4>
+      <p>Le taux est fixé par le décret, et le paiement se fait après « service fait, dûment constaté ». <span class="regle">décret, art. 16</span></p>
+      <div class="calcul">{{ l.hs_txt }} × {{ l.taux_txt }} <span class="egal">=</span> <span class="resultat">{{ l.montant_txt }}</span></div>
+    </div></div>
+  </div></div>
+
+  {% if l.semaines_detail %}
+  <div class="card carte-gped liste mb-3">
+    <div class="card-header"><h3 class="titre-stat mb-0">Semaine par semaine</h3><p class="small text-secondary mb-0">Votre charge de la semaine : {{ l.charge_semaine_txt }}. Au-delà, {{ params.hs_plafond_hebdo|floatformat:"-1" }} h au plus comptent par semaine.</p></div>
+    <div class="table-responsive">
+      <table class="table table-etudiants mb-0">
+        <thead><tr><th>Semaine du</th><th class="text-end">Enseigné (éq. TD)</th><th class="text-end">Au-delà de la charge</th><th class="text-end">Retenu</th></tr></thead>
+        <tbody>
+        {% for w in l.semaines_detail %}
+          <tr style="cursor:default"><td>{{ w.lundi|date:"d/m/Y" }}</td><td class="text-end">{{ w.eq_td_txt }}</td><td class="text-end">{% if w.au_dela %}{{ w.au_dela_txt }}{% else %}—{% endif %}</td><td class="text-end">{% if w.compte %}<strong>{{ w.compte_txt }}</strong>{% else %}—{% endif %}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+{% endif %}
+
+<div class="card carte-gped">
+  <div class="card-body">
+    <div class="entete-carte"><span class="icone-carte"><i class="bi bi-lightbulb"></i></span><div><h3>Un exemple simple</h3><p>Un maître-assistant (charge : {{ exemple.charge }} par an) a enseigné dans l'année {{ exemple.cm }} de CM, {{ exemple.td }} de TD et {{ exemple.tp }} de TP.</p></div></div>
+    <div class="calcul mb-2">1. Équivalent TD : CM {{ exemple.cm }} × 1,5 = {{ exemple.cm_eq }} · TD {{ exemple.td }} × 1 = {{ exemple.td }} · TP {{ exemple.tp }} × 2/3 = {{ exemple.tp_eq }} <span class="egal">→ {{ exemple.eq }}</span></div>
+    <div class="calcul mb-2">2. Au-delà de la charge : {{ exemple.eq }} − {{ exemple.charge }} <span class="egal">= {{ exemple.depasse }}</span></div>
+    <div class="calcul mb-2">3. Limite : la moitié de la charge, {{ exemple.moitie }} ; {{ exemple.depasse }} est en dessous <span class="egal">→ {{ exemple.hs }} supplémentaires</span> (si aucune semaine n'a dépassé sa charge de plus de 6 h)</div>
+    <div class="calcul mb-2">4. Montant : {{ exemple.hs }} × {{ exemple.taux }} <span class="egal">= {{ exemple.montant }}</span></div>
+    <div class="table-responsive mt-3">
+      <table class="table table-sm mb-0">
+        <thead><tr><th>Grade</th><th class="text-end">Charge par an</th><th class="text-end">Taux de l'heure</th></tr></thead>
+        <tbody>{% for lib, charge, taux in grades %}<tr><td>{{ lib }}</td><td class="text-end">{{ charge }}</td><td class="text-end">{{ taux }}</td></tr>{% endfor %}</tbody>
+      </table>
+    </div>
+    <div class="small text-secondary mt-2"><i class="bi bi-journal-text"></i> Textes : arrêté A/2024/108/MESRSI/SGG (heures, équivalence, charge) et décret D/2024/0027 (taux, 6 h par semaine).</div>
+  </div>
+</div>
+{% endblock %}

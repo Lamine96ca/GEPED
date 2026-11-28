@@ -5397,42 +5397,88 @@ class SuiviCoursTests(TestCase):
         s.elements.add(self.el)
         return s
 
-    def test_heures_supplementaires_selon_les_parametres(self):
+    def semaines(self, nombre, seances, debut=(8, 0), fin=(18, 0), type_='TD', enseignant=None):
+        """`nombre` semaines (dès le lundi 5/10/2026), avec `seances` cours validés de début à fin chacune."""
+        from datetime import date, timedelta
+        for k in range(nombre):
+            for j in range(seances):
+                self.cours(type_, debut, fin, enseignant=enseignant, jour=date(2026, 10, 5) + timedelta(7 * k + j))
+
+    def test_heures_supplementaires_selon_l_arrete_et_le_decret(self):
         from datetime import date
         from . import heures
-        from .models import DatesSemestre, ParametresHeures
+        from .models import DatesSemestre, ParametresHeures, SeanceCours
         params = ParametresHeures.actuels()
-        self.assertEqual((params.semaines_semestre, params.grade('maitre_assistant')),
-                         (15, {'service': 105, 'taux': 150000}))
-        for _ in range(5):
-            self.cours('CM', (8, 0), (10, 0))                    # 10 h de CM = 15 h éq. TD
-        for _ in range(50):
-            self.cours('TD', (8, 0), (10, 0))                    # 100 h de TD
+        self.assertEqual((params.semaines_annee, params.grade('maitre_assistant'), params.grade('docteur')),
+                         (30, {'charge': 210, 'taux': 150000}, {'charge': None, 'taux': None}))
+        self.assertEqual([params.coefficient(t) for t in ('CM', 'TD', 'TP', 'CTRL')], [1.5, 1, 2 / 3, 1])
+        # Maître-assistant : 20 semaines de 11 h de TD, puis 2 h de CM ; charge annuelle 210 h (7 h par semaine)
+        self.semaines(20, 1, (8, 0), (19, 0))
+        self.cours('CM', (8, 0), (10, 0), jour=date(2026, 3, 2))
         self.cours('TP', (8, 0), (11, 0), statut='attente')       # pas encore validé : ne compte pas
-        permanents, vacataires = heures.situation(self.session, 'impair', params=params)
+        permanents, vacataires = heures.situation(self.session, params=params)
         l = next(x for x in permanents if x['enseignant'] == self.prof)
-        self.assertEqual((l['fait'], l['eq_td'], l['service'], l['hs'], l['montant']), (110, 115, 105, 10, 1500000))
-        self.assertEqual(l['hs_txt'], '10 h')
-        # Fonction administrative : service réduit de moitié ; heures supplémentaires plafonnées à 50 % du service
+        self.assertEqual((l['reel'], l['eq_td'], l['charge'], l['depassement'], l['plafond_charge'],
+                          l['plafond_semaines'], l['hs'], l['montant']), (222, 223, 210, 13, 105, 80, 13, 1950000))
+        self.assertEqual((l['hs_txt'], l['montant_txt'], len(l['semaines_detail'])), ('13 h', '1 950 000 GNF', 21))
+        # Fonction administrative : charge réduite de moitié (105 h) ; plafond : la moitié de la charge
         self.prof.fonction_administrative = True
         self.prof.save()
-        l = next(x for x in heures.situation(self.session, 'impair', params=params)[0] if x['enseignant'] == self.prof)
-        self.assertEqual((l['service'], l['hs_brut'], l['hs']), (52.5, 62.5, 26.25))
-        self.assertIn('plafonnées', ' '.join(l['alertes']))
-        # Sans équivalent TD : une heure = une heure
-        params.equivalent_td = False
-        params.save()
-        l = next(x for x in heures.situation(self.session, 'impair', params=params)[0] if x['enseignant'] == self.prof)
-        self.assertEqual(l['eq_td'], 110)
-        # Vacataire : heures de l'emploi du temps (3 h par semaine × 15), au taux de son grade, ni service ni plafond
-        v = next(x for x in vacataires if x['enseignant'] == self.vac)
-        self.assertEqual((v['hebdo'], v['edt_semestre'], v['montant']), (3, 45, 4500000))
+        l = next(x for x in heures.situation(self.session, params=params)[0] if x['enseignant'] == self.prof)
+        self.assertEqual((l['charge'], l['depassement'], l['hs']), (105, 118, 52.5))
+        self.assertIn('moitié de la charge', ' '.join(l['alertes']))
+        # 6 h par semaine au plus : 8 semaines de 40 h de TD → 48 h et non 110
+        self.prof.fonction_administrative = False
+        self.prof.save()
+        SeanceCours.objects.all().delete()
+        self.semaines(8, 4)
+        l = next(x for x in heures.situation(self.session, params=params)[0] if x['enseignant'] == self.prof)
+        self.assertEqual((l['eq_td'], l['depassement'], l['hs']), (320, 110, 48))
+        self.assertIn('6 h par semaine', ' '.join(l['alertes']))
+        # Vacataire : heures faites et validées × taux du grade (service fait), sans charge ni plafond
+        self.semaines(2, 1, (8, 0), (11, 0), type_='TP', enseignant=self.vac)
+        v = next(x for x in heures.situation(self.session, params=params)[1] if x['enseignant'] == self.vac)
+        self.assertEqual((v['edt_annee'], v['reel'], v['montant']), (45, 6, 600000))
         # Prévu à ce jour : semaines écoulées depuis le début du semestre (dates de la Direction des Études)
         self.assertIsNone(heures.semaines_ecoulees(self.session, 'impair'))
         DatesSemestre.objects.create(session=self.session, periode='impair', debut=date(2026, 10, 1),
                                      fin=date(2027, 1, 31))
         self.assertEqual(heures.semaines_ecoulees(self.session, 'impair', aujourd_hui=date(2026, 10, 15)), 3)
         self.assertEqual(heures.semaines_ecoulees(self.session, 'impair', aujourd_hui=date(2027, 6, 1)), 15)
+        # L'enseignant voit le calcul pas à pas, avec ses chiffres
+        self.connecter('prof')
+        r = self.client.get(reverse('enseignant_heures_sup'))
+        for texte in ('320 h', '110 h', '48 h', '7 200 000 GNF', 'arrêté, art. 3', 'décret, art. 16'):
+            self.assertContains(r, texte, msg_prefix=texte)
+        self.assertContains(self.client.get(reverse('espace_enseignant')), reverse('enseignant_heures_sup'))
+        self.client.force_login(self.vac.utilisateur)
+        self.assertContains(self.client.get(reverse('enseignant_heures_sup')), '600 000 GNF')
+
+    def test_emploi_du_temps_de_toute_l_annee(self):
+        from .models import Matiere, Seance, Semestre
+        s2 = Semestre.objects.create(nom='SEMESTRE 2', licence=self.licence)
+        poo = Matiere.objects.create(nom='Programmation objet', filiere=self.info, semestre=s2, licence=self.licence,
+                                     session=self.session, credit=6)
+        Seance.objects.create(matiere=poo, type='CM', jour=2, debut=480, fin=600).enseignants.add(self.prof)
+        self.connecter('dge')
+        url = reverse('emploi_du_temps')
+        # Enseignant : une grille par période ; la classe est écrite sur chaque cours
+        r = self.client.get(url, {'vue': 'enseignant', 'session': self.session.pk, 'enseignant': self.prof.pk,
+                                  'periode': 'annee'})
+        self.assertEqual([(g['titre'][:16], len(g['analyses'])) for g in r.context['grilles_annee']],
+                         [('Semestres impair', 2), ('Semestres pairs ', 1)])
+        self.assertContains(r, "toute l&#x27;année")
+        # Classe : les semestres du niveau, chacun sa grille ; impression et export
+        params = {'vue': 'classe', 'session': self.session.pk, 'programme': self.info.pk,
+                  'licence': self.licence.pk, 'semestre': 'annee'}
+        r = self.client.get(url, params)
+        self.assertEqual([g['titre'] for g in r.context['grilles_annee']], ['SEMESTRE 1', 'SEMESTRE 2'])
+        self.assertContains(r, 'Programmation objet')
+        self.assertEqual(self.client.get(url, {**params, 'imprimer': 'pdf'}).content[:4], b'%PDF')
+        self.assertIn('spreadsheetml', self.client.get(url, {**params, 'export': 'xlsx'})['Content-Type'])
+        # Les heures des enseignants restent par semaine type (pas de « toute l'année »)
+        self.assertEqual(self.client.get(url, {'vue': 'heures', 'periode': 'annee'}).context['sel']['periode'],
+                         'impair')
 
     def test_ciaq_consulte_et_definit_les_parametres(self):
         from .models import ParametresHeures
@@ -5463,14 +5509,15 @@ class SuiviCoursTests(TestCase):
         self.assertEqual(self.client.get(reverse('plans_liste')).status_code, 200)
         self.assertEqual(self.client.get(reverse('cours_dispenses')).status_code, 200)
         # Paramètres : la CIAQ les modifie (tout), et c'est sa seule modification
-        donnees = {'semaines_semestre': 14, 'equivalent_td': 'on', 'coef_cm': '1.5', 'coef_td': '1', 'coef_tp': '0.75',
-                   'coef_controle': '1', 'coef_tout': '1', 'reduction_fonction': 50, 'hs_plafond_hebdo': '6',
-                   'hs_plafond_pct': 50, 'cm_rang_a_pct': 50, 'service_assistant': '110', 'taux_assistant': '120000',
-                   'service_professeur': '75', 'taux_professeur': '200000'}
+        donnees = {'semaines_semestre': 14, 'coef_cm': '1.5', 'coef_tp': '0.75', 'reduction_fonction': 50,
+                   'hs_plafond_hebdo': '6', 'hs_plafond_pct': 50, 'cm_rang_a_pct': 50,
+                   'charge_assistant': '230', 'taux_assistant': '120000', 'charge_maitre_assistant': '210',
+                   'taux_maitre_assistant': '150000', 'charge_maitre_conferences': '180',
+                   'taux_maitre_conferences': '200000', 'charge_professeur': '150', 'taux_professeur': '200000'}
         self.assertRedirects(self.client.post(reverse('ciaq_parametres'), donnees), reverse('ciaq_parametres'))
         p = ParametresHeures.actuels()
         self.assertEqual((p.semaines_semestre, float(p.coef_tp), p.grade('assistant'), p.grade('maitre_assistant')),
-                         (14, 0.75, {'service': 110.0, 'taux': 120000}, {'service': None, 'taux': None}))
+                         (14, 0.75, {'charge': 230.0, 'taux': 120000}, {'charge': 210.0, 'taux': 150000}))
         self.assertEqual(self.client.post(reverse('plan_detail', args=[self.plan.pk]),
                                           {'action': 'approuver'}).status_code, 403)
         self.assertEqual(self.client.post(reverse('dates_semestres'), {}).status_code, 403)

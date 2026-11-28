@@ -1059,18 +1059,34 @@ code { color: var(--encre); background: var(--survol); padding: .05rem .3rem; bo
 .contenu-plan.fait i, .contenu-plan.fait .small { color: var(--succes); }
 .contenu-plan.attente .small, .contenu-plan.attente i { color: var(--attention); }
 
-/* Heures : barres « prévu / fait » (une ligne par matière ou enseignant) */
-.barres-heures { display: flex; flex-direction: column; gap: .7rem; }
-.barres-heures .ligne { display: grid; grid-template-columns: minmax(120px, 34%) 1fr auto; gap: .25rem .75rem; align-items: center; }
-.barres-heures .nom { font-size: .85rem; color: var(--encre); overflow: hidden; text-overflow: ellipsis; }
-.barres-heures .nom small { display: block; color: var(--discret); }
-.barres-heures .barres { display: flex; flex-direction: column; gap: 3px; }
-.barres-heures .barre { height: 10px; border-radius: 0 4px 4px 0; min-width: 2px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-.barres-heures .barre.prevu { background: var(--bord-fort); }
-.barres-heures .barre.fait { background: var(--accent); }
-.barres-heures .valeurs { font-size: .8rem; text-align: right; white-space: nowrap; color: var(--encre); }
-.barres-heures .valeurs small { display: block; color: var(--discret); }
-.legende-heures { display: flex; gap: 1rem; font-size: .8rem; color: var(--muet); }
-.legende-heures span::before { content: ""; display: inline-block; width: 12px; height: 10px; border-radius: 2px; margin-right: .35rem; vertical-align: -1px; background: var(--bord-fort); }
-.legende-heures span.fait::before { background: var(--accent); }
-@media (max-width: 575px) { .barres-heures .ligne { grid-template-columns: 1fr auto; } .barres-heures .barres { grid-column: 1 / -1; grid-row: 2; } }
+/* Heures : barres « prévu » (jaune foncé, emploi du temps) et « fait » (vert, réellement enseigné) */
+:root { --heures-prevu: #c08a00; --heures-prevu-doux: #fbf1d6; --heures-fait: #15803d; --heures-fait-doux: #e8f5ec; }
+.barres-heures { display: flex; flex-direction: column; gap: 1.1rem; }
+.barres-heures .ligne { display: grid; grid-template-columns: minmax(130px, 30%) 1fr; gap: .35rem 1rem; align-items: center; }
+.barres-heures .nom { font-size: .9rem; font-weight: 600; color: var(--encre); overflow: hidden; text-overflow: ellipsis; }
+.barres-heures .nom small { display: block; font-weight: 400; color: var(--muet); font-size: .78rem; }
+.barres-heures .barres { display: flex; flex-direction: column; gap: 5px; position: relative; }
+.barres-heures .rang { display: grid; grid-template-columns: 3.4rem 1fr; align-items: center; gap: .5rem; }
+.barres-heures .rang > span { font-size: .72rem; text-transform: uppercase; letter-spacing: .02em; color: var(--muet); }
+.barres-heures .piste { position: relative; height: 18px; border-radius: 4px; background: var(--fond); }
+.barres-heures .barre { position: absolute; inset: 0 auto 0 0; border-radius: 0 4px 4px 0; min-width: 3px;
+  display: flex; align-items: center; justify-content: flex-end; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.barres-heures .barre.prevu { background: var(--heures-prevu); }
+.barres-heures .barre.fait { background: var(--heures-fait); }
+.barres-heures .valeur { position: absolute; top: 50%; transform: translateY(-50%); font-size: .78rem; font-weight: 600;
+  white-space: nowrap; color: var(--encre); }
+.barres-heures .repere { position: absolute; top: -3px; bottom: -3px; width: 0; border-left: 2px dashed var(--encre); opacity: .55; }
+.barres-heures .resume { grid-column: 2; font-size: .78rem; color: var(--muet); }
+.barres-heures .resume strong { color: var(--encre); }
+.legende-heures { display: flex; flex-wrap: wrap; gap: .4rem 1.2rem; font-size: .8rem; color: var(--muet); }
+.legende-heures span::before { content: ""; display: inline-block; width: 14px; height: 12px; border-radius: 3px; margin-right: .4rem; vertical-align: -1px; background: var(--heures-prevu); }
+.legende-heures span.fait::before { background: var(--heures-fait); }
+.legende-heures span.repere::before { width: 0; height: 14px; border-radius: 0; background: none; border-left: 2px dashed var(--encre); opacity: .6; }
+.chiffre-heures { border-radius: var(--rayon); padding: .8rem 1rem; height: 100%; }
+.chiffre-heures.prevu { background: var(--heures-prevu-doux); }
+.chiffre-heures.fait { background: var(--heures-fait-doux); }
+.chiffre-heures .lib { font-size: .8rem; color: var(--muet); }
+.chiffre-heures .val { font-size: 1.35rem; font-weight: 700; color: var(--encre); }
+.chiffre-heures.prevu .val { color: #7a5800; }
+.chiffre-heures.fait .val { color: var(--heures-fait); }
+@media (max-width: 575px) { .barres-heures .ligne { grid-template-columns: 1fr; } .barres-heures .resume { grid-column: 1; } }

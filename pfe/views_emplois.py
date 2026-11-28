@@ -30,6 +30,8 @@ MODES = [('classe', 'Classe'), ('departement', 'Département'), ('enseignant', '
          ('heures', 'Heures des enseignants')]
 FORMATS = [('detail', 'Détail : matières puis total'), ('resume', 'Résumé : total seulement')]
 PERIODES = [('impair', 'Semestres impairs (1, 3, 5…)'), ('pair', 'Semestres pairs (2, 4, 6…)')]
+ANNEE = 'annee'
+PERIODES_ANNEE = PERIODES + [(ANNEE, "Toute l'année (deux semestres)")]   # grilles : classe, département, enseignant, salle
 XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 
 
@@ -45,8 +47,9 @@ def _selection(request, profil):
     session = next((s for s in sessions if s.pk == sid), None) or next((s for s in sessions if s.en_cours), None) \
         or (sessions[0] if sessions else None)
     mode = g.get('vue') if g.get('vue') in dict(MODES) else 'classe'
+    periodes = PERIODES if mode == 'heures' else PERIODES_ANNEE       # les heures restent par semaine type
     sel = {'mode': mode, 'session': session, 'sessions': sessions, 'periode': g.get('periode') if g.get('periode')
-           in dict(PERIODES) else 'impair', 'programmes': list(programmes_du_profil(profil)), 'licences': [],
+           in dict(periodes) else 'impair', 'annee': False, 'programmes': list(programmes_du_profil(profil)), 'licences': [],
            'semestres': [], 'programme': None, 'licence': None, 'semestre': None, 'enseignant': None, 'salle': None}
     if mode == 'classe':
         # Programmes avec des matières dans la session d'abord (les autres n'ont encore rien à placer)
@@ -70,6 +73,8 @@ def _selection(request, profil):
                 sel['semestre'] = next((s for s in sel['semestres'] if s.pk == _entier(g.get('semestre'))), None)
                 if sel['semestre'] is None and len(sel['semestres']) == 1:
                     sel['semestre'] = sel['semestres'][0]
+                # « Toute l'année » : les semestres du niveau (S1 et S2…), une grille chacun
+                sel['annee'] = sel['semestre'] is None and g.get('semestre') == ANNEE and len(sel['semestres']) > 1
     elif mode == 'heures':
         from .roles import departements_etablissement
         sel['departements'] = list(departements_etablissement())
@@ -91,6 +96,8 @@ def _selection(request, profil):
     else:
         sel['salles'] = list(Salle.objects.select_related('batiment'))
         sel['salle'] = next((s for s in sel['salles'] if s.pk == _entier(g.get('salle'))), None)
+    if mode in ('enseignant', 'salle', 'departement'):
+        sel['annee'] = sel['periode'] == ANNEE
     return sel
 
 
@@ -108,6 +115,8 @@ def _seances(profil, sel):
           .select_related('matiere__filiere', 'matiere__licence', 'matiere__semestre', 'salle__batiment')
           .prefetch_related('enseignants'))
     if sel['mode'] == 'classe':
+        if sel['annee']:
+            return list(qs.filter(matiere__filiere=sel['programme'], matiere__licence=sel['licence']))
         if not sel['semestre']:
             return None
         return list(qs.filter(matiere__filiere=sel['programme'], matiere__licence=sel['licence'],
@@ -116,14 +125,21 @@ def _seances(profil, sel):
     if cible is None:
         return None
     qs = qs.filter(enseignants=cible) if sel['mode'] == 'enseignant' else qs.filter(salle=cible)
+    if sel['annee']:
+        return list(qs.distinct())
     parite = 1 if sel['periode'] == 'impair' else 0
     return [s for s in qs.distinct() if emplois.periode(s.matiere.semestre) in (parite, None)]
 
 
+def _libelle_periode(sel):
+    return {'impair': 'semestres impairs', 'pair': 'semestres pairs'}.get(sel['periode'], "toute l'année")
+
+
 def _titre(sel):
     if sel['mode'] == 'classe':
-        return f"{sel['programme'].nom} · {sel['licence'].nom} · {sel['semestre'].nom} · {sel['session'].annee}"
-    periode = 'semestres impairs' if sel['periode'] == 'impair' else 'semestres pairs'
+        semestre = "toute l'année" if sel['annee'] else sel['semestre'].nom
+        return f"{sel['programme'].nom} · {sel['licence'].nom} · {semestre} · {sel['session'].annee}"
+    periode = _libelle_periode(sel)
     if sel['mode'] == 'enseignant':
         e = sel['enseignant']
         return f"{e} · {sel['session'].annee} ({periode})"
@@ -136,7 +152,8 @@ def emploi_du_temps(request):
     profil = get_profil(request)
     sel = _selection(request, profil)
     seances = _seances(profil, sel)
-    contexte = {'sel': sel, 'modes': MODES, 'periodes': PERIODES, 'actif': 'emplois', 'creneaux': emplois.creneaux(),
+    contexte = {'sel': sel, 'modes': MODES, 'periodes': PERIODES_ANNEE, 'periodes_heures': PERIODES,
+                'actif': 'emplois', 'creneaux': emplois.creneaux(),
                 'jours': Seance.JOURS, 'types': Seance.TYPES, 'seances': seances}
     if sel['mode'] == 'departement':
         if sel['session'] is None:
@@ -150,6 +167,8 @@ def emploi_du_temps(request):
     if seances is None:
         return render(request, 'pfe/emploi_du_temps.html', contexte)
     analyses = emplois.avec_conflits(seances, sel['session'].pk)
+    if sel['annee']:
+        return _vue_annee(request, sel, analyses, contexte)
     if request.GET.get('imprimer') == 'pdf':
         return _imprimer(request, sel, analyses)
     if request.GET.get('export') == 'xlsx':
@@ -178,6 +197,40 @@ def emploi_du_temps(request):
         contexte['titre_grille'] = _titre(sel)
     contexte['donnees'] = donnees
     contexte['nb_conflits'] = sum(1 for _, m in analyses if m)
+    return render(request, 'pfe/emploi_du_temps.html', contexte)
+
+
+def _grilles_annee(sel, analyses):
+    """Toute l'année : une grille par semestre (classe) ou par période (enseignant, salle), en lecture."""
+    if sel['mode'] == 'classe':
+        groupes = [(s.nom, [(x, m) for x, m in analyses if x.matiere.semestre_id == s.pk]) for s in sel['semestres']]
+    else:
+        groupes = [(lib, [(x, m) for x, m in analyses
+                          if emplois.periode(x.matiere.semestre) in ((1 if code == 'impair' else 0), None)])
+                   for code, lib in PERIODES]
+    grilles = []
+    for titre, a in groupes:
+        dispo = emplois.disposition(a)
+        if sel['mode'] == 'enseignant':               # sur chaque cours, la classe plutôt que l'enseignant
+            for d in dispo:
+                d['enseignants'] = d['enseignants_complets'] = emplois.libelle_classe(d['s'].matiere)
+        grilles.append({'titre': titre, 'analyses': a, 'dispo': dispo, 'nb_conflits': sum(1 for _, x in a if x),
+                        'heures': fmt_heures(sum((x.fin - x.debut) / 60 for x, _ in a))})
+    return grilles
+
+
+def _vue_annee(request, sel, analyses, contexte):
+    grilles = _grilles_annee(sel, analyses)
+    titre = _titre(sel)
+    if request.GET.get('imprimer') == 'pdf':
+        from .pdf_listes import imprimer_sections, section
+        sections = [section(titre=g['titre'], avant=[_grille_pdf(sel['mode'], g['analyses'])],
+                            note=_resume(g['analyses'])) for g in grilles]
+        return imprimer_sections(request, 'emploi_du_temps_annee', 'EMPLOI DU TEMPS', [('Emploi du temps', titre)],
+                                 sections, paysage=True, total=_resume(analyses))
+    if request.GET.get('export') == 'xlsx':
+        return _classeur([(g['titre'], f"{titre} — {g['titre']}", sel['mode'], g['analyses']) for g in grilles])
+    contexte.update({'grilles_annee': grilles, 'titre_grille': titre, 'nb_conflits': sum(1 for _, m in analyses if m)})
     return render(request, 'pfe/emploi_du_temps.html', contexte)
 
 
@@ -394,13 +447,14 @@ def _classes_departement(profil, sel):
     période choisies : chaque classe qui a des matières, une grille par classe, empilées."""
     from .models import Service
     session, parite = sel['session'], 1 if sel['periode'] == 'impair' else 0
+    toute_annee = sel['periode'] == ANNEE
     deps = [sel['departement']] if sel['departement'] else sel['departements']
     programmes = list(programmes_du_profil(profil))
     mats = (Matiere.objects.filter(session=session, filiere__in=programmes)
             .select_related('filiere', 'licence', 'semestre'))
     classes = {}
     for m in mats:
-        if emplois.periode(m.semestre) not in (parite, None):
+        if not toute_annee and emplois.periode(m.semestre) not in (parite, None):
             continue
         classes.setdefault(emplois.cle_classe(m), m)
     seances = list(Seance.objects.filter(matiere__session=session, matiere__filiere__in=programmes)
@@ -427,7 +481,7 @@ def _classes_departement(profil, sel):
 
 
 def _vue_departement(request, profil, sel, contexte):
-    periode = 'semestres impairs' if sel['periode'] == 'impair' else 'semestres pairs'
+    periode = _libelle_periode(sel)
     titre = (f"{sel['departement'].nom if sel['departement'] else 'Tous les départements'} · "
              f"{sel['session'].annee} ({periode})")
     groupes = _classes_departement(profil, sel)

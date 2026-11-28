@@ -38,5 +38,6 @@
 {% empty %}
   <div class="card carte-gped"><div class="card-body"><div class="etat-vide py-4"><i class="bi bi-clock"></i>Aucune séance à votre nom dans l'emploi du temps de {{ session.annee|default:"cette session" }}.</div></div></div>
 {% endfor %}
-<div class="small text-secondary mt-1"><i class="bi bi-info-circle"></i> Un cours partagé entre plusieurs enseignants compte entièrement pour chacun. Le service, l'équivalent TD et les heures supplémentaires sont calculés par la CIAQ selon ses paramètres.</div>
+<div class="alert alert-light border d-flex flex-wrap align-items-center gap-2 mt-2"><i class="bi bi-calculator"></i><span class="me-auto">Vos heures supplémentaires sont calculées sur l'année, en équivalent TD, selon l'arrêté A/2024/108 et le décret D/2024/0027.</span><a class="btn btn-sm btn-primary" href="{% url 'enseignant_heures_sup' %}{% if session %}?session={{ session.pk }}{% endif %}">Voir le calcul pas à pas</a></div>
+<div class="small text-secondary mt-1"><i class="bi bi-info-circle"></i> Un cours partagé entre plusieurs enseignants compte entièrement pour chacun. Ici, les heures sont réelles (sans conversion en TD).</div>
 {% endblock %}

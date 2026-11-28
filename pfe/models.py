@@ -1676,47 +1676,46 @@ class DatesSemestre(models.Model):
 
 class ParametresHeures(models.Model):
     """
-    Paramètres des heures des enseignants, définis par la CIAQ (un seul enregistrement, pk = 1). Valeurs de départ :
-    arrêté A/2024/108/MESRSI (15 semaines par semestre, équivalent TD, service par grade, plafond des heures
-    supplémentaires à la moitié du service, réduction de moitié pour une fonction administrative) et décret
-    D/2024/0027 (6 h supplémentaires par semaine au plus, taux horaires par grade). Tout reste modifiable.
+    Paramètres des heures des enseignants (un seul enregistrement, pk = 1), STRICTEMENT ceux des textes :
+
+    - Arrêté A/2024/108/MESRSI/SGG du 9 février 2024 :
+      art. 1 : deux semestres de 15 semaines (30 semaines d'enseignement et d'évaluation) ;
+      art. 3 : conversion en équivalent TD : 1 h de CM = 1 h 30 de TD ; 1 h de TD = 1 h 30 de TP (1 h de TP = 2/3 h) ;
+      art. 4 et 5 : charge statutaire en équivalent TD, par semaine (5, 6, 7, 8 h) et par année (150, 180, 210,
+      240 h) selon le grade ; elle s'étend sur les deux semestres ; au moins la moitié en CM pour le rang A ;
+      art. 6 : charge réduite de moitié pour une fonction administrative (chef de département et au-dessus) ;
+      art. 8 : heures supplémentaires seulement après la charge statutaire épuisée, au plus la moitié de celle-ci.
+    - Décret D/2024/0027 du 24 janvier 2024, art. 16 : taux des heures supplémentaires et de vacation par grade ;
+      6 heures supplémentaires par semaine au plus ; paiement après service fait, dûment constaté.
+
+    La CIAQ peut mettre à jour ces valeurs si un nouveau texte les change ; aucune autre règle n'est appliquée.
     """
-    semaines_semestre = models.PositiveSmallIntegerField('Semaines par semestre', default=15)
-    equivalent_td = models.BooleanField('Compter en équivalent TD (coefficients)', default=True)
-    coef_cm = models.DecimalField('1 h de CM vaut (h de TD)', max_digits=4, decimal_places=3, default=1.5)
-    coef_td = models.DecimalField('1 h de TD vaut (h de TD)', max_digits=4, decimal_places=3, default=1)
-    coef_tp = models.DecimalField('1 h de TP vaut (h de TD)', max_digits=4, decimal_places=3, default=0.667)
-    coef_controle = models.DecimalField('1 h de contrôle vaut (h de TD)', max_digits=4, decimal_places=3, default=1)
-    coef_tout = models.DecimalField('1 h de « CM, TD et TP » vaut (h de TD)', max_digits=4, decimal_places=3, default=1)
-    plafonds_par_type = models.BooleanField("Plafonner les heures de chaque type", default=False)
-    plafond_cm = models.DecimalField('Heures normales de CM par semestre', max_digits=6, decimal_places=1, null=True,
-                                     blank=True)
-    plafond_td = models.DecimalField('Heures normales de TD par semestre', max_digits=6, decimal_places=1, null=True,
-                                     blank=True)
-    plafond_tp = models.DecimalField('Heures normales de TP par semestre', max_digits=6, decimal_places=1, null=True,
-                                     blank=True)
-    reduction_fonction = models.PositiveSmallIntegerField('Réduction du service pour une fonction administrative (%)',
-                                                          default=50)
-    hs_plafond_hebdo = models.DecimalField('Heures supplémentaires par semaine au plus', max_digits=4,
-                                           decimal_places=1, null=True, blank=True, default=6)
-    hs_plafond_pct = models.PositiveSmallIntegerField('Heures supplémentaires : au plus (% du service)', null=True,
-                                                      blank=True, default=50)
-    cm_rang_a_pct = models.PositiveSmallIntegerField('Rang A : part minimale de CM dans le service (%)', null=True,
-                                                     blank=True, default=50)
-    # Par grade (code de Enseignant.GRADES) : {'service': heures par semestre, 'taux': GNF par heure}
-    grades = models.JSONField('Service et taux par grade', default=dict, blank=True)
+    semaines_semestre = models.PositiveSmallIntegerField('Semaines par semestre (arrêté, art. 1)', default=15)
+    coef_cm = models.DecimalField('1 h de CM vaut, en heures de TD (arrêté, art. 3)', max_digits=4, decimal_places=3,
+                                  default=1.5)
+    coef_tp = models.DecimalField('1 h de TP vaut, en heures de TD (arrêté, art. 3)', max_digits=4, decimal_places=3,
+                                  default=0.667)
+    reduction_fonction = models.PositiveSmallIntegerField(
+        'Réduction de la charge pour une fonction administrative, en % (arrêté, art. 6)', default=50)
+    hs_plafond_pct = models.PositiveSmallIntegerField(
+        'Heures supplémentaires : au plus, en % de la charge statutaire (arrêté, art. 8)', default=50)
+    hs_plafond_hebdo = models.DecimalField('Heures supplémentaires : au plus par semaine (décret, art. 16)',
+                                           max_digits=4, decimal_places=1, default=6)
+    cm_rang_a_pct = models.PositiveSmallIntegerField('Rang A : part minimale de CM, en % (arrêté, art. 5)', default=50)
+    # Par grade (code de Enseignant.GRADES) : {'charge': heures équivalent TD par année, 'taux': GNF par heure}
+    grades = models.JSONField('Charge annuelle et taux par grade', default=dict, blank=True)
     modifie_le = models.DateTimeField('Modifié le', auto_now=True)
     modifie_par = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
 
+    # Arrêté, art. 5 (charge annuelle) et décret, art. 16 (taux). Les autres grades ne sont pas dans les textes.
     GRADES_PAR_DEFAUT = {
-        'professeur': {'service': 75, 'taux': 200000}, 'maitre_conferences': {'service': 90, 'taux': 200000},
-        'maitre_assistant': {'service': 105, 'taux': 150000}, 'assistant': {'service': 120, 'taux': 100000},
-        'docteur': {'service': None, 'taux': None}, 'ingenieur': {'service': None, 'taux': None},
-        'master': {'service': None, 'taux': None}, 'autre': {'service': None, 'taux': None},
+        'professeur': {'charge': 150, 'taux': 200000}, 'maitre_conferences': {'charge': 180, 'taux': 200000},
+        'maitre_assistant': {'charge': 210, 'taux': 150000}, 'assistant': {'charge': 240, 'taux': 100000},
     }
+    GRADES_TEXTES = tuple(GRADES_PAR_DEFAUT)
 
     class Meta:
-        verbose_name = 'Paramètres des heures (CIAQ)'
+        verbose_name = 'Paramètres des heures (arrêté et décret)'
 
     @classmethod
     def actuels(cls):
@@ -1726,14 +1725,17 @@ class ParametresHeures(models.Model):
             p.save(update_fields=['grades'])
         return p
 
+    @property
+    def semaines_annee(self):
+        return 2 * self.semaines_semestre
+
     def grade(self, code):
-        return {**self.GRADES_PAR_DEFAUT.get(code or 'autre', {'service': None, 'taux': None}),
-                **(self.grades or {}).get(code or 'autre', {})}
+        """{'charge': heures par an ou None, 'taux': GNF par heure ou None} : seulement les grades des textes."""
+        if code not in self.GRADES_TEXTES:
+            return {'charge': None, 'taux': None}
+        return {**self.GRADES_PAR_DEFAUT[code], **(self.grades or {}).get(code, {})}
 
     def coefficient(self, type_cours):
-        if not self.equivalent_td:
-            return 1
-        return float({SeanceCours.CM: self.coef_cm, SeanceCours.TD: self.coef_td, SeanceCours.TP: self.coef_tp,
-                      SeanceCours.CONTROLE: self.coef_controle, SeanceCours.TOUT: self.coef_tout}
-                     .get(type_cours, 1))
-
+        """Équivalent TD d'une heure (arrêté, art. 3). Un contrôle et une séance mêlant CM, TD et TP : 1 h de TD."""
+        c = float({SeanceCours.CM: self.coef_cm, SeanceCours.TP: self.coef_tp}.get(type_cours, 1))
+        return 2 / 3 if abs(c - 2 / 3) < 0.001 else c          # 0,667 saisi : exactement 2/3 (3 h de TP = 2 h)

@@ -231,6 +231,9 @@ CATALOGUE = [
     ('Enseignants', 'Espace enseignant', "Votre emploi du temps, vos matières, vos heures, vos étudiants, vos notes "
      "et vos plans de cours.", 'espace enseignant mon espace emploi du temps mes matières mes heures liste d\'appel '
      'mes étudiants', 'espace_enseignant', (), 'bi-person-video3', _enseignant),
+    ('Enseignants', 'Mes heures supplémentaires', "Comment vos heures supplémentaires (ou votre vacation) sont calculées, "
+     "pas à pas, avec vos propres chiffres.", 'heures supplémentaires vacation calcul équivalent TD charge statutaire '
+     'paiement taux', 'enseignant_heures_sup', (), 'bi-calculator', _enseignant),
     ('Enseignants', 'Plans de cours', "Plans de cours déposés par les enseignants (chapitres et contenus) : "
      "approbation, et cours dispensés signés par l'enseignant et validés par un délégué.",
      'plan de cours plans avancement progression approuver approbation syllabus chapitre',
@@ -243,8 +246,8 @@ CATALOGUE = [
      "montant) et vacataires (heures de l'emploi du temps, montant).",
      'situation heures supplémentaires vacation vacataires permanents service montant paiement ciaq',
      'ciaq_situation', (), 'bi-cash-coin', lambda p, u: p.voit_heures),
-    ('Suivi des cours', 'Paramètres des heures', "Définis par la CIAQ : semaines, coefficients CM / TD / TP, service "
-     "et taux par grade, plafonds des heures supplémentaires.",
+    ('Suivi des cours', 'Paramètres des heures', "Valeurs de l'arrêté A/2024/108 et du décret D/2024/0027 : "
+     "équivalence en TD, charge statutaire et taux par grade, limites des heures supplémentaires.",
      'paramètres heures coefficients équivalent td taux grade plafond ciaq', 'ciaq_parametres', (), 'bi-sliders',
      lambda p, u: p.voit_heures),
     ('Suivi des cours', 'Cours dispensés', "Cours déclarés et validés ; relance d'un délai dépassé et réajustement des "

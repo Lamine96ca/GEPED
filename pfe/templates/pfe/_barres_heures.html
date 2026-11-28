@@ -1,16 +1,17 @@
-{# Graphique « prévu (emploi du temps) / fait (cours validés) ». Paramètre : lignes (heures.avec_barres), chaque ligne avec nom et detail #}
-<div class="legende-heures mb-2"><span>Prévu (emploi du temps)</span><span class="fait">Fait (cours validés)</span></div>
+{# Graphique « prévu » (jaune foncé : emploi du temps) / « fait » (vert : réellement enseigné, validé par un délégué). #}
+{# Paramètre : lignes (heures.avec_barres) : nom, detail, reference(_txt), fait(_txt), barre_prevu, barre_fait, pct, attente #}
+<div class="legende-heures mb-3"><span>Prévu (emploi du temps)</span><span class="fait">Réellement enseigné (validé)</span></div>
 <div class="barres-heures">
   {% for l in lignes %}
-    <div class="ligne" title="{{ l.nom }} : prévu {{ l.reference_txt }}, fait {{ l.fait_txt }}{% if l.pct is not None %} ({{ l.pct }} %){% endif %}{% if l.attente %}, {{ l.attente }} cours en attente{% endif %}">
+    <div class="ligne" title="{{ l.nom }} : prévu {{ l.reference_txt }}, enseigné {{ l.fait_txt }}{% if l.pct is not None %} ({{ l.pct }} %){% endif %}">
       <div class="nom">{{ l.nom }}{% if l.detail %}<small>{{ l.detail }}</small>{% endif %}</div>
       <div class="barres">
-        <div class="barre prevu" style="width:{{ l.barre_prevu|stringformat:'s' }}%"></div>
-        <div class="barre fait" style="width:{{ l.barre_fait|stringformat:'s' }}%"></div>
+        <div class="rang"><span>Prévu</span><div class="piste"><div class="barre prevu" style="width:{{ l.barre_prevu|stringformat:'s' }}%"></div><span class="valeur" style="left:calc({{ l.barre_prevu|stringformat:'s' }}% + 6px)">{{ l.reference_txt }}</span></div></div>
+        <div class="rang"><span>Fait</span><div class="piste"><div class="barre fait" style="width:{{ l.barre_fait|stringformat:'s' }}%"></div><span class="valeur" style="left:calc({{ l.barre_fait|stringformat:'s' }}% + 6px)">{{ l.fait_txt }}</span></div></div>
       </div>
-      <div class="valeurs">{{ l.fait_txt }} / {{ l.reference_txt }}<small>{% if l.pct is not None %}{{ l.pct }} %{% else %}—{% endif %}{% if l.attente %} · {{ l.attente }} en attente{% endif %}</small></div>
+      <div class="resume">{% if l.pct is not None %}<strong>{{ l.pct }} %</strong> du prévu enseigné{% else %}rien de prévu{% endif %}{% if l.attente %} · {{ l.attente }} cours en attente du délégué{% endif %}</div>
     </div>
   {% empty %}
-    <div class="etat-vide py-3"><i class="bi bi-bar-chart"></i>Aucune heure prévue ni faite.</div>
+    <div class="etat-vide py-3"><i class="bi bi-bar-chart"></i>Aucune heure prévue ni enseignée.</div>
   {% endfor %}
 </div>
