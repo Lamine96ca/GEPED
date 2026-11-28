@@ -25,6 +25,7 @@ COLONNES_TABLE = [
     ('redouble', 'redouble'),
     ('cycle', 'cycle'),
     ('preinscrit', 'etudiant__preinscrit'),
+    ('session', 'session__annee'),
 ]
 
 CYCLE_LIBELLES = dict(Inscription.CYCLE_CHOICES)

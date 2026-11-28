@@ -63,8 +63,8 @@
         </select>
       </div>
       <div class="col-6 col-md-3 col-lg-2">
-        <select name="licence" class="form-select form-select-sm" title="Licence">
-          <option value="">Toutes licences</option>
+        <select name="licence" class="form-select form-select-sm" title="Niveau">
+          <option value="">Tous niveaux</option>
           {% for l in licences %}<option value="{{ l.id }}">{{ l.nom }}</option>{% endfor %}
         </select>
       </div>
@@ -112,7 +112,7 @@
           <th data-tri="sexe">Sexe <i class="bi bi-arrow-down-up"></i></th>
           <th class="d-none d-xxl-table-cell">Téléphone</th>
           <th data-tri="cycle" class="d-none d-xl-table-cell">Cycle <i class="bi bi-arrow-down-up"></i></th>
-          <th data-tri="licence">Licence <i class="bi bi-arrow-down-up"></i></th>
+          <th data-tri="licence">Niveau <i class="bi bi-arrow-down-up"></i></th>
           <th data-tri="semestre" class="d-none d-lg-table-cell">Sem. <i class="bi bi-arrow-down-up"></i></th>
           <th data-tri="programme">Programme <i class="bi bi-arrow-down-up"></i></th>
           <th data-tri="promotion" class="d-none d-lg-table-cell">Promo <i class="bi bi-arrow-down-up"></i></th>

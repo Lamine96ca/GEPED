@@ -64,7 +64,7 @@
 
   function ligneHtml(r, rang) {
     // r = [id, matricule, prenom, nom, sexe, telephone, licence, semestre, programme, promotion,
-    //      redouble, cycle, preinscrit]
+    //      redouble, cycle, preinscrit, session]
     const f = r[4] === 'F';
     const initiales = ((r[2] || '').charAt(0) + (r[3] || '').charAt(0)).toUpperCase();
     const sexe = f ? 'F' : 'M';
@@ -94,7 +94,8 @@
       '<td>' + sexe + '</td>' +
       '<td class="d-none d-xxl-table-cell">' + (e(r[5]) || tiret) + '</td>' +
       '<td class="d-none d-xl-table-cell">' + cycle + '</td>' +
-      '<td>' + (r[6] ? '<span class="etiquette">' + e(r[6]) + '</span>' : tiret) + '</td>' +
+      '<td>' + (r[6] ? '<span class="etiquette">' + e(r[6]) + '</span>' : tiret) +
+        (r[13] ? '<div class="small text-secondary">' + e(r[13]) + '</div>' : '') + '</td>' +
       '<td class="d-none d-lg-table-cell">' + (e(r[7]) || tiret) + '</td>' +
       '<td>' + (r[8] ? '<span class="etiquette etiquette-bleu">' + e(r[8]) + '</span>' : tiret) + '</td>' +
       '<td class="d-none d-lg-table-cell">' + (e(r[9]) || tiret) + '</td>' +
